@@ -1,3 +1,6 @@
 requests
 python-dotenv
 scikit-learn
+matplotlib
+numpy
+opencv-python
