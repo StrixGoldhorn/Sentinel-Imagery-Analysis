@@ -211,14 +211,53 @@ def main():
         "evalscript": "//VERSION=3\nconst colorRamp = [\n   [-12000, [0.000]],\n   [-9000, [0.098]],\n   [-6000, [0.216]],\n   [-1000, [0.243]],\n   [-500, [0.275]],\n   [-200, [0.294]],\n   [-50, [0.314]],\n   [-20, [0.333]],\n   [-10, [0.353]],\n   [0, [0.392]],\n   [10, [0.431]],\n   [30,[0.510]],\n   [50, [0.549]],\n   [200, [0.627]],\n   [300, [0.706]],\n   [400, [0.784]],\n   [500, [0.843]],\n   [1000, [0.882]],\n   [3000, [0.922]],\n   [5000, [0.961]],\n   [7000, [0.980]],\n   [9000, [1.000]]\n];\n\nconst viz = new ColorRampVisualizer(colorRamp);\n\nfunction setup() {\n  return {\n    input: [\"DEM\", \"dataMask\"],\n    output: {bands: 2},\n  };\n}\n\nfunction evaluatePixel(samples) {\n  return [...viz.process(samples.DEM),samples.dataMask];\n}"
         }
 
+    data_middle_sea_1 = {
+        "input": {
+            "bounds": {
+            "bbox": [
+        104.057694,
+        1.22145,
+        104.277072,
+        1.307259
+      ]
+            },
+            "data": [
+            {
+                "dataFilter": {
+                "timeRange": {
+                    "from": "2026-05-06T00:00:00Z",
+                    "to": "2026-06-06T23:59:59Z"
+                }
+                },
+                "type": "sentinel-1-grd"
+            }
+            ]
+        },
+        "output": {
+    "width": 2441.5498126429866,
+    "height": 955.2214185479991,
+            "responses": [
+            {
+                "identifier": "default",
+                "format": {
+                "type": "image/jpeg"
+                }
+            }
+            ]
+        },
+        "evalscript": "//VERSION=3\nreturn [VV*2, dataMask];"
+        }
+
     print(f"Requesting with time from {time1} to {time2}")
 
     # response = requests.post(url, headers = headers, json = data_cnb, timeout = 300)
     # response = requests.post(url, headers = headers, json = data_pasir_panjang, timeout = 300)
     # response = requests.post(url, headers = headers, json = data_random, timeout = 300)
-    
+
     # response = requests.post(url, headers = headers, json = data_random_with_ground, timeout = 300)
-    response = requests.post(url, headers = headers, json = dem_random_with_ground, timeout = 300)
+    # response = requests.post(url, headers = headers, json = dem_random_with_ground, timeout = 300)
+
+    response = requests.post(url, headers = headers, json = data_middle_sea_1, timeout = 300)
 
     dt_str = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z').replace(":", "")
     output_file = f"sentinel1_output_{dt_str}.tiff"
