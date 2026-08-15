@@ -1,6 +1,7 @@
 import os
 import json
 import math
+import shutil
 import io
 import requests
 from PIL import Image
@@ -49,6 +50,9 @@ def scan():
         
         # Query for latest metadata to create folder
         sar_datetime = get_images_area.get_latest_sar_datetime(bbox)
+        if not sar_datetime:
+            return jsonify({"error": "No SAR coverage found for this area in the last 30 days."}), 404
+            
         dt_obj = datetime.fromisoformat(sar_datetime.replace('Z', '+00:00'))
         
         # Unique ID to prevent filename collisions for different areas of the same acquisition
@@ -95,10 +99,11 @@ def scan():
         stitched_img = Image.new('RGBA', (total_w, total_h), (0, 0, 0, 0))
         
         # Fetch and stitch all tiles together
-        headers = {
+        session = requests.Session()
+        session.headers.update({
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}"
-        }
+        })
         
         for t in tiles:
             tile_bbox, w, h, x, y = t
@@ -108,7 +113,7 @@ def scan():
                 "sentinel-1-grd"
             )
             
-            resp = requests.post(get_images_area.API_URL, headers=headers, json=sar_payload, timeout=get_images_area.DEFAULT_TIMEOUT)
+            resp = session.post(get_images_area.API_URL, json=sar_payload, timeout=get_images_area.DEFAULT_TIMEOUT)
             resp.raise_for_status()
             
             tile_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
@@ -118,6 +123,10 @@ def scan():
             y_offset = sum(tile_heights[j] for j in range(y + 1, len(tile_heights)))
             
             stitched_img.paste(tile_img, (x_offset, y_offset))
+            
+        # Check if the stitched image is completely transparent (no data coverage)
+        if not stitched_img.getbbox():
+            raise ValueError("No valid imagery coverage returned for this specific bounding box.")
             
         image_filename = f"{folder_name}_stitched_sar.png"
         stitched_img.save(img_dir / image_filename)
@@ -131,7 +140,12 @@ def scan():
         })
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Clean up the directory to prevent corrupt/incomplete scans in the gallery
+        if 'scan_dir' in locals() and scan_dir.exists():
+            shutil.rmtree(scan_dir, ignore_errors=True)
+            
+        status_code = 400 if isinstance(e, ValueError) else 500
+        return jsonify({"error": str(e)}), status_code
 
 @app.route('/api/update_metadata/<folder_name>', methods=['POST'])
 def update_metadata(folder_name):
@@ -155,34 +169,6 @@ def update_metadata(folder_name):
             json.dump(metadata, f)
             
         return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/scan/<folder_name>')
-def get_scan_api(folder_name):
-    """API endpoint to get specific scan details for map layering."""
-    scan_dir = OUTPUT_BASE / folder_name
-    metadata_file = scan_dir / "metadata.json"
-    
-    if not scan_dir.exists() or not metadata_file.exists():
-        return jsonify({"error": "Scan not found"}), 404
-
-    try:
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
-        
-        img_dir = scan_dir / "images"
-        images = list(img_dir.glob("*.png"))
-        if not images:
-            return jsonify({"error": "No imagery in folder"}), 404
-
-        bbox = metadata['settings']['bbox']
-        return jsonify({
-            "imageUrl": f"/static/output/{folder_name}/images/{images[0].name}",
-            "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
-            "datetime": metadata['acquisition_datetime'],
-            "custom_name": metadata.get('custom_name')
-        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -214,6 +200,34 @@ def run_cv(folder_name):
             "boxes": boxes,
             "width": w,
             "height": h
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/scan/<folder_name>')
+def get_scan_api(folder_name):
+    """API endpoint to get specific scan details for map layering."""
+    scan_dir = OUTPUT_BASE / folder_name
+    metadata_file = scan_dir / "metadata.json"
+    
+    if not scan_dir.exists() or not metadata_file.exists():
+        return jsonify({"error": "Scan not found"}), 404
+
+    try:
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        
+        img_dir = scan_dir / "images"
+        images = list(img_dir.glob("*.png"))
+        if not images:
+            return jsonify({"error": "No imagery in folder"}), 404
+
+        bbox = metadata['settings']['bbox']
+        return jsonify({
+            "imageUrl": f"/static/output/{folder_name}/images/{images[0].name}",
+            "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
+            "datetime": metadata['acquisition_datetime'],
+            "custom_name": metadata.get('custom_name')
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

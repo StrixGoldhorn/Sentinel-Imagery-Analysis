@@ -96,11 +96,11 @@ def get_latest_sar_datetime(bbox: List[float], days_ago: int = 30) -> str:
         if "features" in data and len(data["features"]) > 0:
             return data["features"][0]["properties"]["datetime"]
         else:
-            print("⚠ No SAR data found in catalog, using current time")
-            return dt_now.isoformat().replace('+00:00', 'Z')
+            print("⚠ No SAR data found in catalog")
+            return None
     except Exception as e:
-        print(f"⚠ Catalog query failed: {e}, using current time")
-        return dt_now.isoformat().replace('+00:00', 'Z')
+        print(f"⚠ Catalog query failed: {e}")
+        return None
 
 def calculate_tiles(bbox: List[float]) -> List[Tuple[List[float], int, int, int, int]]:
     """
@@ -254,6 +254,9 @@ def main():
     # Get latest SAR datetime
     print("\nQuerying catalog for latest SAR acquisition...")
     sar_datetime = get_latest_sar_datetime(bbox, args.days_ago)
+    if not sar_datetime:
+        print("✗ No SAR imagery coverage found for this area in the given timeframe.")
+        return
     print(f"Latest SAR datetime: {sar_datetime}")
     
     # Parse datetime for folder name
