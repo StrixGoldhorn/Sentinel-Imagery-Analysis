@@ -1,50 +1,134 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Imagery Gallery - Sentinel Analysis</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <link rel="stylesheet" href="/static/css/styles.css" />
-</head>
-<body>
-    <nav class="navbar">
-        <a href="/" class="nav-brand">Sentinel maritime-SAR</a>
-        <div class="nav-links">
-            <a href="/">Scanner</a>
-            <a href="/gallery">Gallery</a>
-        </div>
-    </nav>
+{% extends 'base.html' %}
 
-    <div class="container gallery-container">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h1>Imagery Gallery</h1>
-        </div>
+{% block title %}Imagery Gallery - Sentinel Analysis{% endblock %}
 
-        {% if not scans %}
-            <div class="alert alert-info">No imagery has been saved yet. Go perform a scan!</div>
-        {% endif %}
+{% block extra_head %}
+    <style>
+        body {
+            background-color: #f8f9fa;
+            color: #333;
+            padding: 20px;
+            padding-top: 90px;
+        }
+        .gallery-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .scan-card {
+            display: flex;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            overflow: hidden;
+            border: 1px solid #e1e4e8;
+        }
+        .image-section {
+            flex: 1;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 350px;
+        }
+        .image-section img {
+            max-width: 100%;
+            max-height: 400px;
+            display: block;
+        }
+        .details-section {
+            flex: 1;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .meta-group {
+            margin-bottom: 12px;
+        }
+        .label {
+            font-weight: 600;
+            color: #666;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 2px;
+        }
+        .value {
+            font-size: 1rem;
+            color: #2c3e50;
+        }
+        details {
+            margin-top: 15px;
+            background: #f1f3f5;
+            border-radius: 6px;
+            padding: 10px;
+        }
+        summary {
+            font-weight: 600;
+            cursor: pointer;
+            color: #007bff;
+            outline: none;
+        }
+        pre {
+            font-size: 0.8rem;
+            background: #fff;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            color: #999;
+        }
+    </style>
+{% endblock %}
 
+{% block content %}
+    <div class="gallery-container">
         {% for scan in scans %}
-            <div class="scan-group">
-                <h3 class="text-muted small">Scan ID: {{ scan.folder }}</h3>
-                <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
-                    {% for img_url in scan.images %}
-                    <div class="col">
-                        <div class="card h-100 img-card shadow-sm">
-                            <a href="{{ img_url }}" target="_blank">
-                                <img src="{{ img_url }}" class="card-img-top img-thumbnail" alt="SAR Image">
-                            </a>
-                            <div class="card-body py-2">
-                                <p class="card-text text-truncate small">{{ img_url.split('/')[-1] }}</p>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
+        <div class="scan-card">
+            <div class="image-section">
+                {% if scan.images %}
+                <img src="{{ scan.images[0] }}" alt="Satellite Imagery">
+                {% endif %}
             </div>
+            <div class="details-section">
+                <div class="meta-group">
+                    <span class="label">Location</span>
+                    <span class="value">{{ scan.metadata.location or "Unknown" }}</span>
+                </div>
+                <div class="meta-group">
+                    <span class="label">Date Taken (Acquisition)</span>
+                    <span class="value">{{ scan.metadata.acquisition_datetime or "N/A" }}</span>
+                </div>
+                <div class="meta-group">
+                    <span class="label">Satellite</span>
+                    <span class="value">{{ scan.metadata.satellite or "Unknown" }}</span>
+                </div>
+                <div class="meta-group">
+                    <span class="label">Scraped On</span>
+                    <span class="value">{{ scan.metadata.scraped_datetime or "N/A" }}</span>
+                </div>
+
+                <details>
+                    <summary>Technical Request Settings</summary>
+                    {% if scan.metadata.settings %}
+                    <pre>{{ scan.metadata.settings | tojson(indent=2) }}</pre>
+                    {% else %}
+                    <pre>No configuration settings found for this scan.</pre>
+                    {% endif %}
+                </details>
+            </div>
+        </div>
+        {% else %}
+        <div class="no-data">
+            <p>No scans found in the history.</p>
+        </div>
         {% endfor %}
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+{% endblock %}

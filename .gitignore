@@ -2,6 +2,7 @@
 __pycache__/*
 *.pyc
 ignore/*
+static/output/*
 
 notes.md
 .env

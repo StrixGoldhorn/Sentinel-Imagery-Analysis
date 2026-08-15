@@ -1,4 +1,5 @@
 import os
+import json
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from pathlib import Path
 from datetime import datetime, timezone
@@ -37,6 +38,21 @@ def scan():
         scan_dir = OUTPUT_BASE / folder_name
         img_dir = scan_dir / "images"
         img_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save metadata to persist details for the gallery page
+        metadata = {
+            "acquisition_datetime": sar_datetime,
+            "satellite": "Sentinel-1",
+            "settings": {
+                "bbox": bbox,
+                "evalscript": "EVALSCRIPT_SAR",
+                "datasource": "sentinel-1-grd"
+            },
+            "scraped_datetime": datetime.now(timezone.utc).isoformat(),
+            "location": f"Lat: {bbox[1]:.4f} to {bbox[3]:.4f}, Lon: {bbox[0]:.4f} to {bbox[2]:.4f}"
+        }
+        with open(scan_dir / "metadata.json", "w") as f:
+            json.dump(metadata, f)
 
         # Calculate tiles (for simplicity in this UI, we process the grid)
         tiles = get_images_area.calculate_tiles(bbox)
@@ -84,13 +100,31 @@ def gallery():
         # Sort by modification time to show newest scans first
         for scan_dir in sorted(OUTPUT_BASE.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
             if scan_dir.is_dir():
+                # Load metadata if it exists for the scan
+                metadata = {}
+                metadata_file = scan_dir / "metadata.json"
+                if metadata_file.exists():
+                    try:
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+                    except (json.JSONDecodeError, IOError) as e:
+                        # Provide fallback labels for corrupted or old metadata files
+                        metadata = {
+                            "location": "Unknown Location",
+                            "acquisition_datetime": "N/A",
+                            "satellite": "Unknown",
+                            "scraped_datetime": "N/A",
+                            "settings": {}
+                        }
+
                 img_dir = scan_dir / "images"
                 if img_dir.exists():
                     images = [f"/static/output/{scan_dir.name}/images/{img.name}" for img in img_dir.glob("*.png")]
                     if images:
                         scans.append({
                             "folder": scan_dir.name,
-                            "images": images
+                            "images": images,
+                            "metadata": metadata
                         })
     return render_template('gallery.html', scans=scans)
 

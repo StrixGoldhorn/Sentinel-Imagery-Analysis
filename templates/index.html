@@ -1,23 +1,14 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>SAR Maritime Scanner</title>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% extends 'base.html' %}
+
+{% block title %}SAR Maritime Scanner{% endblock %}
+
+{% block extra_head %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="/static/css/styles.css" />
-</head>
-<body>
+{% endblock %}
 
-<nav class="navbar">
-    <a href="/" class="nav-brand">Sentinel maritime-SAR</a>
-    <div class="nav-links">
-        <a href="/">Scanner</a>
-        <a href="/gallery">Gallery</a>
-    </div>
-</nav>
-
+{% block content %}
 <div class="controls">
     <h3>SAR Area Scan</h3>
     <p id="status">Draw a rectangle to begin.</p>
@@ -150,5 +141,4 @@
         scanBtn.disabled = false;
     };
 </script>
-</body>
-</html>
+{% endblock %}
