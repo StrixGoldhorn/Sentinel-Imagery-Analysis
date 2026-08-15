@@ -361,13 +361,18 @@
             if (result.status === 'success') {
                 addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, null);
                 statusText.innerText = "Scan complete!";
+                
+                // Remove the selection box to prevent accidental rescans
+                drawnItems.clearLayers();
+                currentBbox = null;
             } else {
                 statusText.innerText = "Error: " + result.error;
+                scanBtn.disabled = false;
             }
         } catch (e) {
             statusText.innerText = "Connection failed.";
+            scanBtn.disabled = false;
         }
-        scanBtn.disabled = false;
     };
 
     // Startup Logic: Load scans added from Gallery via localStorage
