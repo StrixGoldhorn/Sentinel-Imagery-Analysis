@@ -30,6 +30,11 @@
             align-items: center;
             justify-content: center;
             min-height: 350px;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .image-section:hover {
+            opacity: 0.9;
         }
         .image-section img {
             max-width: 100%;
@@ -80,19 +85,38 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
+        .actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 15px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-outline { background: white; border: 1px solid #007bff; color: #007bff; }
+        .btn-danger { background: #fff5f5; border: 1px solid #ff6b6b; color: #ff6b6b; }
         .no-data {
             text-align: center;
             padding: 50px;
             color: #999;
         }
+        [data-status="active"] .btn-add { display: none; }
+        [data-status="inactive"] .btn-remove { display: none; }
     </style>
 {% endblock %}
 
 {% block content %}
     <div class="gallery-container">
         {% for scan in scans %}
-        <div class="scan-card">
-            <div class="image-section">
+        <div class="scan-card" id="card-{{ scan.folder }}" data-folder="{{ scan.folder }}">
+            <div class="image-section" onclick="window.location.href='/?load={{ scan.folder }}'">
                 {% if scan.images %}
                 <img src="{{ scan.images[0] }}" alt="Satellite Imagery">
                 {% endif %}
@@ -123,6 +147,14 @@
                     <pre>No configuration settings found for this scan.</pre>
                     {% endif %}
                 </details>
+
+                <div class="actions">
+                    <button class="btn btn-primary btn-add" onclick="toggleMapLayer('{{ scan.folder }}', true)">Add to Map</button>
+                    <button class="btn btn-danger btn-remove" onclick="toggleMapLayer('{{ scan.folder }}', false)">Remove from Map</button>
+                    {% if scan.images %}
+                    <a href="{{ scan.images[0] }}" target="_blank" class="btn btn-outline">Open Imagery in New Tab</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
         {% else %}
@@ -131,4 +163,23 @@
         </div>
         {% endfor %}
     </div>
+
+    <script>
+        function toggleMapLayer(folder, add) {
+            let list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+            if (add && !list.includes(folder)) list.push(folder);
+            if (!add) list = list.filter(i => i !== folder);
+            localStorage.setItem('selected_scans', JSON.stringify(list));
+            updateUI();
+        }
+
+        function updateUI() {
+            const list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+            document.querySelectorAll('.scan-card').forEach(card => {
+                const folder = card.dataset.folder;
+                card.dataset.status = list.includes(folder) ? 'active' : 'inactive';
+            });
+        }
+        updateUI();
+    </script>
 {% endblock %}

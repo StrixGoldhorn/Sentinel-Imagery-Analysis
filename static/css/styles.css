@@ -25,16 +25,58 @@ body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 
 .navbar .nav-links a:hover { color: #3498db; }
 
 /* Scanner (index.html) Styles */
-#map { height: calc(100vh - 54px); width: 100%; }
-.controls {
-    position: absolute; bottom: 10px; right: 10px; z-index: 1000;
-    background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+#map { 
+    height: calc(100vh - 70px); 
+    width: calc(100% - 350px); 
+    margin-left: 350px;
 }
-.controls h3 { margin-top: 0; }
-.controls button { cursor: pointer; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; }
-.controls button:disabled { background: #ccc; }
+.sidebar {
+    position: fixed;
+    top: 70px;
+    left: 0;
+    width: 350px;
+    height: calc(100vh - 70px);
+    background: white;
+    z-index: 1001;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+.accordion-item {
+    border-bottom: 1px solid #ddd;
+}
+.accordion-header {
+    width: 100%;
+    padding: 15px;
+    background: #f8f9fa;
+    border: none;
+    text-align: left;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: background 0.2s;
+    color: #333;
+}
+.accordion-header:hover { background: #e9ecef; }
+.accordion-header.active { background: #fff; color: #007bff; }
+.accordion-header::after { content: '\25BC'; font-size: 0.8em; } /* Down arrow */
+.accordion-header.active::after { content: '\25B2'; } /* Up arrow */
+
+.accordion-content {
+    display: none;
+    padding: 20px;
+    background: #fff;
+}
+.accordion-content.active { display: block; }
+.sidebar h3 { margin-top: 0; }
+.sidebar .accordion-content button { cursor: pointer; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; width: 100%; display: block; margin-bottom: 8px; font-weight: 600; }
+.sidebar .accordion-content button:disabled { background: #ccc; }
+.sidebar .accordion-content button#clearScansBtn:hover { background: #bb2d3b; }
 .opacity-slider { width: 100%; }
-#layersList { max-height: 300px; overflow-y: auto; margin-top: 10px; }
+#layersList { margin-top: 10px; }
 .name-input { border: 1px solid #ccc; border-radius: 4px; padding: 4px; margin-bottom: 8px; width: 90%; font-size: 1em; }
 .layer-info { margin-top: 10px; font-size: 0.9em; border-top: 1px solid #eee; padding-top: 10px; }
 

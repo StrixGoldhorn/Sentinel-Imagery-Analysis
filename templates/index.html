@@ -9,12 +9,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="controls">
-    <h3>SAR Area Scan</h3>
-    <p id="status">Draw a rectangle to begin.</p>
-    <button id="scanBtn" disabled>Scan Selected Area</button>
-    
-    <div id="layersList"></div>
+<div class="sidebar">
+    <div class="accordion-item">
+        <button class="accordion-header active" onclick="toggleAccordion(this)">Area Scan</button>
+        <div id="scan-page" class="accordion-content active">
+            <h3>SAR Area Scan</h3>
+            <p id="status">Draw a rectangle to begin.</p>
+            <button id="scanBtn" disabled>Scan Selected Area</button>
+            <button id="clearScansBtn" style="background: #dc3545; margin-top: 5px;">Clear All Scans</button>
+        </div>
+    </div>
+
+    <div class="accordion-item">
+        <button class="accordion-header" onclick="toggleAccordion(this)">Layers</button>
+        <div id="layers-page" class="accordion-content">
+            <h3>Manage Layers</h3>
+            <div id="layersList"></div>
+        </div>
+    </div>
 </div>
 
 <div id="map"></div>
@@ -22,7 +34,13 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script>
-    const map = L.map('map').setView([1.290270, 103.851959], 10); // Default to Singapore straits
+    // Load saved map view or defaults
+    const savedView = JSON.parse(localStorage.getItem('map_view_state')) || {
+        lat: 1.290270,
+        lng: 103.851959,
+        zoom: 10
+    };
+    const map = L.map('map').setView([savedView.lat, savedView.lng], savedView.zoom);
 
     const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
@@ -47,7 +65,32 @@
     });
     map.addControl(drawControl);
 
+    // Sidebar Accordion Logic
+    function toggleAccordion(header) {
+        const content = header.nextElementSibling;
+        const isActive = header.classList.contains('active');
+        
+        // Close all other items
+        document.querySelectorAll('.accordion-header').forEach(h => { if(h !== header) h.classList.remove('active') });
+        document.querySelectorAll('.accordion-content').forEach(c => { if(c !== content) c.classList.remove('active') });
+        
+        // Toggle current item
+        header.classList.toggle('active');
+        content.classList.toggle('active');
+    }
+
     let currentBbox = null;
+    let activeLayers = []; // Track layers to allow "Clear All" functionality
+
+    // Save map view whenever it changes
+    map.on('moveend', () => {
+        localStorage.setItem('map_view_state', JSON.stringify({
+            lat: map.getCenter().lat,
+            lng: map.getCenter().lng,
+            zoom: map.getZoom()
+        }));
+    });
+
     const scanBtn = document.getElementById('scanBtn');
     const statusText = document.getElementById('status');
 
@@ -89,17 +132,90 @@
         const layer = event.layer;
         drawnItems.addLayer(layer);
         
-        const bounds = layer.getBounds();
-        const dim = getDimensions(layer);
+        // Enable handles for immediate adjustment (corner/edge dragging)
+        if (layer.editing) layer.editing.enable();
 
-        // Format for backend: [min_lon, min_lat, max_lon, max_lat]
-        currentBbox = [
-            bounds.getWest(), bounds.getSouth(), 
-            bounds.getEast(), bounds.getNorth()
-        ];
-        scanBtn.disabled = false;
-        statusText.innerText = `Area selected: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+        const updateSelectionData = () => {
+            const bounds = layer.getBounds();
+            const dim = getDimensions(layer);
+
+            // Format for backend: [min_lon, min_lat, max_lon, max_lat]
+            currentBbox = [
+                bounds.getWest(), bounds.getSouth(), 
+                bounds.getEast(), bounds.getNorth()
+            ];
+            scanBtn.disabled = false;
+            statusText.innerText = `Area selected: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+        };
+
+        // Initial calculation
+        updateSelectionData();
+
+        // Listen for adjustments made via corner/edge handles
+        layer.on('edit', updateSelectionData);
     });
+
+    // Helper to add imagery to the map and tracking list
+    function addImageryLayer(imageUrl, bounds, datetime) {
+        const dateObj = new Date(datetime);
+        const zuluTime = dateObj.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z';
+        const localTime = dateObj.toLocaleString();
+        let captureName = `Capture ${zuluTime}`;
+
+        const getPopupContent = (name) => `
+            <div style="min-width: 150px;">
+                <strong>${name}</strong><hr style="margin: 5px 0;">
+                <small><strong>Zulu:</strong> ${zuluTime}</small><br>
+                <small><strong>Local:</strong> ${localTime}</small><br>
+                <a href="${imageUrl}" target="_blank">Download PNG</a>
+            </div>
+        `;
+
+        const sarLayer = L.imageOverlay(imageUrl, bounds, {
+            opacity: 0.8,
+            interactive: true
+        })
+        .addTo(map)
+        .bindPopup(getPopupContent(captureName));
+        
+        layerControl.addOverlay(sarLayer, `Imagery (${zuluTime})`);
+        
+        const layerId = `layer-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+        const controlHtml = `
+            <div id="${layerId}" class="layer-info">
+                <input type="text" class="name-input" value="${captureName}" placeholder="Capture Name">
+                <div style="margin-bottom: 5px;">
+                    <strong>Zulu:</strong> ${zuluTime}<br>
+                    <strong>Local:</strong> ${localTime}
+                </div>
+                <label style="display: block; margin-top: 5px;">Opacity:</label>
+                <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+                <br><small><a href="${imageUrl}" target="_blank">View Image</a></small>
+            </div>
+        `;
+        document.getElementById('layersList').insertAdjacentHTML('afterbegin', controlHtml);
+        
+        const container = document.getElementById(layerId);
+        container.querySelector('.opacity-slider').oninput = (e) => sarLayer.setOpacity(e.target.value);
+        container.querySelector('.name-input').oninput = (e) => {
+            captureName = e.target.value || `Capture ${zuluTime}`;
+            sarLayer.setPopupContent(getPopupContent(captureName));
+        };
+
+        activeLayers.push({ leafletLayer: sarLayer, uiId: layerId });
+    }
+
+    // Clear All functionality
+    document.getElementById('clearScansBtn').onclick = () => {
+        activeLayers.forEach(item => {
+            map.removeLayer(item.leafletLayer);
+            layerControl.removeLayer(item.leafletLayer);
+        });
+        activeLayers = [];
+        document.getElementById('layersList').innerHTML = '';
+        localStorage.removeItem('selected_scans'); // Sync with gallery state
+        statusText.innerText = "All layers cleared.";
+    };
 
     scanBtn.onclick = async () => {
         if (!currentBbox) return;
@@ -117,58 +233,7 @@
             const result = await response.json();
             
             if (result.status === 'success') {
-                // Convert Zulu time string to Date object and format both times
-                const dateObj = new Date(result.datetime);
-                const zuluTime = dateObj.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z';
-                const localTime = dateObj.toLocaleString();
-
-                let captureName = `Capture ${zuluTime}`;
-
-                const getPopupContent = (name) => `
-                    <div style="min-width: 150px;">
-                        <strong>${name}</strong><hr style="margin: 5px 0;">
-                        <small><strong>Zulu:</strong> ${zuluTime}</small><br>
-                        <small><strong>Local:</strong> ${localTime}</small><br>
-                        <a href="${result.imageUrl}" target="_blank">Download PNG</a>
-                    </div>
-                `;
-
-                const sarLayer = L.imageOverlay(result.imageUrl, result.bounds, {
-                    opacity: 0.8,
-                    interactive: true
-                })
-                .addTo(map)
-                .bindPopup(getPopupContent(captureName));
-                
-                layerControl.addOverlay(sarLayer, `Imagery (${zuluTime})`);
-                
-                // Add individual controls for this layer
-                const layerId = `layer-${Date.now()}`;
-                const controlHtml = `
-                    <div id="${layerId}" class="layer-info">
-                        <input type="text" class="name-input" value="${captureName}" placeholder="Capture Name">
-                        <div style="margin-bottom: 5px;">
-                            <strong>Zulu:</strong> ${zuluTime}<br>
-                            <strong>Local:</strong> ${localTime}
-                        </div>
-                        <label style="display: block; margin-top: 5px;">Opacity:</label>
-                        <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
-                        <br><small><a href="${result.imageUrl}" target="_blank">View Image</a></small>
-                    </div>
-                `;
-                document.getElementById('layersList').insertAdjacentHTML('afterbegin', controlHtml);
-                
-                const container = document.getElementById(layerId);
-                const slider = container.querySelector('.opacity-slider');
-                const nameInput = container.querySelector('.name-input');
-
-                slider.oninput = (e) => sarLayer.setOpacity(e.target.value);
-                
-                nameInput.oninput = (e) => {
-                    captureName = e.target.value || `Capture ${zuluTime}`;
-                    sarLayer.setPopupContent(getPopupContent(captureName));
-                };
-
+                addImageryLayer(result.imageUrl, result.bounds, result.datetime);
                 statusText.innerText = "Scan complete!";
             } else {
                 statusText.innerText = "Error: " + result.error;
@@ -178,5 +243,31 @@
         }
         scanBtn.disabled = false;
     };
+
+    // Startup Logic: Load scans added from Gallery via localStorage
+    window.addEventListener('load', async () => {
+        const params = new URLSearchParams(window.location.search);
+        const loadImmediate = params.get('load');
+        let selected = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+
+        if (loadImmediate && !selected.includes(loadImmediate)) {
+            selected.push(loadImmediate);
+            localStorage.setItem('selected_scans', JSON.stringify(selected));
+        }
+
+        for (const folder of selected) {
+            try {
+                const res = await fetch(`/api/scan/${folder}`);
+                const data = await res.json();
+                if (!data.error) {
+                    addImageryLayer(data.imageUrl, data.bounds, data.datetime);
+                    // Auto-zoom to the area if this specific scan was requested via URL
+                    if (folder === loadImmediate) {
+                        map.fitBounds(data.bounds);
+                    }
+                }
+            } catch (err) { console.error("Failed to load persistent scan", folder); }
+        }
+    });
 </script>
 {% endblock %}

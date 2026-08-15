@@ -107,6 +107,33 @@ def scan():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/scan/<folder_name>')
+def get_scan_api(folder_name):
+    """API endpoint to get specific scan details for map layering."""
+    scan_dir = OUTPUT_BASE / folder_name
+    metadata_file = scan_dir / "metadata.json"
+    
+    if not scan_dir.exists() or not metadata_file.exists():
+        return jsonify({"error": "Scan not found"}), 404
+
+    try:
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        
+        img_dir = scan_dir / "images"
+        images = list(img_dir.glob("*.png"))
+        if not images:
+            return jsonify({"error": "No imagery in folder"}), 404
+
+        bbox = metadata['settings']['bbox']
+        return jsonify({
+            "imageUrl": f"/static/output/{folder_name}/images/{images[0].name}",
+            "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
+            "datetime": metadata['acquisition_datetime']
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/static/output/<path:filename>')
 def serve_output(filename):
     return send_from_directory(OUTPUT_BASE, filename)
