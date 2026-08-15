@@ -1,0 +1,12 @@
+.venv/*
+__pycache__/*
+*.pyc
+ignore/*
+
+notes.md
+.env
+*.tif
+*.tiff
+*.png
+*.txt
+progress.json

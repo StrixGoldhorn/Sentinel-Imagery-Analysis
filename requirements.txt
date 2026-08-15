@@ -1,6 +1,8 @@
+Flask
 requests
-python-dotenv
-scikit-learn
-matplotlib
-numpy
+Pillow
 opencv-python
+numpy
+torch
+torchvision
+python-dotenv

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SAR Maritime Scanner</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/" class="nav-brand">Sentinel maritime-SAR</a>
+    <div class="nav-links">
+        <a href="/">Scanner</a>
+        <a href="/gallery">Gallery</a>
+    </div>
+</nav>
+
+<div class="controls">
+    <h3>SAR Area Scan</h3>
+    <p id="status">Draw a rectangle to begin.</p>
+    <button id="scanBtn" disabled>Scan Selected Area</button>
+    
+    <div id="layersList"></div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script>
+    const map = L.map('map').setView([1.290270, 103.851959], 10); // Default to Singapore straits
+
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const drawnItems = new L.FeatureGroup();
+    map.addLayer(drawnItems);
+
+    const baseMaps = { "Map View": osm };
+    const overlayMaps = { "Selection Box": drawnItems };
+    const layerControl = L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+    const drawControl = new L.Control.Draw({
+        draw: {
+            polygon: false, marker: false, circle: false, polyline: false, circlemarker: false,
+            rectangle: { shapeOptions: { color: '#007bff' } }
+        },
+        edit: { featureGroup: drawnItems }
+    });
+    map.addControl(drawControl);
+
+    let currentBbox = null;
+    const scanBtn = document.getElementById('scanBtn');
+    const statusText = document.getElementById('status');
+
+    map.on(L.Draw.Event.CREATED, function (event) {
+        drawnItems.clearLayers();
+        const layer = event.layer;
+        drawnItems.addLayer(layer);
+        
+        const bounds = layer.getBounds();
+        // Format for backend: [min_lon, min_lat, max_lon, max_lat]
+        currentBbox = [
+            bounds.getWest(), bounds.getSouth(), 
+            bounds.getEast(), bounds.getNorth()
+        ];
+        scanBtn.disabled = false;
+        statusText.innerText = "Area selected.";
+    });
+
+    scanBtn.onclick = async () => {
+        if (!currentBbox) return;
+        
+        scanBtn.disabled = true;
+        statusText.innerText = "Fetching SAR imagery...";
+
+        try {
+            const response = await fetch('/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bbox: currentBbox })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                // Convert Zulu time string to Date object and format both times
+                const dateObj = new Date(result.datetime);
+                const zuluTime = dateObj.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z';
+                const localTime = dateObj.toLocaleString();
+
+                let captureName = `Capture ${zuluTime}`;
+
+                const getPopupContent = (name) => `
+                    <div style="min-width: 150px;">
+                        <strong>${name}</strong><hr style="margin: 5px 0;">
+                        <small><strong>Zulu:</strong> ${zuluTime}</small><br>
+                        <small><strong>Local:</strong> ${localTime}</small><br>
+                        <a href="${result.imageUrl}" target="_blank">Download PNG</a>
+                    </div>
+                `;
+
+                const sarLayer = L.imageOverlay(result.imageUrl, result.bounds, {
+                    opacity: 0.8,
+                    interactive: true
+                })
+                .addTo(map)
+                .bindPopup(getPopupContent(captureName));
+                
+                layerControl.addOverlay(sarLayer, `Imagery (${zuluTime})`);
+                
+                // Add individual controls for this layer
+                const layerId = `layer-${Date.now()}`;
+                const controlHtml = `
+                    <div id="${layerId}" class="layer-info">
+                        <input type="text" class="name-input" value="${captureName}" placeholder="Capture Name">
+                        <div style="margin-bottom: 5px;">
+                            <strong>Zulu:</strong> ${zuluTime}<br>
+                            <strong>Local:</strong> ${localTime}
+                        </div>
+                        <label style="display: block; margin-top: 5px;">Opacity:</label>
+                        <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+                        <br><small><a href="${result.imageUrl}" target="_blank">View Image</a></small>
+                    </div>
+                `;
+                document.getElementById('layersList').insertAdjacentHTML('afterbegin', controlHtml);
+                
+                const container = document.getElementById(layerId);
+                const slider = container.querySelector('.opacity-slider');
+                const nameInput = container.querySelector('.name-input');
+
+                slider.oninput = (e) => sarLayer.setOpacity(e.target.value);
+                
+                nameInput.oninput = (e) => {
+                    captureName = e.target.value || `Capture ${zuluTime}`;
+                    sarLayer.setPopupContent(getPopupContent(captureName));
+                };
+
+                statusText.innerText = "Scan complete!";
+            } else {
+                statusText.innerText = "Error: " + result.error;
+            }
+        } catch (e) {
+            statusText.innerText = "Connection failed.";
+        }
+        scanBtn.disabled = false;
+    };
+</script>
+</body>
+</html>
