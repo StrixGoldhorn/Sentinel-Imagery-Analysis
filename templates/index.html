@@ -289,6 +289,13 @@
                 <div class="layer-controls">
                     <label>Opacity</label>
                     <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+                    
+                    <label style="margin-top: 10px; display: flex; justify-content: space-between;">
+                        <span>CV Threshold</span>
+                        <span class="threshold-val" style="font-weight: normal; color: #007bff;">40</span>
+                    </label>
+                    <input type="range" class="cv-threshold-slider" min="10" max="200" step="1" value="40" oninput="this.previousElementSibling.querySelector('.threshold-val').innerText = this.value" onchange="runCVDetection('${folderName}', '${layerId}', true)">
+                    
                     <button class="btn run-cv-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px; width: 100%;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
                 </div>
                 <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
@@ -346,16 +353,35 @@
         statusText.innerText = "All layers cleared.";
     };
 
-    async function runCVDetection(folderName, uiId) {
+    async function runCVDetection(folderName, uiId, forceRun = false) {
         const layerObj = activeLayers.find(l => l.uiId === uiId);
         if (!layerObj) return;
 
         const btn = document.querySelector(`#${uiId} .run-cv-btn`);
+        const thresholdInput = document.querySelector(`#${uiId} .cv-threshold-slider`);
+        const thresholdVal = thresholdInput ? thresholdInput.value : 40;
+
+        // If it's a toggle click (not a force run) and we already have a layer, just toggle
+        if (!forceRun && layerObj.detectLayer && btn.dataset.state === 'loaded') {
+            if (map.hasLayer(layerObj.detectLayer)) {
+                map.removeLayer(layerObj.detectLayer);
+                btn.innerText = `Show ${btn.dataset.count} Ships`;
+            } else {
+                map.addLayer(layerObj.detectLayer);
+                btn.innerText = `Hide ${btn.dataset.count} Ships`;
+            }
+            return;
+        }
+
         btn.disabled = true;
         btn.innerText = "Running Detection...";
 
         try {
-            const res = await fetch(`/api/run_cv/${folderName}`, { method: 'POST' });
+            const res = await fetch(`/api/run_cv/${folderName}`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ threshold: thresholdVal })
+            });
             const data = await res.json();
 
             if (data.status === 'success') {
@@ -388,16 +414,8 @@
                     }).addTo(detectLayer).bindPopup(`<b>Ship Detected</b><br>Pixels: ${w}x${h}`);
                 });
 
-                // Turn the button into a visibility toggle
-                btn.onclick = () => {
-                    if (map.hasLayer(detectLayer)) {
-                        map.removeLayer(detectLayer);
-                        btn.innerText = `Show ${data.boxes.length} Ships`;
-                    } else {
-                        map.addLayer(detectLayer);
-                        btn.innerText = `Hide ${data.boxes.length} Ships`;
-                    }
-                };
+                btn.dataset.state = 'loaded';
+                btn.dataset.count = data.boxes.length;
                 btn.disabled = false;
                 btn.innerText = `Hide ${data.boxes.length} Ships`;
             } else {

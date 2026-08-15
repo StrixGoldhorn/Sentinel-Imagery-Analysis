@@ -33,7 +33,7 @@ def mask_img_with_dem(img, dem_path):
     img = cv2.bitwise_and(img, img, mask=mask_inv) # <- "bitwise and": cs2100 reference?!
     return img, mask
 
-def get_ship_boxes(image_path, dem_path=None):
+def get_ship_boxes(image_path, dem_path=None, threshold=40):
     """
     Headless function to extract bounding boxes.
     Returns (detected_boxes, img_width, img_height)
@@ -48,8 +48,7 @@ def get_ship_boxes(image_path, dem_path=None):
 
     img = masked_img if masked_img is not None else img
 
-    thresh_val = 40
-    _, binary_mask = cv2.threshold(img, thresh_val, 255, cv2.THRESH_BINARY)
+    _, binary_mask = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
 
     kernel = np.ones((5, 5), np.uint8)
     dilated = cv2.dilate(binary_mask, kernel, iterations=2)

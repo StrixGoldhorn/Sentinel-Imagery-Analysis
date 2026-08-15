@@ -189,6 +189,9 @@ def get_scan_api(folder_name):
 @app.route('/api/run_cv/<folder_name>', methods=['POST'])
 def run_cv(folder_name):
     """Runs classical computer vision on a scanned area."""
+    data = request.json or {}
+    threshold = data.get('threshold', 40)
+    
     scan_dir = OUTPUT_BASE / folder_name
     if not scan_dir.exists():
         return jsonify({"error": "Scan not found"}), 404
@@ -205,7 +208,7 @@ def run_cv(folder_name):
     dem_path = str(dems[0]) if dems else None
     
     try:
-        boxes, w, h = basic_classical_cv.get_ship_boxes(image_path, dem_path)
+        boxes, w, h = basic_classical_cv.get_ship_boxes(image_path, dem_path, threshold=int(threshold))
         return jsonify({
             "status": "success",
             "boxes": boxes,

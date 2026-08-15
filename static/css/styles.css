@@ -149,7 +149,7 @@ body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 
 .sidebar .accordion-content button:hover:not(:disabled) { background: #2980b9; }
 .sidebar .accordion-content button:disabled { background: #ccc; }
 .sidebar .accordion-content button#clearScansBtn:hover { background: #bb2d3b; }
-.opacity-slider { width: 100%; }
+.opacity-slider, .cv-threshold-slider { width: 100%; }
 #layersList { margin-top: 10px; }
 .layer-info {
     margin-bottom: 15px;
