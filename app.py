@@ -3,6 +3,7 @@ import json
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from pathlib import Path
 from datetime import datetime, timezone
+import urllib.request
 import get_images_area
 from utils.get_token import get_token
 
@@ -11,6 +12,20 @@ app = Flask(__name__)
 # Ensure output directory exists
 OUTPUT_BASE = Path("static/output")
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
+
+def get_area_name(lat, lon):
+    """Dynamically resolve a location name using reverse geocoding."""
+    try:
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10"
+        req = urllib.request.Request(url, headers={'User-Agent': 'SentinelImageryAnalysis/1.0'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read().decode())
+            addr = data.get('address', {})
+            # Priority order for name: city -> town -> county -> state
+            name = addr.get('city') or addr.get('town') or addr.get('county') or addr.get('state')
+            return name if name else data.get('display_name', 'Open Sea').split(',')[0]
+    except Exception:
+        return f"Area at {lat:.2f}N, {lon:.2f}E"
 
 @app.route('/')
 def index():
@@ -39,6 +54,10 @@ def scan():
         img_dir = scan_dir / "images"
         img_dir.mkdir(parents=True, exist_ok=True)
 
+        # Calculate center point for geocoding
+        center_lat = (bbox[1] + bbox[3]) / 2
+        center_lon = (bbox[0] + bbox[2]) / 2
+
         # Save metadata to persist details for the gallery page
         metadata = {
             "acquisition_datetime": sar_datetime,
@@ -49,7 +68,7 @@ def scan():
                 "datasource": "sentinel-1-grd"
             },
             "scraped_datetime": datetime.now(timezone.utc).isoformat(),
-            "location": f"Lat: {bbox[1]:.4f} to {bbox[3]:.4f}, Lon: {bbox[0]:.4f} to {bbox[2]:.4f}"
+            "location": get_area_name(center_lat, center_lon)
         }
         with open(scan_dir / "metadata.json", "w") as f:
             json.dump(metadata, f)

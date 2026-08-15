@@ -28,6 +28,9 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
+    // Add dynamic scale bar (metric units)
+    L.control.scale({ imperial: false }).addTo(map);
+
     const drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
 
@@ -48,19 +51,54 @@
     const scanBtn = document.getElementById('scanBtn');
     const statusText = document.getElementById('status');
 
+    // Function to calculate dimensions in km
+    function getDimensions(layer) {
+        const bounds = layer.getBounds();
+        const nw = bounds.getNorthWest();
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        
+        // Calculate distance in meters and convert to km
+        const width = map.distance(nw, ne) / 1000;
+        const height = map.distance(nw, sw) / 1000;
+        
+        return { width, height };
+    }
+
+    // Enhanced dynamic dimension updates during mouse movement
+    map.on(L.Draw.Event.DRAWSTART, function(e) {
+        if (e.drawLayerType === 'rectangle') {
+            const moveHandler = function() {
+                // Access the internal rectangle handler to get the live shape
+                const drawHandler = drawControl._toolbars.draw._modes.rectangle.handler;
+                if (drawHandler && drawHandler._shape) {
+                    const dim = getDimensions(drawHandler._shape);
+                    statusText.innerText = `Selecting: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+                }
+            };
+            
+            map.on('mousemove', moveHandler);
+            
+            // Clean up listener when drawing is finished or cancelled
+            map.once(L.Draw.Event.DRAWSTOP, () => map.off('mousemove', moveHandler));
+        }
+    });
+
     map.on(L.Draw.Event.CREATED, function (event) {
         drawnItems.clearLayers();
         const layer = event.layer;
         drawnItems.addLayer(layer);
         
         const bounds = layer.getBounds();
+        const dim = getDimensions(layer);
+
         // Format for backend: [min_lon, min_lat, max_lon, max_lat]
         currentBbox = [
             bounds.getWest(), bounds.getSouth(), 
             bounds.getEast(), bounds.getNorth()
         ];
         scanBtn.disabled = false;
-        statusText.innerText = "Area selected.";
+        statusText.innerText = `Area selected: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
     });
 
     scanBtn.onclick = async () => {
