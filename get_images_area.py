@@ -29,13 +29,22 @@ function setup() {
 }
 
 function evaluatePixel(sample) {
-  let vh = sample.VH * 2;
   let alpha = sample.dataMask === 1 ? 255 : 0;
   
   if (alpha === 0) return [0, 0, 0, 0];
   
-  // Simple scaling for visualization
-  let grayValue = Math.min(255, Math.round(vh * 255));
+  // Prevent log of zero by clamping to a small positive value
+  let vh = Math.max(sample.VH, 0.0001);
+  
+  // Convert backscatter to decibels (dB) for better contrast
+  let vh_db = 10 * Math.log10(vh);
+  
+  // Stretch range: Sea is typically below -20 dB, ships are > 0 dB
+  let min_db = -23.0;
+  let max_db = 2.0;
+  
+  let normalized = (vh_db - min_db) / (max_db - min_db);
+  let grayValue = Math.max(0, Math.min(255, Math.round(normalized * 255)));
   
   return [grayValue, grayValue, grayValue, alpha];
 }"""
