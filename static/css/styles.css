@@ -151,8 +151,52 @@ body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 
 .sidebar .accordion-content button#clearScansBtn:hover { background: #bb2d3b; }
 .opacity-slider { width: 100%; }
 #layersList { margin-top: 10px; }
-.name-input { border: 1px solid #ccc; border-radius: 4px; padding: 4px; margin-bottom: 8px; width: 90%; font-size: 1em; }
-.layer-info { margin-top: 10px; font-size: 0.9em; border-top: 1px solid #eee; padding-top: 10px; }
+.layer-info {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e1e4e8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    font-size: 0.9em;
+}
+.layer-info-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.sidebar .accordion-content button.remove-layer-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin-bottom: 0;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+.sidebar .accordion-content button.remove-layer-btn:hover { background-color: #bb2d3b; }
+.name-input {
+    border: 1px solid #dfe1e5;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 0;
+    flex: 1;
+    box-sizing: border-box;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+.layer-controls { margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+.layer-controls label { display: block; margin-bottom: 5px; font-weight: 600; color: #666; font-size: 0.8rem; text-transform: uppercase; }
 
 /* Leaflet Overrides */
 .leaflet-top.leaflet-left { margin-left: 10px; margin-top: 10px; }

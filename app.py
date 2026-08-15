@@ -1,5 +1,9 @@
 import os
 import json
+import math
+import io
+import requests
+from PIL import Image
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from pathlib import Path
 from datetime import datetime, timezone
@@ -76,34 +80,80 @@ def scan():
         # Calculate tiles (for simplicity in this UI, we process the grid)
         tiles = get_images_area.calculate_tiles(bbox)
         
-        # Fetch first tile/chunk for layering
-        # In a production app, you might stitch these or return a list
-        tile_bbox, w, h, tx, ty = tiles[0]
+        # Collect dimensions to build a master stitched image canvas
+        tile_widths = {}
+        tile_heights = {}
+        for t in tiles:
+            _, w, h, x, y = t
+            tile_widths[x] = w
+            tile_heights[y] = h
+            
+        total_w = sum(tile_widths.values())
+        total_h = sum(tile_heights.values())
         
-        sar_payload = get_images_area.build_payload(
-            tile_bbox, w, h, 
-            get_images_area.EVALSCRIPT_SAR, 
-            "sentinel-1-grd"
-        )
+        stitched_img = Image.new('RGBA', (total_w, total_h), (0, 0, 0, 0))
         
-        # We use a chunk size equal to tile size to get one image per tile for layering
-        chunks_saved = get_images_area.fetch_and_split_image(
-            sar_payload, scan_dir, folder_name, "sar", 
-            max(w, h), 0, token
-        )
+        # Fetch and stitch all tiles together
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+        
+        for t in tiles:
+            tile_bbox, w, h, x, y = t
+            sar_payload = get_images_area.build_payload(
+                tile_bbox, w, h, 
+                get_images_area.EVALSCRIPT_SAR, 
+                "sentinel-1-grd"
+            )
+            
+            resp = requests.post(get_images_area.API_URL, headers=headers, json=sar_payload, timeout=get_images_area.DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            
+            tile_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+            
+            # Calculate pixel offsets. y=0 in geographic maps is bottom, but y=0 in images is top.
+            x_offset = sum(tile_widths[i] for i in range(x))
+            y_offset = sum(tile_heights[j] for j in range(y + 1, len(tile_heights)))
+            
+            stitched_img.paste(tile_img, (x_offset, y_offset))
+            
+        image_filename = f"{folder_name}_stitched_sar.png"
+        stitched_img.save(img_dir / image_filename)
 
-        if chunks_saved > 0:
-            # Return the path to the first image and its specific bbox for Leaflet layering
-            image_path = f"/static/output/{folder_name}/images/{folder_name}_0000_sar.png"
-            return jsonify({
-                "status": "success",
-                "imageUrl": image_path,
-                "bounds": [[tile_bbox[1], tile_bbox[0]], [tile_bbox[3], tile_bbox[2]]],
-                "datetime": sar_datetime
-            })
-        
-        return jsonify({"error": "No imagery retrieved"}), 500
+        return jsonify({
+            "status": "success",
+            "folderName": folder_name,
+            "imageUrl": f"/static/output/{folder_name}/images/{image_filename}",
+            "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
+            "datetime": sar_datetime
+        })
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/update_metadata/<folder_name>', methods=['POST'])
+def update_metadata(folder_name):
+    """Updates the metadata.json file for a specific scan."""
+    data = request.json
+    custom_name = data.get('custom_name')
+    
+    scan_dir = OUTPUT_BASE / folder_name
+    metadata_file = scan_dir / "metadata.json"
+    
+    if not metadata_file.exists():
+        return jsonify({"error": "Metadata not found"}), 404
+        
+    try:
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+            
+        metadata['custom_name'] = custom_name
+        
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f)
+            
+        return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -129,7 +179,8 @@ def get_scan_api(folder_name):
         return jsonify({
             "imageUrl": f"/static/output/{folder_name}/images/{images[0].name}",
             "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
-            "datetime": metadata['acquisition_datetime']
+            "datetime": metadata['acquisition_datetime'],
+            "custom_name": metadata.get('custom_name')
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500

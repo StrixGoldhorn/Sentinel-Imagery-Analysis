@@ -83,6 +83,17 @@
         };
     }
 
+    // Debounced function to sync metadata to the server
+    const updateServerMetadata = debounce(async (folderName, customName) => {
+        try {
+            await fetch(`/api/update_metadata/${folderName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ custom_name: customName })
+            });
+        } catch (e) { console.error("Failed to update metadata on server", e); }
+    }, 1000); // 1 second delay
+
     const fetchSuggestions = debounce(async (query) => {
         if (query.length < 3) {
             resultsBox.style.display = 'none';
@@ -239,11 +250,14 @@
     });
 
     // Helper to add imagery to the map and tracking list
-    function addImageryLayer(imageUrl, bounds, datetime) {
+    function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomName) {
         const dateObj = new Date(datetime);
         const zuluTime = dateObj.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z';
         const localTime = dateObj.toLocaleString();
-        let captureName = `Capture ${zuluTime}`;
+
+        // Load saved name from localStorage if it exists
+        const savedNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+        let captureName = serverCustomName || savedNames[folderName] || folderName;
 
         const getPopupContent = (name) => `
             <div style="min-width: 150px;">
@@ -264,14 +278,19 @@
         const layerId = `layer-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const controlHtml = `
             <div id="${layerId}" class="layer-info">
-                <input type="text" class="name-input" value="${captureName}" placeholder="Capture Name">
+                <div class="layer-info-header">
+                    <input type="text" class="name-input" value="${captureName}" placeholder="Layer Name">
+                    <button class="remove-layer-btn" onclick="removeSpecificLayer('${folderName}', '${layerId}')" title="Remove Layer">&times;</button>
+                </div>
                 <div style="margin-bottom: 5px;">
                     <strong>Zulu:</strong> ${zuluTime}<br>
                     <strong>Local:</strong> ${localTime}
                 </div>
-                <label style="display: block; margin-top: 5px;">Opacity:</label>
-                <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
-                <br><small><a href="${imageUrl}" target="_blank">View Image</a></small>
+                <div class="layer-controls">
+                    <label>Opacity</label>
+                    <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+                </div>
+                <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
             </div>
         `;
         document.getElementById('layersList').insertAdjacentHTML('afterbegin', controlHtml);
@@ -279,15 +298,42 @@
         const container = document.getElementById(layerId);
         container.querySelector('.opacity-slider').oninput = (e) => sarLayer.setOpacity(e.target.value);
         container.querySelector('.name-input').oninput = (e) => {
-            captureName = e.target.value || `Capture ${zuluTime}`;
-            sarLayer.setPopupContent(getPopupContent(captureName));
+            const newName = e.target.value;
+            sarLayer.setPopupContent(getPopupContent(newName || folderName));
+            
+            // Save the custom name to localStorage
+            const names = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+            names[folderName] = e.target.value;
+            localStorage.setItem('layer_custom_names', JSON.stringify(names));
+
+            // Save the custom name to the server JSON
+            updateServerMetadata(folderName, newName);
         };
 
-        activeLayers.push({ leafletLayer: sarLayer, uiId: layerId });
+        activeLayers.push({ leafletLayer: sarLayer, uiId: layerId, folder: folderName });
+    }
+
+    // Function to remove a single specific layer
+    function removeSpecificLayer(folderName, uiId) {
+        if (!confirm("Are you sure you want to remove this layer from the map?")) return;
+        
+        const layerObj = activeLayers.find(l => l.uiId === uiId);
+        if (layerObj) {
+            map.removeLayer(layerObj.leafletLayer);
+            document.getElementById(uiId).remove();
+            activeLayers = activeLayers.filter(l => l.uiId !== uiId);
+            
+            // Update localStorage
+            let selected = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+            selected = selected.filter(f => f !== folderName);
+            localStorage.setItem('selected_scans', JSON.stringify(selected));
+        }
     }
 
     // Clear All functionality
     document.getElementById('clearScansBtn').onclick = () => {
+        if (!confirm("Are you sure you want to clear all scans?")) return;
+        
         activeLayers.forEach(item => {
             map.removeLayer(item.leafletLayer);
         });
@@ -313,7 +359,7 @@
             const result = await response.json();
             
             if (result.status === 'success') {
-                addImageryLayer(result.imageUrl, result.bounds, result.datetime);
+                addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, null);
                 statusText.innerText = "Scan complete!";
             } else {
                 statusText.innerText = "Error: " + result.error;
@@ -340,7 +386,7 @@
                 const res = await fetch(`/api/scan/${folder}`);
                 const data = await res.json();
                 if (!data.error) {
-                    addImageryLayer(data.imageUrl, data.bounds, data.datetime);
+                    addImageryLayer(data.imageUrl, data.bounds, data.datetime, folder, data.custom_name);
                     // Auto-zoom to the area if this specific scan was requested via URL
                     if (folder === loadImmediate) {
                         map.fitBounds(data.bounds);

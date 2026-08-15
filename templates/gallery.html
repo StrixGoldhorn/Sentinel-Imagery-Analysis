@@ -123,6 +123,10 @@
             </div>
             <div class="details-section">
                 <div class="meta-group">
+                    <span class="label">Layer Identity</span>
+                    <span class="value custom-name-label" style="font-weight: bold; color: #007bff;">{{ scan.metadata.custom_name or scan.folder }}</span>
+                </div>
+                <div class="meta-group">
                     <span class="label">Location</span>
                     <span class="value">{{ scan.metadata.location or "Unknown" }}</span>
                 </div>
@@ -175,9 +179,19 @@
 
         function updateUI() {
             const list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+            const customNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+            
             document.querySelectorAll('.scan-card').forEach(card => {
                 const folder = card.dataset.folder;
                 card.dataset.status = list.includes(folder) ? 'active' : 'inactive';
+                
+                // Update the Custom Name display
+                const nameLabel = card.querySelector('.custom-name-label');
+                if (customNames[folder]) {
+                    nameLabel.innerText = customNames[folder];
+                } else {
+                    nameLabel.innerText = folder;
+                }
             });
         }
         updateUI();
