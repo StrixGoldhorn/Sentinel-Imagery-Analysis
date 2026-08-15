@@ -289,6 +289,7 @@
                 <div class="layer-controls">
                     <label>Opacity</label>
                     <input type="range" class="opacity-slider" min="0" max="1" step="0.1" value="0.8">
+                    <button class="btn run-cv-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px; width: 100%;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
                 </div>
                 <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
             </div>
@@ -320,6 +321,7 @@
         const layerObj = activeLayers.find(l => l.uiId === uiId);
         if (layerObj) {
             map.removeLayer(layerObj.leafletLayer);
+            if (layerObj.detectLayer) map.removeLayer(layerObj.detectLayer);
             document.getElementById(uiId).remove();
             activeLayers = activeLayers.filter(l => l.uiId !== uiId);
             
@@ -336,12 +338,76 @@
         
         activeLayers.forEach(item => {
             map.removeLayer(item.leafletLayer);
+            if (item.detectLayer) map.removeLayer(item.detectLayer);
         });
         activeLayers = [];
         document.getElementById('layersList').innerHTML = '';
         localStorage.removeItem('selected_scans'); // Sync with gallery state
         statusText.innerText = "All layers cleared.";
     };
+
+    async function runCVDetection(folderName, uiId) {
+        const layerObj = activeLayers.find(l => l.uiId === uiId);
+        if (!layerObj) return;
+
+        const btn = document.querySelector(`#${uiId} .run-cv-btn`);
+        btn.disabled = true;
+        btn.innerText = "Running Detection...";
+
+        try {
+            const res = await fetch(`/api/run_cv/${folderName}`, { method: 'POST' });
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                if (layerObj.detectLayer) map.removeLayer(layerObj.detectLayer);
+                
+                const detectLayer = L.featureGroup().addTo(map);
+                layerObj.detectLayer = detectLayer;
+
+                const bounds = layerObj.leafletLayer.getBounds();
+                const minLat = bounds.getSouth();
+                const maxLat = bounds.getNorth();
+                const minLon = bounds.getWest();
+                const maxLon = bounds.getEast();
+
+                const latScale = (maxLat - minLat) / data.height;
+                const lonScale = (maxLon - minLon) / data.width;
+
+                data.boxes.forEach(box => {
+                    const [x, y, w, h] = box;
+                    // Convert pixel coordinates to geographic coordinates
+                    const b_minLon = minLon + x * lonScale;
+                    const b_maxLon = minLon + (x + w) * lonScale;
+                    const b_maxLat = maxLat - y * latScale; // y=0 is top of image
+                    const b_minLat = maxLat - (y + h) * latScale;
+
+                    L.rectangle([[b_minLat, b_minLon], [b_maxLat, b_maxLon]], {
+                        color: "#ff3333",
+                        weight: 2,
+                        fillOpacity: 0.1
+                    }).addTo(detectLayer).bindPopup(`<b>Ship Detected</b><br>Pixels: ${w}x${h}`);
+                });
+
+                // Turn the button into a visibility toggle
+                btn.onclick = () => {
+                    if (map.hasLayer(detectLayer)) {
+                        map.removeLayer(detectLayer);
+                        btn.innerText = `Show ${data.boxes.length} Ships`;
+                    } else {
+                        map.addLayer(detectLayer);
+                        btn.innerText = `Hide ${data.boxes.length} Ships`;
+                    }
+                };
+                btn.disabled = false;
+                btn.innerText = `Hide ${data.boxes.length} Ships`;
+            } else {
+                btn.innerText = "Error: " + data.error;
+            }
+        } catch (err) {
+            btn.innerText = "Connection Error";
+            btn.disabled = false;
+        }
+    }
 
     scanBtn.onclick = async () => {
         if (!currentBbox) return;

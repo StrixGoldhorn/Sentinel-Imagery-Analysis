@@ -9,6 +9,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import urllib.request
 import get_images_area
+import basic_classical_cv
 from utils.get_token import get_token
 
 app = Flask(__name__)
@@ -181,6 +182,35 @@ def get_scan_api(folder_name):
             "bounds": [[bbox[1], bbox[0]], [bbox[3], bbox[2]]],
             "datetime": metadata['acquisition_datetime'],
             "custom_name": metadata.get('custom_name')
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/run_cv/<folder_name>', methods=['POST'])
+def run_cv(folder_name):
+    """Runs classical computer vision on a scanned area."""
+    scan_dir = OUTPUT_BASE / folder_name
+    if not scan_dir.exists():
+        return jsonify({"error": "Scan not found"}), 404
+        
+    img_dir = scan_dir / "images"
+    
+    # Try to load stitched image, fallback to normal tile
+    images = list(img_dir.glob("*_stitched_sar.png")) or list(img_dir.glob("*_sar.png"))
+    if not images:
+        return jsonify({"error": "SAR image not found"}), 404
+        
+    image_path = str(images[0])
+    dems = list(img_dir.glob("*_stitched_dem.png")) or list(img_dir.glob("*_dem.png"))
+    dem_path = str(dems[0]) if dems else None
+    
+    try:
+        boxes, w, h = basic_classical_cv.get_ship_boxes(image_path, dem_path)
+        return jsonify({
+            "status": "success",
+            "boxes": boxes,
+            "width": w,
+            "height": h
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
