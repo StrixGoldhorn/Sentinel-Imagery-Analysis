@@ -16,7 +16,7 @@ OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
 def get_area_name(lat, lon):
     """Dynamically resolve a location name using reverse geocoding."""
     try:
-        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10"
+        url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10&accept-language=en"
         req = urllib.request.Request(url, headers={'User-Agent': 'SentinelImageryAnalysis/1.0'})
         with urllib.request.urlopen(req, timeout=5) as response:
             data = json.loads(response.read().decode())
