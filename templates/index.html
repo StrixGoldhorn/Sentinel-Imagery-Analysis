@@ -27,6 +27,26 @@
             <div id="layersList"></div>
         </div>
     </div>
+
+    <div class="accordion-item">
+        <button class="accordion-header" onclick="toggleAccordion(this)">Areas of Interest</button>
+        <div id="aoi-page" class="accordion-content">
+            <h3>Areas of Interest (AOIs)</h3>
+            <p id="aoiStatus" style="font-size: 0.9em; margin-bottom: 10px;">Draw a rectangle to begin.</p>
+            <form id="addAoiForm" style="margin-bottom: 15px;">
+                <div style="margin-bottom: 10px;">
+                    <label for="aoiName" style="font-size: 0.85em; color: #666;">Name your drawn area</label>
+                    <input type="text" id="aoiName" placeholder="e.g. Port of Singapore" style="width: 100%; padding: 5px; box-sizing: border-box;" required>
+                </div>
+                <button type="button" id="saveAoiBtn" class="btn" style="width: 100%;" disabled>Save Drawn Area as AOI</button>
+            </form>
+            <hr style="border: 0; border-top: 1px solid #ddd; margin: 10px 0;">
+            <h4 style="font-size: 0.9em; margin-bottom: 10px;">Tracked Locations</h4>
+            <div id="aoiList" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+                <!-- AOIs will be dynamically inserted here via JS -->
+            </div>
+        </div>
+    </div>
 </div>
 
 <div class="search-group">
@@ -164,10 +184,11 @@
 
         // Manage draw control based on whether the Area Scan panel is active
         const isScanActive = document.getElementById('scan-page').classList.contains('active');
-        if (isScanActive && !drawControlVisible) {
+        const isAoiActive = document.getElementById('aoi-page').classList.contains('active');
+        if ((isScanActive || isAoiActive) && !drawControlVisible) {
             map.addControl(drawControl);
             drawControlVisible = true;
-        } else if (!isScanActive && drawControlVisible) {
+        } else if (!isScanActive && !isAoiActive && drawControlVisible) {
             map.removeControl(drawControl);
             drawControlVisible = false;
         }
@@ -210,7 +231,9 @@
                 const drawHandler = drawControl._toolbars.draw._modes.rectangle.handler;
                 if (drawHandler && drawHandler._shape) {
                     const dim = getDimensions(drawHandler._shape);
-                    statusText.innerText = `Selecting: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+                    const sizeText = `${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+                    statusText.innerText = `Selecting: ${sizeText}`;
+                    document.getElementById('aoiStatus').innerText = `Selecting: ${sizeText}`;
                 }
             };
             
@@ -239,7 +262,10 @@
                 bounds.getEast(), bounds.getNorth()
             ];
             scanBtn.disabled = false;
-            statusText.innerText = `Area selected: ${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+            document.getElementById('saveAoiBtn').disabled = false;
+            const sizeText = `${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
+            statusText.innerText = `Area selected: ${sizeText}`;
+            document.getElementById('aoiStatus').innerText = `Area selected: ${sizeText}`;
         };
 
         // Initial calculation
@@ -247,6 +273,17 @@
 
         // Listen for adjustments made via corner/edge handles
         layer.on('edit', updateSelectionData);
+    });
+
+    // Handle deletion of drawn rectangle
+    map.on(L.Draw.Event.DELETED, function (event) {
+        if (drawnItems.getLayers().length === 0) {
+            currentBbox = null;
+            scanBtn.disabled = true;
+            document.getElementById('saveAoiBtn').disabled = true;
+            statusText.innerText = "Draw a rectangle to begin.";
+            document.getElementById('aoiStatus').innerText = "Draw a rectangle to begin.";
+        }
     });
 
     // Helper to add imagery to the map and tracking list
@@ -278,27 +315,40 @@
         const layerId = `layer-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const controlHtml = `
             <div id="${layerId}" class="layer-info">
-                <div class="layer-info-header">
-                    <input type="text" class="name-input" value="${captureName}" placeholder="Layer Name">
+                <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" checked onchange="toggleMapLayerVisibility('${layerId}')" title="Toggle Visibility">
+                    <input type="text" class="name-input" value="${captureName}" placeholder="Layer Name" style="flex: 1; min-width: 0;">
                     <button class="remove-layer-btn" onclick="removeSpecificLayer('${folderName}', '${layerId}')" title="Remove Layer">&times;</button>
                 </div>
-                <div style="margin-bottom: 5px;">
-                    <strong>Zulu:</strong> ${zuluTime}<br>
-                    <strong>Local:</strong> ${localTime}
-                </div>
-                <div class="layer-controls">
-                    <label>Opacity</label>
-                    <input type="range" class="opacity-slider" min="0" max="1" step="0.01" value="1">
-                    
-                    <label style="margin-top: 10px; display: flex; justify-content: space-between;">
-                        <span>CV Threshold</span>
-                        <span class="threshold-val" style="font-weight: normal; color: #007bff;">40</span>
-                    </label>
-                    <input type="range" class="cv-threshold-slider" min="10" max="200" step="1" value="40" oninput="this.previousElementSibling.querySelector('.threshold-val').innerText = this.value" onchange="runCVDetection('${folderName}', '${layerId}', true)">
-                    
-                    <button class="btn run-cv-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px; width: 100%;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
-                </div>
-                <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
+                <details style="margin-top: 8px;">
+                    <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none;">Layer Controls & Info</summary>
+                    <div style="margin-top: 8px; font-size: 0.85em;">
+                        <div style="margin-bottom: 5px;">
+                            <strong>Zulu:</strong> ${zuluTime}<br>
+                            <strong>Local:</strong> ${localTime}
+                        </div>
+                        <div class="layer-controls">
+                            <label>Opacity</label>
+                            <input type="range" class="opacity-slider" min="0" max="1" step="0.01" value="1">
+                            
+                            <label style="margin-top: 10px; display: flex; justify-content: space-between;">
+                                <span>CV Threshold</span>
+                                <span class="threshold-val" style="font-weight: normal; color: #007bff;">40</span>
+                            </label>
+                            <input type="range" class="cv-threshold-slider" min="10" max="200" step="1" value="40" oninput="this.previousElementSibling.querySelector('.threshold-val').innerText = this.value" onchange="runCVDetection('${folderName}', '${layerId}')">
+                            
+                            <button class="btn run-cv-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px; width: 100%;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
+                            
+                            <div class="cv-toggle-container" style="display: none; margin-top: 10px; align-items: center; background: #f8f9fa; padding: 6px; border-radius: 4px; border: 1px solid #ddd;">
+                                <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer; width: 100%;">
+                                    <input type="checkbox" class="cv-visibility-toggle" checked onchange="toggleCVLayer('${layerId}')">
+                                    <span class="cv-results-text" style="font-size: 0.85em; font-weight: 500;">0 Ships</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
+                    </div>
+                </details>
             </div>
         `;
         document.getElementById('layersList').insertAdjacentHTML('afterbegin', controlHtml);
@@ -339,6 +389,18 @@
         }
     }
 
+    function toggleMapLayerVisibility(uiId) {
+        const layerObj = activeLayers.find(l => l.uiId === uiId);
+        if (!layerObj) return;
+
+        const cb = document.querySelector(`#${uiId} > .layer-info-header input[type="checkbox"]`);
+        if (cb && cb.checked) {
+            map.addLayer(layerObj.leafletLayer);
+        } else {
+            map.removeLayer(layerObj.leafletLayer);
+        }
+    }
+
     // Clear All functionality
     document.getElementById('clearScansBtn').onclick = () => {
         if (!confirm("Are you sure you want to clear all scans?")) return;
@@ -346,32 +408,36 @@
         activeLayers.forEach(item => {
             map.removeLayer(item.leafletLayer);
             if (item.detectLayer) map.removeLayer(item.detectLayer);
+            const uiEl = document.getElementById(item.uiId);
+            if (uiEl) uiEl.remove();
         });
         activeLayers = [];
-        document.getElementById('layersList').innerHTML = '';
         localStorage.removeItem('selected_scans'); // Sync with gallery state
         statusText.innerText = "All layers cleared.";
     };
 
-    async function runCVDetection(folderName, uiId, forceRun = false) {
+    function toggleCVLayer(uiId) {
+        const layerObj = activeLayers.find(l => l.uiId === uiId);
+        if (!layerObj || !layerObj.detectLayer) return;
+
+        const cb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
+        if (cb && cb.checked) {
+            map.addLayer(layerObj.detectLayer);
+        } else {
+            map.removeLayer(layerObj.detectLayer);
+        }
+    }
+
+    async function runCVDetection(folderName, uiId) {
         const layerObj = activeLayers.find(l => l.uiId === uiId);
         if (!layerObj) return;
 
         const btn = document.querySelector(`#${uiId} .run-cv-btn`);
         const thresholdInput = document.querySelector(`#${uiId} .cv-threshold-slider`);
         const thresholdVal = thresholdInput ? thresholdInput.value : 40;
-
-        // If it's a toggle click (not a force run) and we already have a layer, just toggle
-        if (!forceRun && layerObj.detectLayer && btn.dataset.state === 'loaded') {
-            if (map.hasLayer(layerObj.detectLayer)) {
-                map.removeLayer(layerObj.detectLayer);
-                btn.innerText = `Show ${btn.dataset.count} Ships`;
-            } else {
-                map.addLayer(layerObj.detectLayer);
-                btn.innerText = `Hide ${btn.dataset.count} Ships`;
-            }
-            return;
-        }
+        const toggleContainer = document.querySelector(`#${uiId} .cv-toggle-container`);
+        const toggleCb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
+        const resultsText = document.querySelector(`#${uiId} .cv-results-text`);
 
         btn.disabled = true;
         btn.innerText = "Running Detection...";
@@ -387,7 +453,7 @@
             if (data.status === 'success') {
                 if (layerObj.detectLayer) map.removeLayer(layerObj.detectLayer);
                 
-                const detectLayer = L.featureGroup().addTo(map);
+                const detectLayer = L.featureGroup();
                 layerObj.detectLayer = detectLayer;
 
                 const bounds = layerObj.leafletLayer.getBounds();
@@ -414,12 +480,20 @@
                     }).addTo(detectLayer).bindPopup(`<b>Ship Detected</b><br>Pixels: ${w}x${h}`);
                 });
 
-                btn.dataset.state = 'loaded';
-                btn.dataset.count = data.boxes.length;
+                // Respect the checkbox state, default to checked
+                if (!toggleCb || toggleCb.checked) {
+                    detectLayer.addTo(map);
+                }
+                if (toggleContainer) {
+                    toggleContainer.style.display = 'flex';
+                    resultsText.innerText = `${data.boxes.length} Ships Detected`;
+                }
+
                 btn.disabled = false;
-                btn.innerText = `Hide ${data.boxes.length} Ships`;
+                btn.innerText = "Update Detection";
             } else {
                 btn.innerText = "Error: " + data.error;
+                btn.disabled = false;
             }
         } catch (err) {
             btn.innerText = "Connection Error";
@@ -449,6 +523,8 @@
                 // Remove the selection box to prevent accidental rescans
                 drawnItems.clearLayers();
                 currentBbox = null;
+                document.getElementById('saveAoiBtn').disabled = true;
+                document.getElementById('aoiStatus').innerText = "Draw a rectangle to begin.";
             } else {
                 statusText.innerText = "Error: " + result.error;
                 scanBtn.disabled = false;
@@ -484,5 +560,166 @@
             } catch (err) { console.error("Failed to load persistent scan", folder); }
         }
     });
+
+    // --- AOI Functionality ---
+    
+    let aoiMapLayers = [];
+    
+    function toggleAoiLayer(uiId) {
+        const layerObj = aoiMapLayers.find(l => l.uiId === uiId);
+        if (!layerObj) return;
+
+        const cb = document.querySelector(`#${uiId} > .layer-info-header input[type="checkbox"]`);
+        if (cb && cb.checked) {
+            map.addLayer(layerObj.leafletLayer);
+        } else {
+            map.removeLayer(layerObj.leafletLayer);
+        }
+    }
+
+    // Function to load and display saved AOIs from the database
+    async function loadAOIs() {
+        try {
+            const response = await fetch('/api/aoi');
+            const aois = await response.json();
+            const aoiList = document.getElementById('aoiList');
+            
+            if (aoiList) {
+                aoiList.innerHTML = '';
+                if (aois.length === 0) {
+                    aoiList.innerHTML = '<div style="color: #666; font-size: 0.85em;">No AOIs saved yet.</div>';
+                }
+            }
+            
+            // Clear existing AOI map layers
+            aoiMapLayers.forEach(item => {
+                map.removeLayer(item.leafletLayer);
+                const uiEl = document.getElementById(item.uiId);
+                if (uiEl) uiEl.remove();
+            });
+            aoiMapLayers = [];
+
+            aois.forEach(aoi => {
+                if (aoiList) {
+                    const div = document.createElement('div');
+                    div.style.border = '1px solid #eee';
+                    div.style.padding = '10px';
+                    div.style.borderRadius = '5px';
+                    div.style.backgroundColor = '#fdfdfd';
+                    
+                    // Format the next scan timestamp if it exists
+                    let nextScanText = '<span style="color: #666; font-size: 0.8em;">Not predicted yet</span>';
+                    if (aoi.next_scan) {
+                        const scanDate = new Date(aoi.next_scan);
+                        nextScanText = `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;" title="Next Scan: ${scanDate.toLocaleString()}">${scanDate.toLocaleString()}</span>`;
+                    }
+
+                    div.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <strong>${aoi.name}</strong>
+                            ${nextScanText}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
+                            <button class="btn" style="padding: 4px 8px; font-size: 0.8em;" onclick="predictAOI(${aoi.id})">Predict Scan</button>
+                        </div>
+                    `;
+                    aoiList.appendChild(div);
+                }
+
+                // Add bounding box layer
+                const bounds = [[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]];
+                const aoiRect = L.rectangle(bounds, { color: '#28a745', weight: 2, fillOpacity: 0.1 });
+                const layerId = `aoi-layer-${aoi.id}`;
+                
+                const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
+                
+                const controlHtml = `
+                    <div id="${layerId}" class="layer-info" style="border-left: 4px solid #28a745;">
+                        <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
+                            <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${aoi.name}">AOI: ${aoi.name}</strong>
+                        </div>
+                        <details style="margin-top: 8px;">
+                            <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none;">Layer Controls & Info</summary>
+                            <div style="margin-top: 8px; font-size: 0.85em; color: #555;">
+                                <strong>Next Scan:</strong> ${zuluTime}
+                            </div>
+                        </details>
+                    </div>
+                `;
+                document.getElementById('layersList').insertAdjacentHTML('beforeend', controlHtml);
+                aoiRect.addTo(map);
+                aoiMapLayers.push({ leafletLayer: aoiRect, uiId: layerId, id: aoi.id });
+            });
+        } catch (error) {
+            console.error("Error loading AOIs:", error);
+        }
+    }
+
+    // Function to save the current map bounding box
+    document.getElementById('saveAoiBtn').addEventListener('click', async () => {
+        const nameInput = document.getElementById('aoiName');
+        const name = nameInput.value.trim();
+        
+        if (!name) {
+            alert("Please enter a name for the Area of Interest.");
+            return;
+        }
+
+        if (!currentBbox) {
+            alert("Please draw a rectangle on the map first.");
+            return;
+        }
+
+        const bbox = currentBbox;
+
+        try {
+            const response = await fetch('/api/aoi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, bbox: bbox })
+            });
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                nameInput.value = ''; // Clear the input field
+                drawnItems.clearLayers();
+                currentBbox = null;
+                document.getElementById('saveAoiBtn').disabled = true;
+                scanBtn.disabled = true;
+                document.getElementById('aoiStatus').innerText = "Draw a rectangle to begin.";
+                statusText.innerText = "Draw a rectangle to begin.";
+                loadAOIs(); // Reload the list
+            } else {
+                alert('Error saving AOI: ' + (result.error || 'Unknown error'));
+            }
+        } catch (error) {
+            console.error("Error saving AOI:", error);
+            alert("Failed to save AOI.");
+        }
+    });
+
+    // Function to trigger a scan prediction for a specific AOI
+    async function predictAOI(aoiId) {
+        try {
+            const response = await fetch(`/api/aoi/${aoiId}/predict`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (response.ok && result.status === 'success') {
+                loadAOIs(); // Reload the list to show the updated prediction timestamp
+            } else {
+                alert('Error predicting scan: ' + (result.error || 'No upcoming scans found'));
+            }
+        } catch (error) {
+            console.error("Error predicting AOI:", error);
+            alert("Failed to trigger prediction.");
+        }
+    }
+
+    // Initial load
+    loadAOIs();
 </script>
 {% endblock %}

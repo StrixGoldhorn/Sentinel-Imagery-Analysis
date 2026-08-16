@@ -12,12 +12,43 @@ import urllib.request
 import get_images_area
 import basic_classical_cv
 from utils.get_token import get_token
+import sqlite3
+from predict_scans import predict_next_scans_n2yo
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 app = Flask(__name__)
 
 # Ensure output directory exists
 OUTPUT_BASE = Path("static/output")
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
+
+DB_PATH = "static/data.db"
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    with get_db_connection() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS aoi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                bbox TEXT NOT NULL,
+                next_scan TEXT,
+                last_checked TEXT
+            )
+        ''')
+        conn.commit()
+
+# Initialize SQLite on startup
+init_db()
 
 def get_area_name(lat, lon):
     """Dynamically resolve a location name using reverse geocoding."""
@@ -271,6 +302,68 @@ def gallery():
                             "metadata": metadata
                         })
     return render_template('gallery.html', scans=scans)
+
+# --- Areas of Interest (AOI) Database Routes ---
+
+@app.route('/api/aoi', methods=['GET'])
+def get_aois():
+    """Fetch all stored Areas of Interest."""
+    with get_db_connection() as conn:
+        aois = conn.execute('SELECT * FROM aoi ORDER BY name').fetchall()
+        # Parse bbox string back to JSON for the frontend
+        results = []
+        for row in aois:
+            row_dict = dict(row)
+            row_dict['bbox'] = json.loads(row_dict['bbox'])
+            results.append(row_dict)
+        return jsonify(results)
+
+@app.route('/api/aoi', methods=['POST'])
+def add_aoi():
+    """Add a new Area of Interest to track."""
+    data = request.json
+    bbox = data.get('bbox')
+    name = data.get('name')
+    
+    if not bbox or not name:
+        return jsonify({"error": "Missing bbox or name"}), 400
+        
+    bbox_str = json.dumps(bbox)
+    with get_db_connection() as conn:
+        cursor = conn.execute('INSERT INTO aoi (name, bbox) VALUES (?, ?)', (name, bbox_str))
+        conn.commit()
+        return jsonify({"status": "success", "id": cursor.lastrowid})
+
+@app.route('/api/aoi/<int:aoi_id>/predict', methods=['POST'])
+def predict_aoi(aoi_id):
+    """Run the prediction script for a specific Area of Interest."""
+    with get_db_connection() as conn:
+        aoi = conn.execute('SELECT * FROM aoi WHERE id = ?', (aoi_id,)).fetchone()
+        if not aoi:
+            return jsonify({"error": "AOI not found"}), 404
+            
+        bbox = json.loads(aoi['bbox'])
+        
+    n2yo_key = os.environ.get("N2YO_API_KEY")
+    
+    if not n2yo_key:
+        return jsonify({"error": "N2YO API key missing. Please configure N2YO_API_KEY in your environment or .env file."}), 400
+        
+    try:
+        predictions = predict_next_scans_n2yo(bbox, n2yo_key)
+    except Exception as e:
+        return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+        
+    if predictions:
+        next_scan = predictions[0]['time']
+        now_str = datetime.now(timezone.utc).isoformat()
+        with get_db_connection() as conn:
+            conn.execute('UPDATE aoi SET next_scan = ?, last_checked = ? WHERE id = ?', 
+                         (next_scan, now_str, aoi_id))
+            conn.commit()
+        return jsonify({"status": "success", "next_scan": next_scan, "predictions": predictions})
+    else:
+        return jsonify({"error": "No upcoming scans found"}), 404
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

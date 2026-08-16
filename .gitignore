@@ -11,3 +11,4 @@ notes.md
 *.png
 *.txt
 progress.json
+data.db
