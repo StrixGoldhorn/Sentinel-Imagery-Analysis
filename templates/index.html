@@ -6,25 +6,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
-    <style>
-        .folder-tab-tooltip {
-            background-color: #2c3e50 !important;
-            color: #ecf0f1 !important;
-            border: 2px solid !important;
-            border-bottom: none !important;
-            border-radius: 6px 6px 0 0 !important;
-            padding: 5px 10px !important;
-            font-size: 13px !important;
-            box-shadow: 0 -2px 5px rgba(0,0,0,0.2) !important;
-        }
-        .folder-tab-sar { border-color: #3498db !important; }
-        .folder-tab-cv { border-color: #ff3333 !important; }
-        .folder-tab-aoi { border-color: #28a745 !important; }
-        .folder-tab-tooltip::before,
-        .folder-tab-tooltip::after {
-            display: none !important; /* Hides default leaflet tooltip arrow */
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}" />
 {% endblock %}
 
 {% block content %}

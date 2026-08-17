@@ -1,0 +1,193 @@
+/* Scanner (index.html) Styles */
+#map { 
+    position: fixed;
+    top: 70px;
+    left: 350px;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+}
+.sidebar {
+    position: fixed;
+    top: 70px;
+    left: 0;
+    width: 350px;
+    height: calc(100vh - 70px);
+    background: white;
+    z-index: 1001;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    border-right: 1px solid #e1e4e8;
+}
+.accordion-item {
+    border-bottom: 1px solid #e1e4e8;
+}
+.accordion-header {
+    width: 100%;
+    padding: 18px 20px;
+    background: #fff;
+    border: none;
+    text-align: left;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+.accordion-header:hover { background: #f8f9fa; }
+.accordion-header.active { background: #f0f7ff; color: #3498db; }
+.accordion-header::after { 
+    content: '▾'; 
+    font-size: 1.2rem; 
+    transition: transform 0.2s;
+}
+.accordion-header.active::after { transform: rotate(180deg); }
+
+.accordion-content {
+    display: none;
+    padding: 20px;
+    background: #fff;
+}
+.accordion-content.active { display: block; }
+.sidebar h3 { margin-top: 0; }
+
+/* Floating Search Bar on Map */
+.search-group { 
+    position: absolute;
+    top: 90px;
+    right: 20px;
+    z-index: 1100;
+    display: flex; 
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    width: 320px;
+    flex-direction: column;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(0,0,0,0.05);
+}
+.search-group input { 
+    padding: 10px 12px; 
+    border: 1px solid #dfe1e5; 
+    border-radius: 4px; 
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.search-group input:focus { border-color: #3498db; }
+
+.search-results {
+    background: transparent;
+    max-height: 250px;
+    overflow-y: auto;
+    display: none;
+    border-radius: 0 0 4px 4px;
+}
+.search-results div {
+    padding: 10px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid #f9f9f9;
+}
+.search-results div:hover {
+    background-color: #f0f7ff;
+    color: #007bff;
+}
+.search-group button { 
+    width: auto !important; 
+    margin-bottom: 0 !important; 
+    background: #3498db !important;
+}
+.sidebar .accordion-content button { 
+    cursor: pointer; 
+    padding: 12px; 
+    background: #3498db; 
+    color: white; 
+    border: none; 
+    border-radius: 6px; 
+    width: 100%; 
+    display: block; 
+    margin-bottom: 10px; 
+    font-weight: 600;
+    transition: background 0.2s;
+}
+.sidebar .accordion-content button:hover:not(:disabled) { background: #2980b9; }
+.sidebar .accordion-content button:disabled { background: #ccc; }
+.sidebar .accordion-content button#clearScansBtn:hover { background: #bb2d3b; }
+.opacity-slider, .cv-threshold-slider { width: 100%; }
+#layersList { margin-top: 10px; }
+.layer-info {
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 1px solid #e1e4e8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    font-size: 0.9em;
+}
+.layer-info-header {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+.sidebar .accordion-content button.remove-layer-btn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    margin-bottom: 0;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+.sidebar .accordion-content button.remove-layer-btn:hover { background-color: #bb2d3b; }
+.name-input {
+    border: 1px solid #dfe1e5;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin-bottom: 0;
+    flex: 1;
+    box-sizing: border-box;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+.layer-controls { margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+.layer-controls label { display: block; margin-bottom: 5px; font-weight: 600; color: #666; font-size: 0.8rem; text-transform: uppercase; }
+
+/* Leaflet Overrides */
+.leaflet-top.leaflet-left { margin-left: 10px; margin-top: 10px; }
+.leaflet-bar { border: none !important; box-shadow: 0 2px 10px rgba(0,0,0,0.15) !important; }
+
+/* Map Popups and Tabs */
+.folder-tab-tooltip {
+    background-color: #2c3e50 !important;
+    color: #ecf0f1 !important;
+    border: 2px solid !important;
+    border-bottom: none !important;
+    border-radius: 6px 6px 0 0 !important;
+    padding: 5px 10px !important;
+    font-size: 13px !important;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.2) !important;
+}
+.folder-tab-sar { border-color: #3498db !important; }
+.folder-tab-cv { border-color: #ff3333 !important; }
+.folder-tab-aoi { border-color: #28a745 !important; }
+.folder-tab-tooltip::before,
+.folder-tab-tooltip::after {
+    display: none !important; /* Hides default leaflet tooltip arrow */
+}
