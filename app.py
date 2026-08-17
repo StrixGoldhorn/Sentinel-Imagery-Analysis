@@ -5,6 +5,7 @@ import shutil
 import io
 import requests
 from PIL import Image
+from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from pathlib import Path
 from datetime import datetime, timezone
@@ -27,7 +28,7 @@ app = Flask(__name__)
 OUTPUT_BASE = Path("static/output")
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
 
-DB_PATH = "static/data.db"
+DB_PATH = "data.db"
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -183,6 +184,10 @@ def update_metadata(folder_name):
     """Updates the metadata.json file for a specific scan."""
     data = request.json
     custom_name = data.get('custom_name')
+    folder_name = secure_filename(folder_name)
+    
+    if not folder_name:
+        return jsonify({"error": "Invalid folder name"}), 400
     
     scan_dir = OUTPUT_BASE / folder_name
     metadata_file = scan_dir / "metadata.json"
@@ -208,6 +213,10 @@ def run_cv(folder_name):
     """Runs classical computer vision on a scanned area."""
     data = request.json or {}
     threshold = data.get('threshold', 40)
+    folder_name = secure_filename(folder_name)
+    
+    if not folder_name:
+        return jsonify({"error": "Invalid folder name"}), 400
     
     scan_dir = OUTPUT_BASE / folder_name
     if not scan_dir.exists():
@@ -238,6 +247,11 @@ def run_cv(folder_name):
 @app.route('/api/scan/<folder_name>')
 def get_scan_api(folder_name):
     """API endpoint to get specific scan details for map layering."""
+    folder_name = secure_filename(folder_name)
+    
+    if not folder_name:
+        return jsonify({"error": "Invalid folder name"}), 400
+        
     scan_dir = OUTPUT_BASE / folder_name
     metadata_file = scan_dir / "metadata.json"
     
