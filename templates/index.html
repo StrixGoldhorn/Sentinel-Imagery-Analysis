@@ -5,7 +5,26 @@
 {% block extra_head %}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
-    <link rel="stylesheet" href="/static/css/styles.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+    <style>
+        .folder-tab-tooltip {
+            background-color: #2c3e50 !important;
+            color: #ecf0f1 !important;
+            border: 2px solid !important;
+            border-bottom: none !important;
+            border-radius: 6px 6px 0 0 !important;
+            padding: 5px 10px !important;
+            font-size: 13px !important;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.2) !important;
+        }
+        .folder-tab-sar { border-color: #3498db !important; }
+        .folder-tab-cv { border-color: #ff3333 !important; }
+        .folder-tab-aoi { border-color: #28a745 !important; }
+        .folder-tab-tooltip::before,
+        .folder-tab-tooltip::after {
+            display: none !important; /* Hides default leaflet tooltip arrow */
+        }
+    </style>
 {% endblock %}
 
 {% block content %}
@@ -59,18 +78,19 @@
 
 <div id="map"></div>
 
+<script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script>
     // Load saved map view or defaults
     const savedView = JSON.parse(localStorage.getItem('map_view_state')) || {
-        lat: 1.290270,
-        lng: 103.851959,
-        zoom: 10
+        lat: CONFIG.MAP_DEFAULT_LAT,
+        lng: CONFIG.MAP_DEFAULT_LNG,
+        zoom: CONFIG.MAP_DEFAULT_ZOOM
     };
     const map = L.map('map').setView([savedView.lat, savedView.lng], savedView.zoom);
 
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const osm = L.tileLayer(CONFIG.OSM_TILE_URL, {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
@@ -83,7 +103,7 @@
     const drawControl = new L.Control.Draw({
         draw: {
             polygon: false, marker: false, circle: false, polyline: false, circlemarker: false,
-            rectangle: { shapeOptions: { color: '#007bff' } }
+            rectangle: { shapeOptions: { color: CONFIG.COLOR_DRAW_RECTANGLE } }
         },
         edit: { featureGroup: drawnItems }
     });
@@ -95,7 +115,7 @@
     const searchInput = document.getElementById('locationSearch');
     const resultsBox = document.getElementById('searchResults');
 
-    function debounce(func, timeout = 400) {
+    function debounce(func, timeout = CONFIG.SEARCH_DEBOUNCE_MS) {
         let timer;
         return (...args) => {
             clearTimeout(timer);
@@ -106,16 +126,16 @@
     // Debounced function to sync metadata to the server
     const updateServerMetadata = debounce(async (folderName, customName) => {
         try {
-            await fetch(`/api/update_metadata/${folderName}`, {
+            await fetch(`${CONFIG.API_UPDATE_METADATA}/${folderName}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ custom_name: customName })
             });
         } catch (e) { console.error("Failed to update metadata on server", e); }
-    }, 1000); // 1 second delay
+    }, CONFIG.METADATA_UPDATE_DEBOUNCE_MS);
 
     const fetchSuggestions = debounce(async (query) => {
-        if (query.length < 3) {
+        if (query.length < CONFIG.SEARCH_MIN_CHARS) {
             resultsBox.style.display = 'none';
             return;
         }
@@ -124,7 +144,7 @@
         abortController = new AbortController();
 
         try {
-            const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&accept-language=en`, { signal: abortController.signal });
+            const response = await fetch(`${CONFIG.NOMINATIM_SEARCH_URL}?format=json&q=${encodeURIComponent(query)}&limit=${CONFIG.SEARCH_RESULT_LIMIT}&accept-language=en`, { signal: abortController.signal });
             const data = await response.json();
             
             resultsBox.innerHTML = '';
@@ -133,7 +153,7 @@
                     const div = document.createElement('div');
                     div.innerHTML = item.display_name;
                     div.onclick = () => {
-                        map.setView([parseFloat(item.lat), parseFloat(item.lon)], 13);
+                        map.setView([parseFloat(item.lat), parseFloat(item.lon)], CONFIG.SEARCH_ZOOM_LEVEL);
                         searchInput.value = item.display_name;
                         resultsBox.style.display = 'none';
                     };
@@ -196,6 +216,49 @@
 
     let currentBbox = null;
     let activeLayers = []; // Track layers to allow "Clear All" functionality
+    let aoiMapLayers = [];
+
+    function updateTabsVisibility() {
+        const mapSize = map.getSize();
+        const mapArea = mapSize.x * mapSize.y;
+
+        // Helper to evaluate layer area and toggle the tab marker
+        const toggleTab = (marker, bounds, isParentVisible, group) => {
+            if (!marker) return;
+            let shouldShow = false;
+            if (isParentVisible) {
+                const nw = map.latLngToContainerPoint(bounds.getNorthWest());
+                const se = map.latLngToContainerPoint(bounds.getSouthEast());
+                const area = Math.abs(se.x - nw.x) * Math.abs(se.y - nw.y);
+                shouldShow = area >= mapArea * CONFIG.TAB_VISIBILITY_AREA_THRESHOLD;
+            }
+            
+            if (shouldShow) {
+                if (!group.hasLayer(marker)) group.addLayer(marker);
+            } else {
+                if (group.hasLayer(marker)) group.removeLayer(marker);
+            }
+        };
+
+        activeLayers.forEach(layerObj => {
+            const isSarVisible = map.hasLayer(layerObj.leafletLayer);
+            toggleTab(layerObj.tabMarker, layerObj.bounds, isSarVisible, layerObj.leafletLayer);
+
+            if (layerObj.detectLayer && layerObj.cvTabs) {
+                const isCvVisible = map.hasLayer(layerObj.detectLayer);
+                layerObj.cvTabs.forEach(cvTab => {
+                    toggleTab(cvTab.marker, cvTab.bounds, isCvVisible, layerObj.detectLayer);
+                });
+            }
+        });
+
+        aoiMapLayers.forEach(layerObj => {
+            const isAoiVisible = map.hasLayer(layerObj.leafletLayer);
+            toggleTab(layerObj.tabMarker, layerObj.bounds, isAoiVisible, layerObj.leafletLayer);
+        });
+    }
+
+    map.on('zoomend resize moveend', updateTabsVisibility);
 
     // Save map view whenever it changes
     map.on('moveend', () => {
@@ -306,11 +369,23 @@
         `;
 
         const sarLayer = L.imageOverlay(imageUrl, bounds, {
-            opacity: 0.8,
+            opacity: CONFIG.SAR_DEFAULT_OPACITY,
+            interactive: false
+        });
+
+        const lBounds = L.latLngBounds(bounds);
+        const outlineLayer = L.rectangle(lBounds, {
+            color: CONFIG.COLOR_SAR_OUTLINE,
+            weight: 2,
+            fill: false,
             interactive: true
-        })
-        .addTo(map)
-        .bindPopup(getPopupContent(captureName));
+        }).bindPopup(getPopupContent(captureName));
+
+        // Invisible marker placed exactly at top-left (NorthWest) to anchor the tab tooltip
+        const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
+          .bindTooltip(`<strong>${captureName}</strong><br>Type: SAR Imagery`, { permanent: true, className: 'folder-tab-tooltip folder-tab-sar', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+
+        const layerGroup = L.featureGroup([sarLayer, outlineLayer]).addTo(map);
         
         const layerId = `layer-${Date.now()}-${Math.floor(Math.random()*1000)}`;
         const controlHtml = `
@@ -320,8 +395,8 @@
                     <input type="text" class="name-input" value="${captureName}" placeholder="Layer Name" style="flex: 1; min-width: 0;">
                     <button class="remove-layer-btn" onclick="removeSpecificLayer('${folderName}', '${layerId}')" title="Remove Layer">&times;</button>
                 </div>
-                <details style="margin-top: 8px;">
-                    <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none;">Layer Controls & Info</summary>
+                <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
+                    <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
                     <div style="margin-top: 8px; font-size: 0.85em;">
                         <div style="margin-bottom: 5px;">
                             <strong>Zulu:</strong> ${zuluTime}<br>
@@ -333,9 +408,9 @@
                             
                             <label style="margin-top: 10px; display: flex; justify-content: space-between;">
                                 <span>CV Threshold</span>
-                                <span class="threshold-val" style="font-weight: normal; color: #007bff;">40</span>
+                                <span class="threshold-val" style="font-weight: normal; color: #007bff;">${CONFIG.CV_DEFAULT_THRESHOLD}</span>
                             </label>
-                            <input type="range" class="cv-threshold-slider" min="10" max="200" step="1" value="40" oninput="this.previousElementSibling.querySelector('.threshold-val').innerText = this.value" onchange="runCVDetection('${folderName}', '${layerId}')">
+                            <input type="range" class="cv-threshold-slider" min="10" max="200" step="1" value="${CONFIG.CV_DEFAULT_THRESHOLD}" oninput="this.previousElementSibling.querySelector('.threshold-val').innerText = this.value" onchange="runCVDetection('${folderName}', '${layerId}')">
                             
                             <button class="btn run-cv-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px; width: 100%;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
                             
@@ -357,7 +432,8 @@
         container.querySelector('.opacity-slider').oninput = (e) => sarLayer.setOpacity(e.target.value);
         container.querySelector('.name-input').oninput = (e) => {
             const newName = e.target.value;
-            sarLayer.setPopupContent(getPopupContent(newName || folderName));
+            outlineLayer.setPopupContent(getPopupContent(newName || folderName));
+            tabMarker.setTooltipContent(`<strong>${newName || folderName}</strong><br>Type: SAR Imagery`);
             
             // Save the custom name to localStorage
             const names = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
@@ -368,7 +444,8 @@
             updateServerMetadata(folderName, newName);
         };
 
-        activeLayers.push({ leafletLayer: sarLayer, uiId: layerId, folder: folderName });
+        activeLayers.push({ leafletLayer: layerGroup, sarLayer: sarLayer, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, folder: folderName });
+        updateTabsVisibility();
     }
 
     // Function to remove a single specific layer
@@ -399,6 +476,7 @@
         } else {
             map.removeLayer(layerObj.leafletLayer);
         }
+        updateTabsVisibility();
     }
 
     // Clear All functionality
@@ -426,6 +504,7 @@
         } else {
             map.removeLayer(layerObj.detectLayer);
         }
+        updateTabsVisibility();
     }
 
     async function runCVDetection(folderName, uiId) {
@@ -434,7 +513,7 @@
 
         const btn = document.querySelector(`#${uiId} .run-cv-btn`);
         const thresholdInput = document.querySelector(`#${uiId} .cv-threshold-slider`);
-        const thresholdVal = thresholdInput ? thresholdInput.value : 40;
+        const thresholdVal = thresholdInput ? thresholdInput.value : CONFIG.CV_DEFAULT_THRESHOLD;
         const toggleContainer = document.querySelector(`#${uiId} .cv-toggle-container`);
         const toggleCb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
         const resultsText = document.querySelector(`#${uiId} .cv-results-text`);
@@ -443,7 +522,7 @@
         btn.innerText = "Running Detection...";
 
         try {
-            const res = await fetch(`/api/run_cv/${folderName}`, { 
+            const res = await fetch(`${CONFIG.API_RUN_CV}/${folderName}`, { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ threshold: thresholdVal })
@@ -455,8 +534,9 @@
                 
                 const detectLayer = L.featureGroup();
                 layerObj.detectLayer = detectLayer;
+                layerObj.cvTabs = [];
 
-                const bounds = layerObj.leafletLayer.getBounds();
+                const bounds = layerObj.bounds;
                 const minLat = bounds.getSouth();
                 const maxLat = bounds.getNorth();
                 const minLon = bounds.getWest();
@@ -473,11 +553,18 @@
                     const b_maxLat = maxLat - y * latScale; // y=0 is top of image
                     const b_minLat = maxLat - (y + h) * latScale;
 
-                    L.rectangle([[b_minLat, b_minLon], [b_maxLat, b_maxLon]], {
-                        color: "#ff3333",
+                    const cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
+                    L.rectangle(cvBounds, {
+                        color: CONFIG.COLOR_CV_DETECTION,
                         weight: 2,
-                        fillOpacity: 0.1
-                    }).addTo(detectLayer).bindPopup(`<b>Ship Detected</b><br>Pixels: ${w}x${h}`);
+                        fill: false,
+                        interactive: true
+                    }).addTo(detectLayer);
+
+                    const tabMarker = L.circleMarker(cvBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
+                        .bindTooltip(`<strong>Ship Detected</strong><br>Type: CV Detection`, { permanent: true, className: 'folder-tab-tooltip folder-tab-cv', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+                    
+                    layerObj.cvTabs.push({ marker: tabMarker, bounds: cvBounds });
                 });
 
                 // Respect the checkbox state, default to checked
@@ -489,6 +576,7 @@
                     resultsText.innerText = `${data.boxes.length} Ships Detected`;
                 }
 
+                updateTabsVisibility();
                 btn.disabled = false;
                 btn.innerText = "Update Detection";
             } else {
@@ -508,7 +596,7 @@
         statusText.innerText = "Fetching SAR imagery...";
 
         try {
-            const response = await fetch('/scan', {
+            const response = await fetch(CONFIG.API_SCAN, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ bbox: currentBbox })
@@ -548,7 +636,7 @@
 
         for (const folder of selected) {
             try {
-                const res = await fetch(`/api/scan/${folder}`);
+                const res = await fetch(`${CONFIG.API_GET_SCAN}/${folder}`);
                 const data = await res.json();
                 if (!data.error) {
                     addImageryLayer(data.imageUrl, data.bounds, data.datetime, folder, data.custom_name);
@@ -563,8 +651,6 @@
 
     // --- AOI Functionality ---
     
-    let aoiMapLayers = [];
-    
     function toggleAoiLayer(uiId) {
         const layerObj = aoiMapLayers.find(l => l.uiId === uiId);
         if (!layerObj) return;
@@ -575,12 +661,13 @@
         } else {
             map.removeLayer(layerObj.leafletLayer);
         }
+        updateTabsVisibility();
     }
 
     // Function to load and display saved AOIs from the database
     async function loadAOIs() {
         try {
-            const response = await fetch('/api/aoi');
+            const response = await fetch(CONFIG.API_AOI);
             const aois = await response.json();
             const aoiList = document.getElementById('aoiList');
             
@@ -628,20 +715,25 @@
                 }
 
                 // Add bounding box layer
-                const bounds = [[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]];
-                const aoiRect = L.rectangle(bounds, { color: '#28a745', weight: 2, fillOpacity: 0.1 });
+                const lBounds = L.latLngBounds([[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]]);
+                const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true });
+                const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
+                    .bindTooltip(`<strong>${aoi.name}</strong><br>Type: Area of Interest`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+                
+                const aoiGroup = L.featureGroup([aoiRect]).addTo(map);
+
                 const layerId = `aoi-layer-${aoi.id}`;
                 
                 const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
                 
                 const controlHtml = `
-                    <div id="${layerId}" class="layer-info" style="border-left: 4px solid #28a745;">
+                    <div id="${layerId}" class="layer-info" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
                         <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
                             <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${aoi.name}">AOI: ${aoi.name}</strong>
                         </div>
-                        <details style="margin-top: 8px;">
-                            <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none;">Layer Controls & Info</summary>
+                        <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
+                            <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
                             <div style="margin-top: 8px; font-size: 0.85em; color: #555;">
                                 <strong>Next Scan:</strong> ${zuluTime}
                             </div>
@@ -649,9 +741,10 @@
                     </div>
                 `;
                 document.getElementById('layersList').insertAdjacentHTML('beforeend', controlHtml);
-                aoiRect.addTo(map);
-                aoiMapLayers.push({ leafletLayer: aoiRect, uiId: layerId, id: aoi.id });
+                aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id });
             });
+            
+            updateTabsVisibility();
         } catch (error) {
             console.error("Error loading AOIs:", error);
         }
@@ -675,7 +768,7 @@
         const bbox = currentBbox;
 
         try {
-            const response = await fetch('/api/aoi', {
+            const response = await fetch(CONFIG.API_AOI, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: name, bbox: bbox })
@@ -703,7 +796,7 @@
     // Function to trigger a scan prediction for a specific AOI
     async function predictAOI(aoiId) {
         try {
-            const response = await fetch(`/api/aoi/${aoiId}/predict`, {
+            const response = await fetch(`${CONFIG.API_AOI}/${aoiId}/predict`, {
                 method: 'POST'
             });
             const result = await response.json();
