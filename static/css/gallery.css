@@ -26,7 +26,7 @@ body {
 }
 .image-section {
     flex: 1;
-    background: #000;
+    background: #888;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -77,6 +77,37 @@ summary {
     color: #007bff;
     outline: none;
 }
+
+/* Smooth transition for details dropdowns */
+details[open] summary ~ * {
+    animation: details-expand 0.4s ease-in-out;
+    overflow: hidden;
+}
+details.closing summary ~ * {
+    animation: details-collapse 0.4s ease-in-out forwards;
+    overflow: hidden;
+}
+@keyframes details-expand {
+    0% { 
+        max-height: 0; 
+        opacity: 0; 
+        margin-top: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+    100% { max-height: 1000px; opacity: 1; }
+}
+@keyframes details-collapse {
+    0% { max-height: 1000px; opacity: 1; }
+    100% { 
+        max-height: 0; 
+        opacity: 0; 
+        margin-top: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+}
+
 pre {
     font-size: 0.8rem;
     background: #fff;

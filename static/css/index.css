@@ -49,11 +49,18 @@
 .accordion-header.active::after { transform: rotate(180deg); }
 
 .accordion-content {
-    display: none;
-    padding: 20px;
+    max-height: 0;
+    padding: 0 20px;
+    opacity: 0;
+    overflow: hidden;
     background: #fff;
+    transition: max-height 0.4s ease-in-out, padding 0.4s ease-in-out, opacity 0.3s ease-in-out;
 }
-.accordion-content.active { display: block; }
+.accordion-content.active { 
+    max-height: 2500px; /* Safe upper limit for expanding content */
+    padding: 20px;
+    opacity: 1;
+}
 .sidebar h3 { margin-top: 0; }
 
 /* Floating Search Bar on Map */
@@ -168,6 +175,40 @@
 }
 .layer-controls { margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
 .layer-controls label { display: block; margin-bottom: 5px; font-weight: 600; color: #666; font-size: 0.8rem; text-transform: uppercase; }
+
+/* Smooth transition for details dropdowns */
+details[open] summary ~ * {
+    animation: details-expand 0.4s ease-in-out;
+    overflow: hidden;
+}
+details.closing summary ~ * {
+    animation: details-collapse 0.4s ease-in-out forwards;
+    overflow: hidden;
+}
+@keyframes details-expand {
+    0% {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        padding-top: 0;
+    }
+    100% {
+        max-height: 1000px;
+        opacity: 1;
+    }
+}
+@keyframes details-collapse {
+    0% {
+        max-height: 1000px;
+        opacity: 1;
+    }
+    100% {
+        max-height: 0;
+        opacity: 0;
+        margin-top: 0;
+        padding-top: 0;
+    }
+}
 
 /* Leaflet Overrides */
 .leaflet-top.leaflet-left { margin-left: 10px; margin-top: 10px; }
