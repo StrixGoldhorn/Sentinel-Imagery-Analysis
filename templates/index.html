@@ -78,6 +78,8 @@
 
 <div id="map"></div>
 
+<div id="notification-container" class="notification-container"></div>
+
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
@@ -114,6 +116,25 @@
     let abortController = null;
     const searchInput = document.getElementById('locationSearch');
     const resultsBox = document.getElementById('searchResults');
+    
+    // Notification System
+    function showNotification(message, type = 'error') {
+        const container = document.getElementById('notification-container');
+        const notif = document.createElement('div');
+        notif.className = `notification ${type}`;
+        notif.innerText = message;
+        
+        container.appendChild(notif);
+        
+        // Trigger reflow for animation
+        void notif.offsetWidth;
+        notif.classList.add('show');
+        
+        setTimeout(() => {
+            notif.classList.remove('show');
+            notif.addEventListener('transitionend', () => notif.remove());
+        }, CONFIG.NOTIFICATION_DURATION_MS);
+    }
 
     function debounce(func, timeout = CONFIG.SEARCH_DEBOUNCE_MS) {
         let timer;
@@ -131,7 +152,10 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ custom_name: customName })
             });
-        } catch (e) { console.error("Failed to update metadata on server", e); }
+        } catch (e) { 
+            console.error("Failed to update metadata on server", e); 
+            showNotification("Failed to update metadata on server.", "error");
+        }
     }, CONFIG.METADATA_UPDATE_DEBOUNCE_MS);
 
     const fetchSuggestions = debounce(async (query) => {
@@ -164,7 +188,10 @@
                 resultsBox.style.display = 'none';
             }
         } catch (error) {
-            if (error.name !== 'AbortError') console.error('Suggestion error:', error);
+            if (error.name !== 'AbortError') {
+                console.error('Suggestion error:', error);
+                showNotification("Failed to fetch location suggestions.", "error");
+            }
         }
     });
 
@@ -579,13 +606,16 @@
                 updateTabsVisibility();
                 btn.disabled = false;
                 btn.innerText = "Update Detection";
+                showNotification("CV Detection completed successfully.", "success");
             } else {
-                btn.innerText = "Error: " + data.error;
+                btn.innerText = "Update Detection";
                 btn.disabled = false;
+                showNotification("CV Detection Error: " + data.error, "error");
             }
         } catch (err) {
-            btn.innerText = "Connection Error";
+            btn.innerText = "Update Detection";
             btn.disabled = false;
+            showNotification("Connection Error during CV Detection.", "error");
         }
     }
 
@@ -614,12 +644,14 @@
                 document.getElementById('saveAoiBtn').disabled = true;
                 document.getElementById('aoiStatus').innerText = "Draw a rectangle to begin.";
             } else {
-                statusText.innerText = "Error: " + result.error;
+                statusText.innerText = "Draw a rectangle to begin.";
                 scanBtn.disabled = false;
+                showNotification("Scan Error: " + result.error, "error");
             }
         } catch (e) {
-            statusText.innerText = "Connection failed.";
+            statusText.innerText = "Draw a rectangle to begin.";
             scanBtn.disabled = false;
+            showNotification("Connection failed while fetching SAR imagery.", "error");
         }
     };
 
@@ -644,8 +676,13 @@
                     if (folder === loadImmediate) {
                         map.fitBounds(data.bounds);
                     }
+                } else {
+                    showNotification("Failed to load scan data for: " + folder, "error");
                 }
-            } catch (err) { console.error("Failed to load persistent scan", folder); }
+            } catch (err) { 
+                console.error("Failed to load persistent scan", folder); 
+                showNotification("Failed to load persistent scan: " + folder, "error");
+            }
         }
     });
 
@@ -747,6 +784,7 @@
             updateTabsVisibility();
         } catch (error) {
             console.error("Error loading AOIs:", error);
+            showNotification("Failed to load Areas of Interest from server.", "error");
         }
     }
 
@@ -756,12 +794,12 @@
         const name = nameInput.value.trim();
         
         if (!name) {
-            alert("Please enter a name for the Area of Interest.");
+            showNotification("Please enter a name for the Area of Interest.", "warning");
             return;
         }
 
         if (!currentBbox) {
-            alert("Please draw a rectangle on the map first.");
+            showNotification("Please draw a rectangle on the map first.", "warning");
             return;
         }
 
@@ -784,12 +822,13 @@
                 document.getElementById('aoiStatus').innerText = "Draw a rectangle to begin.";
                 statusText.innerText = "Draw a rectangle to begin.";
                 loadAOIs(); // Reload the list
+                showNotification("Area of Interest saved successfully!", "success");
             } else {
-                alert('Error saving AOI: ' + (result.error || 'Unknown error'));
+                showNotification('Error saving AOI: ' + (result.error || 'Unknown error'), "error");
             }
         } catch (error) {
             console.error("Error saving AOI:", error);
-            alert("Failed to save AOI.");
+            showNotification("Failed to save Area of Interest.", "error");
         }
     });
 
@@ -803,12 +842,13 @@
             
             if (response.ok && result.status === 'success') {
                 loadAOIs(); // Reload the list to show the updated prediction timestamp
+                showNotification("Scan predicted successfully!", "success");
             } else {
-                alert('Error predicting scan: ' + (result.error || 'No upcoming scans found'));
+                showNotification('Error predicting scan: ' + (result.error || 'No upcoming scans found'), "error");
             }
         } catch (error) {
             console.error("Error predicting AOI:", error);
-            alert("Failed to trigger prediction.");
+            showNotification("Failed to trigger scan prediction.", "error");
         }
     }
 

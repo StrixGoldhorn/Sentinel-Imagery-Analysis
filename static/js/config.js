@@ -26,5 +26,6 @@ const CONFIG = {
     API_RUN_CV: '/api/run_cv',
     API_SCAN: '/scan',
     API_GET_SCAN: '/api/scan',
-    API_AOI: '/api/aoi'
+    API_AOI: '/api/aoi',
+    NOTIFICATION_DURATION_MS: 3000
 };
