@@ -1,8 +1,6 @@
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+from sentinel_analysis.bootstrap.config import Settings as ApplicationSettings
 
 class Settings:
-    USERNAME = os.getenv("COP_USERNAME")
-    PASSWORD = os.getenv("COP_PASSWORD")
+    _settings = ApplicationSettings.from_environment()
+    USERNAME = _settings.copernicus_username
+    PASSWORD = _settings.copernicus_password

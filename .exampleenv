@@ -1,3 +1,5 @@
-COP_USERNAME = "abc@example.com"
-COP_PASSWORD = "hunter2"
-N2YO_API_KEY = "123456-ABCDEF-QWERTY-6769"
+COP_USERNAME="<copernicus-username>"
+COP_PASSWORD="<copernicus-password>"
+N2YO_API_KEY="<n2yo-api-key>"
+FLASK_DEBUG=false
+PORT=5050

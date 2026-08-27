@@ -21,7 +21,11 @@ class IngestAIS:
         results: list[dict[str, object]] = []
         total_inserted = 0
 
-        for plugin in self._registry.get_plugins(plugin_name):
+        plugins = self._registry.get_plugins(plugin_name)
+        if plugin_name is not None and not plugins:
+            raise ValueError(f"Unknown AIS plugin: {plugin_name}")
+
+        for plugin in plugins:
             inserted = 0
             try:
                 plugin.authenticate()
@@ -38,4 +42,3 @@ class IngestAIS:
             total_inserted += inserted
 
         return {"total_inserted": total_inserted, "logs": results}
-

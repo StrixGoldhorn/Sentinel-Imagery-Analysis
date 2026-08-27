@@ -1,44 +1,8 @@
-import argparse
-from datetime import datetime, timedelta, timezone
+"""Compatibility entry point for the packaged AIS ingestion CLI."""
 
-from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
-from sentinel_analysis.domain.entities import BoundingBox
-from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
-from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+from sentinel_analysis.interfaces.cli.ingest import main
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="AIS Data Scraper Pipeline")
-    parser.add_argument("--bbox", type=float, nargs=4, required=True, 
-                        help="Bounding box: min_lon min_lat max_lon max_lat", metavar=('MIN_LON', 'MIN_LAT', 'MAX_LON', 'MAX_LAT'))
-    parser.add_argument("--plugin", type=str, 
-                        help="Name of the specific plugin to run. If omitted, runs all discovered plugins.")
-    parser.add_argument("--hours", type=int, default=24, 
-                        help="Time range in hours to look back (default: 24)")
-    return parser.parse_args()
-
-def main():
-    args = parse_args()
-    
-    bbox = tuple(args.bbox)
-    end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(hours=args.hours)
-    time_range = (start_time, end_time)
-    
-    print(f"Running pipeline for bbox: {bbox}")
-    print(f"Time range: {start_time.isoformat()} to {end_time.isoformat()}")
-    if args.plugin:
-        print(f"Targeting plugin: {args.plugin}")
-        
-    pipeline = IngestAIS(
-        DynamicAISPluginRegistry(),
-        SQLiteAISRepository("data.db"),
-    )
-    results = pipeline.execute(BoundingBox.from_sequence(bbox), time_range, args.plugin)
-    
-    print("\n--- Execution Results ---")
-    print(f"Total records inserted: {results['total_inserted']}")
-    for log in results["logs"]:
-        print(f"{log['plugin']}: {log['status']} ({log['records']} records)")
 
 if __name__ == "__main__":
     main()
+

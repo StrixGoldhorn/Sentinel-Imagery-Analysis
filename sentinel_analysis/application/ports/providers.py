@@ -39,6 +39,16 @@ class PassPredictor(Protocol):
         ...
 
 
+class ImageStitcher(Protocol):
+    def stitch(self, tiles: list[tuple[ImageTile, Path]], output_path: Path) -> None:
+        ...
+
+
+class LocationResolver(Protocol):
+    def resolve(self, latitude: float, longitude: float) -> str:
+        ...
+
+
 class AISPlugin(Protocol):
     name: str
 
@@ -52,4 +62,3 @@ class AISPlugin(Protocol):
 class AISPluginRegistry(Protocol):
     def get_plugins(self, name: str | None = None) -> list[AISPlugin]:
         ...
-

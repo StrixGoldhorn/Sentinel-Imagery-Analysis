@@ -1,7 +1,9 @@
 """SQLite implementation of the AIS repository port."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from sentinel_analysis.domain.entities import AISRecord
 
@@ -11,13 +13,21 @@ class SQLiteAISRepository:
         self._database_path = str(database_path)
         self.initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connection(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self._database_path)
         connection.execute("PRAGMA foreign_keys = ON")
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def initialize(self) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS vessels (
@@ -58,7 +68,7 @@ class SQLiteAISRepository:
 
     def save_records(self, records: list[AISRecord], source_plugin: str) -> int:
         inserted = 0
-        with self._connect() as connection:
+        with self._connection() as connection:
             for record in records:
                 vessel = record.vessel
                 position = record.position
@@ -99,7 +109,7 @@ class SQLiteAISRepository:
         records_inserted: int,
         error_message: str | None = None,
     ) -> None:
-        with self._connect() as connection:
+        with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO scraper_logs
@@ -108,4 +118,3 @@ class SQLiteAISRepository:
                 """,
                 (plugin_name, status, records_inserted, error_message),
             )
-

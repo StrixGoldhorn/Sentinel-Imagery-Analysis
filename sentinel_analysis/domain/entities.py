@@ -69,6 +69,15 @@ class Scan:
 
 
 @dataclass(frozen=True)
+class AreaOfInterest:
+    name: str
+    bbox: BoundingBox
+    id: Optional[int] = None
+    next_scan: Optional[datetime] = None
+    last_checked: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
 class ShipDetection:
     x: int
     y: int
@@ -100,4 +109,3 @@ class VesselPosition:
 class AISRecord:
     vessel: Vessel
     position: VesselPosition
-

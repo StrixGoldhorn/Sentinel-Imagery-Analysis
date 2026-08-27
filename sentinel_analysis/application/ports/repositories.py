@@ -2,14 +2,48 @@
 
 from typing import Protocol
 
-from sentinel_analysis.domain.entities import AISRecord, Scan
+from datetime import datetime
+from pathlib import Path
+
+from sentinel_analysis.domain.entities import AISRecord, AreaOfInterest, Scan
 
 
 class ScanRepository(Protocol):
+    def prepare(self, folder_name: str) -> Path:
+        ...
+
     def save(self, scan: Scan) -> None:
         ...
 
     def get(self, folder_name: str) -> Scan | None:
+        ...
+
+    def list(self) -> list[Scan]:
+        ...
+
+    def update_custom_name(self, folder_name: str, custom_name: str | None) -> None:
+        ...
+
+    def delete(self, folder_name: str) -> None:
+        ...
+
+
+class AreaOfInterestRepository(Protocol):
+    def list(self) -> list[AreaOfInterest]:
+        ...
+
+    def add(self, aoi: AreaOfInterest) -> int:
+        ...
+
+    def get(self, aoi_id: int) -> AreaOfInterest | None:
+        ...
+
+    def update_prediction(
+        self,
+        aoi_id: int,
+        next_scan: datetime,
+        last_checked: datetime,
+    ) -> None:
         ...
 
 
@@ -25,4 +59,3 @@ class AISRepository(Protocol):
         error_message: str | None = None,
     ) -> None:
         ...
-

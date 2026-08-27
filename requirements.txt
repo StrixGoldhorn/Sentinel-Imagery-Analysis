@@ -3,6 +3,4 @@ requests
 Pillow
 opencv-python
 numpy
-torch
-torchvision
 python-dotenv
