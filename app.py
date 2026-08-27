@@ -15,6 +15,7 @@ import basic_classical_cv
 from utils.get_token import get_token
 import sqlite3
 from predict_scans import predict_next_scans_n2yo
+from ingestion.pipeline import run_pipeline
 
 try:
     from dotenv import load_dotenv
@@ -44,6 +45,42 @@ def init_db():
                 bbox TEXT NOT NULL,
                 next_scan TEXT,
                 last_checked TEXT
+            )
+        ''')
+        
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS vessels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                imo TEXT NOT NULL,
+                mmsi TEXT NOT NULL,
+                vessel_name TEXT,
+                vessel_type TEXT,
+                callsign TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE (imo, mmsi)
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS vessel_locations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vessel_id INTEGER NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                speed REAL,
+                heading REAL,
+                timestamp DATETIME NOT NULL,
+                source_plugin TEXT NOT NULL,
+                FOREIGN KEY (vessel_id) REFERENCES vessels (id)
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS scraper_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plugin_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                records_inserted INTEGER DEFAULT 0,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT
             )
         ''')
         conn.commit()
@@ -379,5 +416,20 @@ def predict_aoi(aoi_id):
     else:
         return jsonify({"error": "No upcoming scans found"}), 404
 
+@app.route('/api/ingest_ais', methods=['POST'])
+def ingest_ais():
+    """Trigger the AIS scraper pipeline for a given bounding box."""
+    data = request.json or {}
+    bbox = data.get('bbox')
+    
+    if not bbox or len(bbox) != 4:
+        return jsonify({"error": "Invalid Bounding Box"}), 400
+        
+    try:
+        results = run_pipeline(bbox, time_range=(None, None), db_path=DB_PATH)
+        return jsonify({"status": "success", "results": results})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5050)
