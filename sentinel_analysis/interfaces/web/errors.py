@@ -5,16 +5,14 @@ from werkzeug.exceptions import HTTPException
 
 from sentinel_analysis.application.exceptions import (
     AreaOfInterestNotFoundError,
-    InvalidPredictionError,
-    PluginNotFoundError,
-)
-from sentinel_analysis.domain.exceptions import (
     AuthenticationError,
-    DomainValidationError,
     ExternalServiceError,
+    InvalidPredictionError,
     NoImageryFoundError,
+    PluginNotFoundError,
     ScanNotFoundError,
 )
+from sentinel_analysis.domain.exceptions import DomainValidationError
 from sentinel_analysis.interfaces.web.request_data import RequestValidationError
 
 

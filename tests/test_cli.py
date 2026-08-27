@@ -162,13 +162,5 @@ class CLIInterfaceTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(received, [["--help"]])
 
-    def test_root_compatibility_modules_export_canonical_callables(self) -> None:
-        legacy_detection = importlib.import_module("basic_classical_cv")
-        legacy_prediction = importlib.import_module("predict_scans")
-
-        self.assertIs(legacy_detection.get_ship_boxes, get_ship_boxes)
-        self.assertTrue(callable(legacy_prediction.predict_next_scans_n2yo))
-
-
 if __name__ == "__main__":
     unittest.main()

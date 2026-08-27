@@ -6,10 +6,10 @@ from pathlib import Path
 
 from PIL import Image
 
+from sentinel_analysis.application.exceptions import ExternalServiceError, NoImageryFoundError, ScanNotFoundError
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, Scan
-from sentinel_analysis.domain.exceptions import ExternalServiceError, NoImageryFoundError, ScanNotFoundError
 from sentinel_analysis.interfaces.web.application import create_app
 
 

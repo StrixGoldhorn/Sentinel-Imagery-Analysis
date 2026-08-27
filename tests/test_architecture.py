@@ -92,6 +92,61 @@ class ArchitectureTests(unittest.TestCase):
                     f"Dependency direction violated by {source_path}",
                 )
 
+    def test_every_package_obeys_clean_architecture_dependency_direction(self):
+        package = Path(__file__).resolve().parents[1] / "sentinel_analysis"
+        allowed_dependencies = {
+            "domain": ("sentinel_analysis.domain",),
+            "application": ("sentinel_analysis.application", "sentinel_analysis.domain"),
+            "infrastructure": (
+                "sentinel_analysis.infrastructure",
+                "sentinel_analysis.application",
+                "sentinel_analysis.domain",
+            ),
+        }
+
+        for layer, allowed in allowed_dependencies.items():
+            for source_path in (package / layer).rglob("*.py"):
+                tree = ast.parse(source_path.read_text(encoding="utf-8"))
+                internal_imports = []
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        internal_imports.extend(
+                            alias.name for alias in node.names if alias.name.startswith("sentinel_analysis.")
+                        )
+                    elif (
+                        isinstance(node, ast.ImportFrom)
+                        and node.module
+                        and node.module.startswith("sentinel_analysis.")
+                    ):
+                        internal_imports.append(node.module)
+                invalid = [name for name in internal_imports if not name.startswith(allowed)]
+                self.assertEqual(invalid, [], f"{layer} dependency violation in {source_path}: {invalid}")
+
+    def test_canonical_package_does_not_import_removed_legacy_modules(self):
+        package = Path(__file__).resolve().parents[1] / "sentinel_analysis"
+        forbidden_roots = {
+            "basic_classical_cv",
+            "batch_annotate",
+            "copernicus_get_image",
+            "get_images_area",
+            "ingestion",
+            "predict_scans",
+            "run_scraper",
+            "utils",
+        }
+        for source_path in package.rglob("*.py"):
+            tree = ast.parse(source_path.read_text(encoding="utf-8"))
+            imports = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    imports.extend(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    imports.append(node.module)
+            self.assertFalse(
+                any(name.split(".")[0] in forbidden_roots for name in imports),
+                f"Legacy module imported by {source_path}",
+            )
+
     def test_classical_detector_adapter(self):
         image_path = self.runtime / "scan_output" / "detector_test.png"
         image = Image.new("L", (100, 100), 0)

@@ -2,11 +2,11 @@
 
 from datetime import datetime, timezone
 
+from sentinel_analysis.application.exceptions import NoImageryFoundError
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.domain.entities import BoundingBox, Scan
-from sentinel_analysis.domain.exceptions import NoImageryFoundError
 
 
 class CreateScan:

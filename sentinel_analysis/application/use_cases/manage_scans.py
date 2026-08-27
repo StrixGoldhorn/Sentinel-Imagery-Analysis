@@ -1,8 +1,8 @@
 """Queries and commands for stored scans."""
 
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
+from sentinel_analysis.application.exceptions import ScanNotFoundError
 from sentinel_analysis.domain.entities import Scan
-from sentinel_analysis.domain.exceptions import ScanNotFoundError
 
 
 class GetScan:

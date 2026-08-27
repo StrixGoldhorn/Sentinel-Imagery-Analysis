@@ -8,6 +8,9 @@ from sentinel_analysis.application.ports import (
     AISPluginRegistry,
     AISRepository,
     AreaOfInterestRepository,
+    AnnotationEditor,
+    AnnotationProgressRepository,
+    AnnotationTileSource,
     ImageStitcher,
     ImageryProvider,
     LocationResolver,
@@ -82,6 +85,15 @@ class CompleteAdapter:
     def log_execution(self, plugin_name, status, records_inserted, error_message=None):
         return None
 
+    def list_tiles(self, tile_folder):
+        return []
+
+    def load(self):
+        return None
+
+    def edit(self, tile, label_path, use_lee_filter):
+        return True
+
 
 class ApplicationPortTests(unittest.TestCase):
     def test_ports_support_structural_runtime_checks(self) -> None:
@@ -91,6 +103,9 @@ class ApplicationPortTests(unittest.TestCase):
             AISPluginRegistry,
             AISRepository,
             AreaOfInterestRepository,
+            AnnotationEditor,
+            AnnotationProgressRepository,
+            AnnotationTileSource,
             ImageStitcher,
             ImageryProvider,
             LocationResolver,
@@ -105,14 +120,6 @@ class ApplicationPortTests(unittest.TestCase):
 
     def test_incomplete_adapter_fails_runtime_contract(self) -> None:
         self.assertNotIsInstance(object(), ImageryProvider)
-
-    def test_compatibility_facades_export_canonical_ports(self) -> None:
-        from sentinel_analysis.application.ports.providers import ImageryProvider as LegacyImageryProvider
-        from sentinel_analysis.application.ports.repositories import ScanRepository as LegacyScanRepository
-
-        self.assertIs(LegacyImageryProvider, ImageryProvider)
-        self.assertIs(LegacyScanRepository, ScanRepository)
-
 
 if __name__ == "__main__":
     unittest.main()

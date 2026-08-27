@@ -6,9 +6,9 @@ from typing import Protocol
 
 import requests
 
+from sentinel_analysis.application.exceptions import ExternalServiceError
 from sentinel_analysis.application.ports.satellite import PassPrediction
 from sentinel_analysis.domain.entities import BoundingBox
-from sentinel_analysis.domain.exceptions import ExternalServiceError
 
 
 class HTTPResponse(Protocol):

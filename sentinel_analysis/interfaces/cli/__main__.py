@@ -4,6 +4,7 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 
+from sentinel_analysis.interfaces.cli.annotate import main as annotate_main
 from sentinel_analysis.interfaces.cli.detect import main as detect_main
 from sentinel_analysis.interfaces.cli.download import main as download_main
 from sentinel_analysis.interfaces.cli.ingest import main as ingest_main
@@ -11,6 +12,7 @@ from sentinel_analysis.interfaces.cli.predict import main as predict_main
 
 
 COMMANDS: dict[str, Callable[[Sequence[str] | None], int]] = {
+    "annotate": annotate_main,
     "detect": detect_main,
     "download": download_main,
     "ingest": ingest_main,

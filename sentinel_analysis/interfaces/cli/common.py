@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import TextIO
 
-from sentinel_analysis.domain.exceptions import SentinelAnalysisError
+from sentinel_analysis.application.exceptions import ApplicationError
 
 
 class CLICommand(ABC):
@@ -32,6 +32,6 @@ class CLICommand(ABC):
         args = self.create_parser().parse_args(argv)
         try:
             return self.execute(args, output)
-        except (SentinelAnalysisError, OSError, ValueError) as exc:
+        except (ApplicationError, OSError, ValueError) as exc:
             print(f"Error: {exc}", file=errors)
             return 1

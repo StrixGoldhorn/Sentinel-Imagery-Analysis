@@ -2,6 +2,13 @@
 
 from sentinel_analysis.application.ports.ais import AISPlugin, AISPluginRegistry, AISTimeRange
 from sentinel_analysis.application.ports.ais_repository import AISRepository
+from sentinel_analysis.application.ports.annotation import (
+    AnnotationEditor,
+    AnnotationProgress,
+    AnnotationProgressRepository,
+    AnnotationTile,
+    AnnotationTileSource,
+)
 from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRepository
 from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
 from sentinel_analysis.application.ports.geocoding import LocationResolver
@@ -14,6 +21,11 @@ __all__ = [
     "AISPluginRegistry",
     "AISRepository",
     "AISTimeRange",
+    "AnnotationEditor",
+    "AnnotationProgress",
+    "AnnotationProgressRepository",
+    "AnnotationTile",
+    "AnnotationTileSource",
     "AreaOfInterestRepository",
     "DetectionResult",
     "ImageStitcher",

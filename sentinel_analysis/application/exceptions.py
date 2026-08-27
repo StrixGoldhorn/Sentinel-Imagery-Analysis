@@ -17,3 +17,19 @@ class PluginNotFoundError(ApplicationError, ValueError):
 
 class InvalidPredictionError(ApplicationError, ValueError):
     """Raised when a pass provider violates its application contract."""
+
+
+class AuthenticationError(ApplicationError):
+    """Raised when an external service rejects or cannot obtain credentials."""
+
+
+class ExternalServiceError(ApplicationError):
+    """Raised when an external dependency fails or returns unusable data."""
+
+
+class NoImageryFoundError(ApplicationError):
+    """Raised when no imagery acquisition covers the requested search."""
+
+
+class ScanNotFoundError(ApplicationError):
+    """Raised when a requested scan does not exist."""

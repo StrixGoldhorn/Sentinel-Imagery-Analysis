@@ -10,8 +10,8 @@ from typing import Callable, Protocol
 import requests
 from PIL import Image
 
+from sentinel_analysis.application.exceptions import AuthenticationError, ExternalServiceError
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile
-from sentinel_analysis.domain.exceptions import AuthenticationError, ExternalServiceError
 from sentinel_analysis.infrastructure.imagery.evalscripts import SAR
 from sentinel_analysis.infrastructure.imagery.tiling import TileGridCalculator
 

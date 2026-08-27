@@ -3,12 +3,14 @@
 The application follows Clean Architecture. Dependencies point inward:
 
 ```text
-interfaces -> bootstrap -> infrastructure -> application -> domain
+interfaces ─────┐
+infrastructure ──┼──> application -> domain
+bootstrap ───────┘
 ```
 
-`domain` contains immutable business entities and expected application errors. It has no framework, database, HTTP, or computer-vision dependencies.
+`domain` contains immutable business entities and domain validation errors. It has no framework, database, HTTP, or computer-vision dependencies.
 
-`application` contains provider/repository ports and use cases. Use cases coordinate behavior but do not know which web framework, API provider, image library, or database is used.
+`application` contains provider/repository ports, application errors, and use cases. Use cases coordinate behavior but do not know which web framework, API provider, image library, or database is used.
 
 `infrastructure` implements the ports using Copernicus, N2YO, Nominatim, OpenCV, Pillow, SQLite, the filesystem, and AIS provider plugins.
 
@@ -41,5 +43,4 @@ POST /api/aoi/<id>/predict
      -> SQLiteAreaOfInterestRepository
 ```
 
-Top-level Python files are compatibility entry points. New implementation code belongs under `sentinel_analysis/`.
-
+`app.py` is the web entry point. The CLI is exposed through `python -m sentinel_analysis`; implementation code belongs under `sentinel_analysis/`.

@@ -7,7 +7,9 @@ from pathlib import Path
 from sentinel_analysis.application.exceptions import (
     AreaOfInterestNotFoundError,
     InvalidPredictionError,
+    NoImageryFoundError,
     PluginNotFoundError,
+    ScanNotFoundError,
 )
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
@@ -24,7 +26,6 @@ from sentinel_analysis.domain.entities import (
     Vessel,
     VesselPosition,
 )
-from sentinel_analysis.domain.exceptions import NoImageryFoundError, ScanNotFoundError
 
 
 BBOX = BoundingBox(103, 1, 104, 2)

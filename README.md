@@ -45,25 +45,31 @@ The default address is `http://127.0.0.1:5050`.
 Detect vessels in an existing SAR image:
 
 ```powershell
-python basic_classical_cv.py image.png --dem optional_dem.png --output detections.jpg
+python -m sentinel_analysis detect image.png --dem optional_dem.png --output detections.jpg
 ```
 
 Download and stitch recent Sentinel-1 imagery:
 
 ```powershell
-python get_images_area.py --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT --output-dir output
+python -m sentinel_analysis download --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT --output-dir output
 ```
 
 Predict Sentinel-1 passes:
 
 ```powershell
-python predict_scans.py --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
+python -m sentinel_analysis predict --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
 ```
 
 Run AIS ingestion:
 
 ```powershell
-python run_scraper.py --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
+python -m sentinel_analysis ingest --bbox MIN_LON MIN_LAT MAX_LON MAX_LAT
+```
+
+Interactively annotate downloaded SAR tiles:
+
+```powershell
+python -m sentinel_analysis annotate path\to\tiles
 ```
 
 ## Tests
@@ -75,4 +81,3 @@ python -m unittest discover -v
 ```
 
 The classical detector is heuristic. Its output represents candidate vessels, not confirmed vessel identities.
-

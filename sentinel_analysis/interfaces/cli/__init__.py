@@ -3,9 +3,10 @@
 from importlib import import_module
 from typing import Any
 
-__all__ = ["DetectCommand", "DownloadCommand", "IngestCommand", "PredictCommand"]
+__all__ = ["AnnotateCommand", "DetectCommand", "DownloadCommand", "IngestCommand", "PredictCommand"]
 
 _EXPORTS = {
+    "AnnotateCommand": "sentinel_analysis.interfaces.cli.annotate",
     "DetectCommand": "sentinel_analysis.interfaces.cli.detect",
     "DownloadCommand": "sentinel_analysis.interfaces.cli.download",
     "IngestCommand": "sentinel_analysis.interfaces.cli.ingest",

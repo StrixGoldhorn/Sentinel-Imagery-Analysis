@@ -21,8 +21,8 @@ from sentinel_analysis.application.ports import (
     ScanRepository,
     ShipDetector,
 )
+from sentinel_analysis.application.exceptions import ExternalServiceError
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile, Scan
-from sentinel_analysis.domain.exceptions import ExternalServiceError
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.ais.plugins.mock import MockAISPlugin
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
