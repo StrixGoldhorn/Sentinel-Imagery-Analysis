@@ -6,5 +6,4 @@ __all__ = ["predict_next_scans_n2yo"]
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

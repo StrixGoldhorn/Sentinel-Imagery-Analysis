@@ -1,33 +1,20 @@
 """SQLite implementation of the AIS repository port."""
 
 import sqlite3
-from contextlib import contextmanager
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterator
 
 from sentinel_analysis.domain.entities import AISRecord
+from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
 
 class SQLiteAISRepository:
-    def __init__(self, database_path: Path | str) -> None:
-        self._database_path = str(database_path)
+    def __init__(self, database_path: Path | str, timeout: float = 5) -> None:
+        self._database = SQLiteDatabase(database_path, timeout)
         self.initialize()
 
-    @contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self._database_path)
-        connection.execute("PRAGMA foreign_keys = ON")
-        try:
-            yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-
     def initialize(self) -> None:
-        with self._connection() as connection:
+        with self._database.connection() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS vessels (
@@ -66,9 +53,12 @@ class SQLiteAISRepository:
                 """
             )
 
-    def save_records(self, records: list[AISRecord], source_plugin: str) -> int:
+    def save_records(self, records: Iterable[AISRecord], source_plugin: str) -> int:
+        if not isinstance(source_plugin, str) or not source_plugin.strip():
+            raise ValueError("AIS source plugin name is required")
+        source_plugin = source_plugin.strip()
         inserted = 0
-        with self._connection() as connection:
+        with self._database.connection() as connection:
             for record in records:
                 vessel = record.vessel
                 position = record.position
@@ -87,6 +77,8 @@ class SQLiteAISRepository:
                     "SELECT id FROM vessels WHERE imo = ? AND mmsi = ?",
                     (vessel.imo, vessel.mmsi),
                 ).fetchone()
+                if row is None:
+                    raise sqlite3.IntegrityError("Unable to resolve persisted vessel")
                 connection.execute(
                     """
                     INSERT INTO vessel_locations
@@ -109,12 +101,18 @@ class SQLiteAISRepository:
         records_inserted: int,
         error_message: str | None = None,
     ) -> None:
-        with self._connection() as connection:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("AIS plugin name is required")
+        if status not in {"SUCCESS", "FAILED"}:
+            raise ValueError("AIS execution status must be SUCCESS or FAILED")
+        if isinstance(records_inserted, bool) or not isinstance(records_inserted, int) or records_inserted < 0:
+            raise ValueError("Inserted record count must be a non-negative integer")
+        with self._database.connection() as connection:
             connection.execute(
                 """
                 INSERT INTO scraper_logs
                 (plugin_name, status, records_inserted, error_message)
                 VALUES (?, ?, ?, ?)
                 """,
-                (plugin_name, status, records_inserted, error_message),
+                (plugin_name.strip(), status, records_inserted, error_message),
             )

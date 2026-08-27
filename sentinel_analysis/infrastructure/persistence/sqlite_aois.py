@@ -1,35 +1,20 @@
 """SQLite implementation of the AOI repository."""
 
 import json
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator
 
 from sentinel_analysis.domain.entities import AreaOfInterest, BoundingBox
+from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
 
 class SQLiteAreaOfInterestRepository:
-    def __init__(self, database_path: Path | str) -> None:
-        self._database_path = str(database_path)
+    def __init__(self, database_path: Path | str, timeout: float = 5) -> None:
+        self._database = SQLiteDatabase(database_path, timeout)
         self.initialize()
 
-    @contextmanager
-    def _connection(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self._database_path)
-        connection.row_factory = sqlite3.Row
-        try:
-            yield connection
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-
     def initialize(self) -> None:
-        with self._connection() as connection:
+        with self._database.connection(rows=True) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS aoi (
@@ -43,7 +28,7 @@ class SQLiteAreaOfInterestRepository:
             )
 
     @staticmethod
-    def _from_row(row: sqlite3.Row) -> AreaOfInterest:
+    def _from_row(row) -> AreaOfInterest:
         return AreaOfInterest(
             id=row["id"],
             name=row["name"],
@@ -53,26 +38,30 @@ class SQLiteAreaOfInterestRepository:
         )
 
     def list(self) -> list[AreaOfInterest]:
-        with self._connection() as connection:
+        with self._database.connection(rows=True) as connection:
             rows = connection.execute("SELECT * FROM aoi ORDER BY name").fetchall()
         return [self._from_row(row) for row in rows]
 
     def add(self, aoi: AreaOfInterest) -> int:
-        with self._connection() as connection:
+        with self._database.connection(rows=True) as connection:
             cursor = connection.execute(
                 "INSERT INTO aoi (name, bbox) VALUES (?, ?)",
                 (aoi.name, json.dumps(aoi.bbox.as_list())),
             )
+            if cursor.lastrowid is None:
+                raise RuntimeError("SQLite did not return an AOI identifier")
             return int(cursor.lastrowid)
 
     def get(self, aoi_id: int) -> AreaOfInterest | None:
-        with self._connection() as connection:
+        with self._database.connection(rows=True) as connection:
             row = connection.execute("SELECT * FROM aoi WHERE id = ?", (aoi_id,)).fetchone()
         return self._from_row(row) if row else None
 
     def update_prediction(self, aoi_id: int, next_scan: datetime, last_checked: datetime) -> None:
-        with self._connection() as connection:
-            connection.execute(
+        with self._database.connection(rows=True) as connection:
+            cursor = connection.execute(
                 "UPDATE aoi SET next_scan = ?, last_checked = ? WHERE id = ?",
                 (next_scan.isoformat(), last_checked.isoformat(), aoi_id),
             )
+            if cursor.rowcount == 0:
+                raise LookupError(f"Area of interest not found: {aoi_id}")

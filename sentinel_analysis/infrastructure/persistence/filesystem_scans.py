@@ -15,7 +15,13 @@ class FilesystemScanRepository:
 
     @staticmethod
     def _validate_name(folder_name: str) -> str:
-        if not folder_name or Path(folder_name).name != folder_name or folder_name in {".", ".."}:
+        if (
+            not isinstance(folder_name, str)
+            or not folder_name
+            or folder_name != folder_name.strip()
+            or Path(folder_name).name != folder_name
+            or folder_name in {".", ".."}
+        ):
             raise ValueError("Invalid scan folder name")
         return folder_name
 
@@ -38,7 +44,17 @@ class FilesystemScanRepository:
         metadata = dict(scan.metadata)
         metadata.setdefault("acquisition_datetime", scan.acquisition.acquired_at.isoformat())
         metadata.setdefault("satellite", scan.acquisition.satellite)
-        metadata.setdefault("settings", {"bbox": scan.bbox.as_list()})
+        settings = metadata.setdefault("settings", {})
+        if not isinstance(settings, dict):
+            raise ValueError("Scan metadata settings must be an object")
+        settings.setdefault("bbox", scan.bbox.as_list())
+        settings.setdefault("datasource", scan.acquisition.product_type)
+        if scan.acquisition.product_id is not None:
+            metadata.setdefault("product_id", scan.acquisition.product_id)
+        image_path = Path(scan.image_path).resolve()
+        image_directory = (directory / "images").resolve()
+        if image_path.parent != image_directory:
+            raise ValueError("Scan image must be stored inside its workspace image directory")
         metadata["image_filename"] = Path(scan.image_path).name
         temporary = directory / "metadata.json.tmp"
         temporary.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
@@ -60,7 +76,10 @@ class FilesystemScanRepository:
                 metadata.get("product_id"),
             )
             image_dir = directory / "images"
-            configured = image_dir / str(metadata.get("image_filename", ""))
+            configured_name = str(metadata.get("image_filename", ""))
+            configured = image_dir / configured_name
+            if configured_name and configured.name != configured_name:
+                return None
             if configured.is_file():
                 image_path = configured
             else:
@@ -97,4 +116,3 @@ class FilesystemScanRepository:
         directory = self._directory(folder_name)
         if directory.exists():
             shutil.rmtree(directory)
-

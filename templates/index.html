@@ -118,6 +118,11 @@
         }, CONFIG.NOTIFICATION_DURATION_MS);
     }
 
+    function escapeHtml(value) {
+        const replacements = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        return String(value ?? '').replace(/[&<>"']/g, character => replacements[character]);
+    }
+
     function debounce(func, timeout = CONFIG.SEARCH_DEBOUNCE_MS) {
         let timer;
         return (...args) => {
@@ -157,7 +162,7 @@
             if (data.length > 0) {
                 data.forEach(item => {
                     const div = document.createElement('div');
-                    div.innerHTML = item.display_name;
+                    div.textContent = item.display_name;
                     div.onclick = () => {
                         map.setView([parseFloat(item.lat), parseFloat(item.lon)], CONFIG.SEARCH_ZOOM_LEVEL);
                         searchInput.value = item.display_name;
@@ -394,10 +399,10 @@
 
         const getPopupContent = (name) => `
             <div style="min-width: 150px;">
-                <strong>${name}</strong><hr style="margin: 5px 0;">
+                <strong>${escapeHtml(name)}</strong><hr style="margin: 5px 0;">
                 <small><strong>Zulu:</strong> ${zuluTime}</small><br>
                 <small><strong>Local:</strong> ${localTime}</small><br>
-                <a href="${imageUrl}" target="_blank">Download PNG</a>
+                <a href="${imageUrl}" target="_blank" rel="noopener noreferrer">Download PNG</a>
             </div>
         `;
 
@@ -416,7 +421,7 @@
 
         // Invisible marker placed exactly at top-left (NorthWest) to anchor the tab tooltip
         const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
-          .bindTooltip(`<strong>${captureName}</strong><br>Type: SAR Imagery`, { permanent: true, className: 'folder-tab-tooltip folder-tab-sar', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+          .bindTooltip(`<strong>${escapeHtml(captureName)}</strong><br>Type: SAR Imagery`, { permanent: true, className: 'folder-tab-tooltip folder-tab-sar', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
 
         const layerGroup = L.featureGroup([sarLayer, outlineLayer]).addTo(map);
         
@@ -425,7 +430,7 @@
             <div id="${layerId}" class="layer-info">
                 <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" checked onchange="toggleMapLayerVisibility('${layerId}')" title="Toggle Visibility">
-                    <input type="text" class="name-input" value="${captureName}" placeholder="Layer Name" style="flex: 1; min-width: 0;">
+                    <input type="text" class="name-input" value="${escapeHtml(captureName)}" placeholder="Layer Name" style="flex: 1; min-width: 0;">
                     <button class="remove-layer-btn" onclick="removeSpecificLayer('${folderName}', '${layerId}')" title="Remove Layer">&times;</button>
                 </div>
                 <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
@@ -454,7 +459,7 @@
                                 </label>
                             </div>
                         </div>
-                        <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank">View Original Image</a></small></div>
+                        <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank" rel="noopener noreferrer">View Original Image</a></small></div>
                     </div>
                 </details>
             </div>
@@ -466,7 +471,7 @@
         container.querySelector('.name-input').oninput = (e) => {
             const newName = e.target.value;
             outlineLayer.setPopupContent(getPopupContent(newName || folderName));
-            tabMarker.setTooltipContent(`<strong>${newName || folderName}</strong><br>Type: SAR Imagery`);
+            tabMarker.setTooltipContent(`<strong>${escapeHtml(newName || folderName)}</strong><br>Type: SAR Imagery`);
             
             // Save the custom name to localStorage
             const names = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
@@ -730,6 +735,7 @@
             aoiMapLayers = [];
 
             aois.forEach(aoi => {
+                const safeAoiName = escapeHtml(aoi.name);
                 if (aoiList) {
                     const div = document.createElement('div');
                     div.style.border = '1px solid #eee';
@@ -746,7 +752,7 @@
 
                     div.innerHTML = `
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                            <strong>${aoi.name}</strong>
+                            <strong>${safeAoiName}</strong>
                             ${nextScanText}
                         </div>
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -761,7 +767,7 @@
                 const lBounds = L.latLngBounds([[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]]);
                 const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true });
                 const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
-                    .bindTooltip(`<strong>${aoi.name}</strong><br>Type: Area of Interest`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+                    .bindTooltip(`<strong>${safeAoiName}</strong><br>Type: Area of Interest`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
                 
                 const aoiGroup = L.featureGroup([aoiRect]).addTo(map);
 
@@ -773,7 +779,7 @@
                     <div id="${layerId}" class="layer-info" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
                         <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
-                            <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${aoi.name}">AOI: ${aoi.name}</strong>
+                            <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${safeAoiName}">AOI: ${safeAoiName}</strong>
                         </div>
                         <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
                             <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>

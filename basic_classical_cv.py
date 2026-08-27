@@ -6,5 +6,4 @@ __all__ = ["detect_ships_basic", "get_ship_boxes"]
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

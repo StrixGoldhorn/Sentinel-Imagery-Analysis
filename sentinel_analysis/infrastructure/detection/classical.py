@@ -5,18 +5,35 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
 
 
 class ClassicalShipDetector:
     """Detect bright connected regions in grayscale SAR imagery."""
 
+    def __init__(
+        self,
+        minimum_area: float = 50,
+        maximum_area: float = 5000,
+        dilation_iterations: int = 2,
+    ) -> None:
+        if minimum_area < 0 or maximum_area <= minimum_area:
+            raise ValueError("Detection area limits must be ordered positive values")
+        if isinstance(dilation_iterations, bool) or not isinstance(dilation_iterations, int) or dilation_iterations < 0:
+            raise ValueError("Dilation iterations must be a non-negative integer")
+        self._minimum_area = minimum_area
+        self._maximum_area = maximum_area
+        self._dilation_iterations = dilation_iterations
+
     def detect(
         self,
         image_path: Path,
         dem_path: Path | None = None,
         threshold: int = 40,
-    ) -> tuple[list[ShipDetection], int, int]:
+    ) -> DetectionResult:
+        if isinstance(threshold, bool) or not isinstance(threshold, int) or not 0 <= threshold <= 255:
+            raise ValueError("Detection threshold must be an integer between 0 and 255")
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
             raise FileNotFoundError(f"Unable to read SAR image: {image_path}")
@@ -26,18 +43,18 @@ class ClassicalShipDetector:
 
         _, binary = cv2.threshold(image, threshold, 255, cv2.THRESH_BINARY)
         kernel = np.ones((5, 5), np.uint8)
-        dilated = cv2.dilate(binary, kernel, iterations=2)
+        dilated = cv2.dilate(binary, kernel, iterations=self._dilation_iterations)
         contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         detections: list[ShipDetection] = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if 50 <= area <= 5000:
+            if self._minimum_area <= area <= self._maximum_area:
                 x, y, width, height = cv2.boundingRect(contour)
                 detections.append(ShipDetection(x, y, width, height))
 
         height, width = image.shape[:2]
-        return detections, width, height
+        return DetectionResult(detections, width, height)
 
     @staticmethod
     def _mask_land(image: np.ndarray, dem_path: Path) -> np.ndarray:
@@ -51,4 +68,3 @@ class ClassicalShipDetector:
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((27, 27), np.uint8), iterations=2)
         mask = cv2.dilate(mask, np.ones((81, 81), np.uint8), iterations=2)
         return cv2.bitwise_and(image, image, mask=cv2.bitwise_not(mask))
-

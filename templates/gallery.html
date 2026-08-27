@@ -10,7 +10,7 @@
     <div class="gallery-container">
         {% for scan in scans %}
         <div class="scan-card" id="card-{{ scan.folder }}" data-folder="{{ scan.folder }}">
-            <div class="image-section" onclick="window.location.href='/?load={{ scan.folder }}'">
+            <div class="image-section" onclick='window.location.href={{ ("/?load=" ~ scan.folder)|tojson }}'>
                 {% if scan.images %}
                 <img src="{{ scan.images[0] }}" alt="Satellite Imagery">
                 {% endif %}
@@ -47,10 +47,10 @@
                 </details>
 
                 <div class="actions">
-                    <button class="btn btn-primary btn-add" onclick="toggleMapLayer('{{ scan.folder }}', true)">Add to Map</button>
-                    <button class="btn btn-danger btn-remove" onclick="toggleMapLayer('{{ scan.folder }}', false)">Remove from Map</button>
+                    <button class="btn btn-primary btn-add" onclick='toggleMapLayer({{ scan.folder|tojson }}, true)'>Add to Map</button>
+                    <button class="btn btn-danger btn-remove" onclick='toggleMapLayer({{ scan.folder|tojson }}, false)'>Remove from Map</button>
                     {% if scan.images %}
-                    <a href="{{ scan.images[0] }}" target="_blank" class="btn btn-outline">Open Imagery in New Tab</a>
+                    <a href="{{ scan.images[0] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open Imagery in New Tab</a>
                     {% endif %}
                 </div>
             </div>

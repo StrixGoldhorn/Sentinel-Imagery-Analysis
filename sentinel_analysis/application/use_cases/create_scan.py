@@ -2,8 +2,9 @@
 
 from datetime import datetime, timezone
 
-from sentinel_analysis.application.ports.providers import ImageryProvider, ImageStitcher, LocationResolver
-from sentinel_analysis.application.ports.repositories import ScanRepository
+from sentinel_analysis.application.ports.geocoding import LocationResolver
+from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.domain.entities import BoundingBox, Scan
 from sentinel_analysis.domain.exceptions import NoImageryFoundError
 
@@ -22,18 +23,27 @@ class CreateScan:
         self._locations = locations
 
     def execute(self, bbox: BoundingBox, days_ago: int = 30) -> Scan:
+        if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
+            raise ValueError("Imagery search window must be a positive number of days")
+
         acquisition = self._imagery.find_latest_acquisition(bbox, days_ago)
         if acquisition is None:
             raise NoImageryFoundError("No SAR coverage found for this area")
 
         now = datetime.now(timezone.utc)
         folder_name = f"{acquisition.acquired_at:%Y%m%d_%H%M%S}_{now:%H%M%S%f}"
-        scan_dir = self._scans.prepare(folder_name)
-        image_dir = scan_dir / "images"
+        workspace_prepared = False
 
         try:
-            downloaded = []
-            for tile in self._imagery.calculate_tiles(bbox):
+            scan_dir = self._scans.prepare(folder_name)
+            workspace_prepared = True
+            image_dir = scan_dir / "images"
+            tiles = list(self._imagery.calculate_tiles(bbox))
+            if not tiles:
+                raise NoImageryFoundError("The imagery provider returned no downloadable tiles")
+
+            downloaded: list[TileImage] = []
+            for tile in tiles:
                 tile_path = image_dir / f"tile_{tile.x}_{tile.y}.png"
                 self._imagery.download_tile(tile, acquisition, tile_path)
                 downloaded.append((tile, tile_path))
@@ -54,9 +64,12 @@ class CreateScan:
                 "scraped_datetime": now.isoformat(),
                 "location": self._locations.resolve(latitude, longitude),
             }
+            if acquisition.product_id is not None:
+                metadata["product_id"] = acquisition.product_id
             scan = Scan(folder_name, bbox, acquisition, str(output_path), metadata)
             self._scans.save(scan)
             return scan
         except Exception:
-            self._scans.delete(folder_name)
+            if workspace_prepared:
+                self._scans.delete(folder_name)
             raise

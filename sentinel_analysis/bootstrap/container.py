@@ -1,14 +1,16 @@
 """Dependency injection container at the outermost application boundary."""
 
-from sentinel_analysis.application.use_cases.create_scan import CreateScan
-from sentinel_analysis.application.use_cases.detect_ships import DetectShips
-from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
-from sentinel_analysis.application.use_cases.manage_aois import (
+from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
+    CreateScan,
+    DetectShips,
+    GetScan,
+    IngestAIS,
     ListAreasOfInterest,
+    ListScans,
     PredictAreaOfInterest,
+    RenameScan,
 )
-from sentinel_analysis.application.use_cases.manage_scans import GetScan, ListScans, RenameScan
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
@@ -50,4 +52,3 @@ class ApplicationContainer:
         self.add_aoi = AddAreaOfInterest(self.aoi_repository)
         self.predict_aoi = PredictAreaOfInterest(self.aoi_repository, predictor)
         self.ingest_ais = IngestAIS(DynamicAISPluginRegistry(), self.ais_repository)
-

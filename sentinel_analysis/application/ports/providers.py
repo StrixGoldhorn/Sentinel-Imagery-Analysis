@@ -1,64 +1,25 @@
-"""Ports for external providers and computational adapters."""
+"""Compatibility imports for the responsibility-specific provider ports.
 
-from datetime import datetime
-from pathlib import Path
-from typing import Iterable, Protocol
+New application code should import from the focused port module. This facade
+keeps existing use cases stable until their dedicated refactoring step.
+"""
 
-from sentinel_analysis.domain.entities import (
-    AISRecord,
-    Acquisition,
-    BoundingBox,
-    ImageTile,
-    ShipDetection,
-)
+from sentinel_analysis.application.ports.ais import AISPlugin, AISPluginRegistry, AISTimeRange
+from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
+from sentinel_analysis.application.ports.geocoding import LocationResolver
+from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 
-
-class ImageryProvider(Protocol):
-    def find_latest_acquisition(self, bbox: BoundingBox, days_ago: int = 30) -> Acquisition | None:
-        ...
-
-    def calculate_tiles(self, bbox: BoundingBox) -> list[ImageTile]:
-        ...
-
-    def download_tile(self, tile: ImageTile, acquisition: Acquisition, output_path: Path) -> None:
-        ...
-
-
-class ShipDetector(Protocol):
-    def detect(
-        self,
-        image_path: Path,
-        dem_path: Path | None = None,
-        threshold: int = 40,
-    ) -> tuple[list[ShipDetection], int, int]:
-        ...
-
-
-class PassPredictor(Protocol):
-    def predict(self, bbox: BoundingBox, api_key: str) -> list[dict[str, object]]:
-        ...
-
-
-class ImageStitcher(Protocol):
-    def stitch(self, tiles: list[tuple[ImageTile, Path]], output_path: Path) -> None:
-        ...
-
-
-class LocationResolver(Protocol):
-    def resolve(self, latitude: float, longitude: float) -> str:
-        ...
-
-
-class AISPlugin(Protocol):
-    name: str
-
-    def authenticate(self) -> None:
-        ...
-
-    def fetch(self, bbox: BoundingBox, time_range: tuple[datetime | None, datetime | None]) -> Iterable[AISRecord]:
-        ...
-
-
-class AISPluginRegistry(Protocol):
-    def get_plugins(self, name: str | None = None) -> list[AISPlugin]:
-        ...
+__all__ = [
+    "AISPlugin",
+    "AISPluginRegistry",
+    "AISTimeRange",
+    "DetectionResult",
+    "ImageStitcher",
+    "ImageryProvider",
+    "LocationResolver",
+    "PassPrediction",
+    "PassPredictor",
+    "ShipDetector",
+    "TileImage",
+]

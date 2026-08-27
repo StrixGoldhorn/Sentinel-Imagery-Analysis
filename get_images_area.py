@@ -51,5 +51,4 @@ def build_payload(bbox, width, height, evalscript, data_type, time_from=None, ti
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

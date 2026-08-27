@@ -7,9 +7,17 @@ from sentinel_analysis.domain.entities import BoundingBox, ImageTile
 
 class TileGridCalculator:
     def __init__(self, max_image_size: int = 2500, resolution_meters: float = 10) -> None:
+        if isinstance(max_image_size, bool) or not isinstance(max_image_size, int) or max_image_size <= 0:
+            raise ValueError("Maximum image size must be a positive integer")
+        try:
+            resolution = float(resolution_meters)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Resolution must be numeric") from exc
+        if not math.isfinite(resolution) or resolution <= 0:
+            raise ValueError("Resolution must be a positive finite number")
         self._max_image_size = max_image_size
-        self._resolution = resolution_meters
-        self._max_tile_size_meters = max_image_size * resolution_meters
+        self._resolution = resolution
+        self._max_tile_size_meters = max_image_size * resolution
 
     def calculate(self, bbox: BoundingBox) -> list[ImageTile]:
         meters_per_degree_latitude = 111_320
@@ -35,4 +43,3 @@ class TileGridCalculator:
                 height = max(1, min(self._max_image_size, round((maximum_lat - minimum_lat) * meters_per_degree_latitude / self._resolution)))
                 tiles.append(ImageTile(tile_bbox, width, height, x, y))
         return tiles
-

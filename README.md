@@ -2,6 +2,12 @@
 
 A Flask application and CLI toolset for downloading Sentinel-1 Synthetic Aperture Radar imagery, detecting candidate vessels with classical computer vision, tracking areas of interest, predicting satellite passes, and ingesting AIS telemetry.
 
+## AI Usage Disclaimer
+
+Lots of AI usage. Pretty much everything is clanked, other than the classical CV portion. Software architecture was described to Codex and went through several iterations with human, but ultimately the code was clanked.
+
+Rough flow of data and processing was described to Codex, but left up to the clanker to implement in code.
+
 ## Architecture
 
 The implementation uses Clean Architecture. Business entities and use cases are isolated from Flask, SQLite, OpenCV, Pillow, and external APIs. See [ARCHITECTURE.md](ARCHITECTURE.md) for the package boundaries and workflows.

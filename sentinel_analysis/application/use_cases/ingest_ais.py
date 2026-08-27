@@ -1,9 +1,11 @@
-"""AIS ingestion use case."""
+"""Authenticate, fetch, normalize, and persist AIS data by provider."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from sentinel_analysis.application.ports.providers import AISPluginRegistry
-from sentinel_analysis.application.ports.repositories import AISRepository
+from sentinel_analysis.application.exceptions import PluginNotFoundError
+from sentinel_analysis.application.ports.ais import AISPluginRegistry, AISTimeRange
+from sentinel_analysis.application.ports.ais_repository import AISRepository
+from sentinel_analysis.application.results import IngestionLog, IngestionResult, IngestionStatus
 from sentinel_analysis.domain.entities import BoundingBox
 
 
@@ -12,33 +14,59 @@ class IngestAIS:
         self._registry = registry
         self._repository = repository
 
+    @staticmethod
+    def _normalize_time_range(time_range: AISTimeRange) -> AISTimeRange:
+        start, end = time_range
+
+        def as_utc(value: datetime | None) -> datetime | None:
+            if value is None:
+                return None
+            if not isinstance(value, datetime):
+                raise ValueError("AIS time range values must be datetimes or None")
+            if value.utcoffset() is None:
+                value = value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+
+        normalized = as_utc(start), as_utc(end)
+        if normalized[0] is not None and normalized[1] is not None and normalized[0] > normalized[1]:
+            raise ValueError("AIS time-range start must not be after its end")
+        return normalized
+
     def execute(
         self,
         bbox: BoundingBox,
-        time_range: tuple[datetime | None, datetime | None],
+        time_range: AISTimeRange,
         plugin_name: str | None = None,
-    ) -> dict[str, object]:
-        results: list[dict[str, object]] = []
+    ) -> IngestionResult:
+        normalized_time_range = self._normalize_time_range(time_range)
+        if plugin_name is not None:
+            if not isinstance(plugin_name, str) or not plugin_name.strip():
+                raise ValueError("AIS plugin name must be a non-empty string")
+            plugin_name = plugin_name.strip()
+
+        results: list[IngestionLog] = []
         total_inserted = 0
 
         plugins = self._registry.get_plugins(plugin_name)
         if plugin_name is not None and not plugins:
-            raise ValueError(f"Unknown AIS plugin: {plugin_name}")
+            raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
 
         for plugin in plugins:
             inserted = 0
             try:
                 plugin.authenticate()
-                records = list(plugin.fetch(bbox, time_range))
+                records = list(plugin.fetch(bbox, normalized_time_range))
                 inserted = self._repository.save_records(records, plugin.name)
-                status = "SUCCESS"
+                status: IngestionStatus = "SUCCESS"
                 error = None
             except Exception as exc:
-                status = "FAILED" if inserted == 0 else "PARTIAL"
+                # A provider failure is isolated so the remaining configured
+                # providers still get a chance to run.
+                status = "FAILED"
                 error = str(exc)
 
             self._repository.log_execution(plugin.name, status, inserted, error)
             results.append({"plugin": plugin.name, "status": status, "records": inserted, "error": error})
             total_inserted += inserted
 
-        return {"total_inserted": total_inserted, "logs": results}
+        return IngestionResult(total_inserted=total_inserted, logs=results)
