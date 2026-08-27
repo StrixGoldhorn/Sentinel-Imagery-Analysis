@@ -1,6 +1,10 @@
 import argparse
-from datetime import datetime, timedelta
-from ingestion.pipeline import run_pipeline
+from datetime import datetime, timedelta, timezone
+
+from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
+from sentinel_analysis.domain.entities import BoundingBox
+from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
+from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 
 def parse_args():
     parser = argparse.ArgumentParser(description="AIS Data Scraper Pipeline")
@@ -25,11 +29,16 @@ def main():
     if args.plugin:
         print(f"Targeting plugin: {args.plugin}")
         
-    results = run_pipeline(bbox, time_range, target_plugin=args.plugin)
+    pipeline = IngestAIS(
+        DynamicAISPluginRegistry(),
+        SQLiteAISRepository("data.db"),
+    )
+    results = pipeline.execute(BoundingBox.from_sequence(bbox), time_range, args.plugin)
     
     print("\n--- Execution Results ---")
-    for plugin, status in results.items():
-        print(f"{plugin}: {status}")
+    print(f"Total records inserted: {results['total_inserted']}")
+    for log in results["logs"]:
+        print(f"{log['plugin']}: {log['status']} ({log['records']} records)")
 
 if __name__ == "__main__":
     main()

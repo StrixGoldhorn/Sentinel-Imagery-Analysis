@@ -13,10 +13,14 @@ import urllib.request
 import get_images_area
 from utils.get_token import get_token
 import sqlite3
-from predict_scans import predict_next_scans_n2yo
-from ingestion.pipeline import run_pipeline
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
+from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
+from sentinel_analysis.domain.entities import BoundingBox
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
+from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
+from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 
 try:
     from dotenv import load_dotenv
@@ -29,12 +33,19 @@ app = Flask(__name__)
 # Concrete adapters are composed at the application boundary. Routes depend on
 # the use case, while the use case depends only on the ShipDetector port.
 detect_ships = DetectShips(ClassicalShipDetector())
+predict_passes = PredictPasses(N2YOPassPredictor())
 
 # Ensure output directory exists
 OUTPUT_BASE = Path("static/output")
 OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
 
 DB_PATH = "data.db"
+
+# Composition root: concrete infrastructure is assembled here, at the edge.
+ais_ingestion_service = IngestAIS(
+    DynamicAISPluginRegistry(),
+    SQLiteAISRepository(DB_PATH),
+)
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -410,7 +421,7 @@ def predict_aoi(aoi_id):
         return jsonify({"error": "N2YO API key missing. Please configure N2YO_API_KEY in your environment or .env file."}), 400
         
     try:
-        predictions = predict_next_scans_n2yo(bbox, n2yo_key)
+        predictions = predict_passes.execute(BoundingBox.from_sequence(bbox), n2yo_key)
     except Exception as e:
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
         
@@ -435,7 +446,10 @@ def ingest_ais():
         return jsonify({"error": "Invalid Bounding Box"}), 400
         
     try:
-        results = run_pipeline(bbox, time_range=(None, None), db_path=DB_PATH)
+        results = ais_ingestion_service.execute(
+            BoundingBox.from_sequence(bbox),
+            time_range=(None, None),
+        )
         return jsonify({"status": "success", "results": results})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

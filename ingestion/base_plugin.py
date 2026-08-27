@@ -1,5 +1,30 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Dict, Any
+
+
+@dataclass(frozen=True)
+class VesselMetadata:
+    """Legacy normalized vessel metadata used by older plugins."""
+
+    imo: str
+    mmsi: str
+    vessel_name: str = ""
+    vessel_type: str = ""
+    callsign: str = ""
+
+
+@dataclass(frozen=True)
+class VesselLocation:
+    """Legacy normalized telemetry record used by older plugins."""
+
+    mmsi: str
+    latitude: float
+    longitude: float
+    speed: float | None
+    heading: float | None
+    timestamp: datetime
 
 class BaseAISScraperPlugin(ABC):
     def __init__(self, config: Dict[str, Any]):
