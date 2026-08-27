@@ -11,11 +11,12 @@ from pathlib import Path
 from datetime import datetime, timezone
 import urllib.request
 import get_images_area
-import basic_classical_cv
 from utils.get_token import get_token
 import sqlite3
 from predict_scans import predict_next_scans_n2yo
 from ingestion.pipeline import run_pipeline
+from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 
 try:
     from dotenv import load_dotenv
@@ -24,6 +25,10 @@ except ImportError:
     pass
 
 app = Flask(__name__)
+
+# Concrete adapters are composed at the application boundary. Routes depend on
+# the use case, while the use case depends only on the ShipDetector port.
+detect_ships = DetectShips(ClassicalShipDetector())
 
 # Ensure output directory exists
 OUTPUT_BASE = Path("static/output")
@@ -271,10 +276,14 @@ def run_cv(folder_name):
     dem_path = str(dems[0]) if dems else None
     
     try:
-        boxes, w, h = basic_classical_cv.get_ship_boxes(image_path, dem_path, threshold=int(threshold))
+        detections, w, h = detect_ships.execute(
+            Path(image_path),
+            Path(dem_path) if dem_path else None,
+            threshold=int(threshold),
+        )
         return jsonify({
             "status": "success",
-            "boxes": boxes,
+            "boxes": [(d.x, d.y, d.width, d.height) for d in detections],
             "width": w,
             "height": h
         })

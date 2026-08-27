@@ -1,0 +1,2 @@
+"""Imagery-provider adapters."""
+
