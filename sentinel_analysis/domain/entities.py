@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from math import isfinite
+from math import cos, isfinite, radians
 from typing import Optional
 
 from sentinel_analysis.domain.exceptions import DomainValidationError
@@ -84,6 +84,44 @@ class BoundingBox:
             (self.min_latitude + self.max_latitude) / 2,
             (self.min_longitude + self.max_longitude) / 2,
         )
+
+    def split_into_zones(self, zone_size_nm: float = 10.0) -> list["BoundingBox"]:
+        """Subdivide bounding box into smaller geographic zones based on nautical miles.
+        
+        Matches SeaSentry's multi-zone scraping grid strategy to handle scraping sites
+        with viewport / API response limits.
+        """
+        if zone_size_nm <= 0:
+            raise DomainValidationError("Zone size must be a positive number of nautical miles")
+
+        lat_step = zone_size_nm / 60.0
+        avg_lat = (self.min_latitude + self.max_latitude) / 2.0
+        cos_lat = max(0.01, cos(radians(avg_lat)))
+        lon_step = lat_step / cos_lat
+
+        # Return single zone if already within threshold
+        if (self.max_latitude - self.min_latitude) <= lat_step and (self.max_longitude - self.min_longitude) <= lon_step:
+            return [self]
+
+        zones: list[BoundingBox] = []
+        curr_lat = self.min_latitude
+        while curr_lat < self.max_latitude:
+            next_lat = min(curr_lat + lat_step, self.max_latitude)
+            curr_lon = self.min_longitude
+            while curr_lon < self.max_longitude:
+                next_lon = min(curr_lon + lon_step, self.max_longitude)
+                zones.append(
+                    BoundingBox(
+                        min_longitude=curr_lon,
+                        min_latitude=curr_lat,
+                        max_longitude=next_lon,
+                        max_latitude=next_lat,
+                    )
+                )
+                curr_lon += lon_step
+            curr_lat += lat_step
+
+        return zones
 
 
 @dataclass(frozen=True)

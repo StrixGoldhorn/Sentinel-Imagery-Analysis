@@ -412,7 +412,70 @@ class ScrapersTestSuite(unittest.TestCase):
             self.assertEqual(len(uc_results), 1)
             self.assertEqual(uc_results[0]["name"], "PACIFIC TRADER")
 
+    def test_bounding_box_split_into_zones(self) -> None:
+        from sentinel_analysis.infrastructure.ais.zone_splitter import split_into_zones
+
+        # Small bbox (5 NM x 5 NM) -> 1 zone
+        small_bbox = BoundingBox(103.80, 1.20, 103.85, 1.25)
+        small_zones = split_into_zones(small_bbox, zone_size_nm=10.0)
+        self.assertEqual(len(small_zones), 1)
+        self.assertEqual(small_zones[0], small_bbox)
+
+        # Large bbox (spanning ~0.6 degrees lat x ~0.6 degrees lon, ~36 NM x ~36 NM) -> 4x4 = 16 zones
+        large_bbox = BoundingBox(103.50, 1.00, 104.10, 1.60)
+        large_zones = split_into_zones(large_bbox, zone_size_nm=10.0)
+        self.assertGreater(len(large_zones), 1)
+        # Ensure all zones combined span the whole original bbox
+        min_lon = min(z.min_longitude for z in large_zones)
+        min_lat = min(z.min_latitude for z in large_zones)
+        max_lon = max(z.max_longitude for z in large_zones)
+        max_lat = max(z.max_latitude for z in large_zones)
+        self.assertAlmostEqual(min_lon, large_bbox.min_longitude)
+        self.assertAlmostEqual(min_lat, large_bbox.min_latitude)
+        self.assertAlmostEqual(max_lon, large_bbox.max_longitude)
+        self.assertAlmostEqual(max_lat, large_bbox.max_latitude)
+
+    def test_deduplicate_ais_records(self) -> None:
+        from sentinel_analysis.domain.entities import AISPosition, AISVessel
+        from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records
+
+        vessel = AISVessel(imo="9123456", mmsi="563000111", name="VESSEL A", vessel_type="Cargo", callsign=None)
+        rec_old = AISRecord(vessel=vessel, position=AISPosition(mmsi="563000111", latitude=1.2, longitude=103.8, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10, heading=90))
+        rec_new = AISRecord(vessel=vessel, position=AISPosition(mmsi="563000111", latitude=1.21, longitude=103.81, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=11, heading=95))
+
+        deduped = deduplicate_ais_records([rec_old, rec_new])
+        self.assertEqual(len(deduped), 1)
+        self.assertAlmostEqual(deduped[0].position.latitude, 1.21)
+
+    def test_ais_friends_multi_zone_scraping(self) -> None:
+        # Large bounding box spanning multiple 10 NM zones
+        large_bbox = BoundingBox(103.50, 1.00, 104.10, 1.60)
+        mock_session = MagicMock()
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {
+                "mmsi": 566123456,
+                "name_ais": "ZONE VESSEL",
+                "ship_type_id": 70,
+                "latitude": 1.25,
+                "longitude": 103.85,
+                "timestamp_of_position": 1700000000,
+            }
+        ]
+        mock_response.raise_for_status = MagicMock()
+        mock_session.get.return_value = mock_response
+
+        plugin = AISFriendsPlugin(session=mock_session)
+        records = plugin.fetch(large_bbox)
+
+        # Multiple sub-zones queried
+        self.assertGreater(mock_session.get.call_count, 1)
+        # Records properly aggregated and deduplicated
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].vessel.name, "ZONE VESSEL")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

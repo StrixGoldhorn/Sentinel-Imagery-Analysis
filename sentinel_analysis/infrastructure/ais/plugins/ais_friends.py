@@ -1,5 +1,4 @@
-"""AISFriends live AIS scraper plugin ported from SeaSentry."""
-
+import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -7,6 +6,9 @@ import requests
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
+from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
+
+logger = logging.getLogger(__name__)
 
 
 class AISFriendsPlugin:
@@ -52,13 +54,7 @@ class AISFriendsPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
-        params = {
-            "lon_min": bbox.min_longitude,
-            "lat_min": bbox.min_latitude,
-            "lon_max": bbox.max_longitude,
-            "lat_max": bbox.max_latitude,
-            "zoom": 15,
-        }
+        zones = split_into_zones(bbox, zone_size_nm=10.0)
         headers = {
             "Referer": "https://www.aisfriends.com/",
             "User-Agent": (
@@ -68,19 +64,30 @@ class AISFriendsPlugin:
             ),
         }
 
-        response = self._session.get(
-            self.base_url,
-            params=params,
-            headers=headers,
-            timeout=self._timeout,
-        )
-        response.raise_for_status()
+        all_records: list[AISRecord] = []
+        for zone in zones:
+            params = {
+                "lon_min": zone.min_longitude,
+                "lat_min": zone.min_latitude,
+                "lon_max": zone.max_longitude,
+                "lat_max": zone.max_latitude,
+                "zoom": 15,
+            }
+            try:
+                response = self._session.get(
+                    self.base_url,
+                    params=params,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                response.raise_for_status()
+                data = response.json()
+                if isinstance(data, list):
+                    all_records.extend(self.parse_data(data, time_range))
+            except Exception as exc:
+                logger.warning("Error scraping AISFriends zone %s: %s", zone, exc)
 
-        data = response.json()
-        if not isinstance(data, list):
-            return []
-
-        return self.parse_data(data, time_range)
+        return deduplicate_ais_records(all_records)
 
     def parse_data(
         self,

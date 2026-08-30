@@ -12,6 +12,7 @@ from typing import Any
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
+from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
 logger = logging.getLogger(__name__)
 
@@ -147,18 +148,22 @@ class AprsFiPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
-        coords = {
-            "lat_min": bbox.min_latitude,
-            "lat_max": bbox.max_latitude,
-            "long_min": bbox.min_longitude,
-            "long_max": bbox.max_longitude,
-        }
-
+        zones = split_into_zones(bbox, zone_size_nm=10.0)
         session = self._session_factory() if self._session_factory else PlaywrightAprsSession()
         try:
             session.start()
-            xml_data = session.fetch_xml2(coords)
-            return self.parse_data(xml_data, time_range)
+            all_records: list[AISRecord] = []
+            for zone in zones:
+                coords = {
+                    "lat_min": zone.min_latitude,
+                    "lat_max": zone.max_latitude,
+                    "long_min": zone.min_longitude,
+                    "long_max": zone.max_longitude,
+                }
+                xml_data = session.fetch_xml2(coords)
+                if xml_data:
+                    all_records.extend(self.parse_data(xml_data, time_range))
+            return deduplicate_ais_records(all_records)
         except Exception as exc:
             logger.error("Error fetching APRS data: %s", exc)
             return []

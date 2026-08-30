@@ -12,6 +12,7 @@ from typing import Any
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
+from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
 logger = logging.getLogger(__name__)
 
@@ -160,46 +161,26 @@ class VesselFinderPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
-        coords = {
-            "lat_min": bbox.min_latitude,
-            "lat_max": bbox.max_latitude,
-            "long_min": bbox.min_longitude,
-            "long_max": bbox.max_longitude,
-        }
+        chunks = self._fetch_all_chunks(bbox)
+        records = self.parse_data(chunks, time_range)
+        return deduplicate_ais_records(records)
 
-        chunks = self._fetch_all_chunks(coords)
-        return self.parse_data(chunks, time_range)
-
-    def _fetch_all_chunks(self, coords: dict[str, float]) -> list[bytes]:
+    def _fetch_all_chunks(self, bbox: BoundingBox) -> list[bytes]:
         session = self._session_factory() if self._session_factory else PlaywrightVesselFinderSession()
         try:
             session.start()
-            lat_min, lat_max = coords["lat_min"], coords["lat_max"]
-            lon_min, lon_max = coords["long_min"], coords["long_max"]
-
-            lat_step = 10 / 60.0
-            avg_lat = (lat_min + lat_max) / 2
-            cos_lat = math.cos(math.radians(avg_lat))
-            lon_step = 10 / (60.0 * cos_lat) if cos_lat > 0 else lat_step
-
+            zones = split_into_zones(bbox, zone_size_nm=10.0)
             all_chunks: list[bytes] = []
-            curr_lat = lat_min
-            while curr_lat < lat_max:
-                next_lat = min(curr_lat + lat_step, lat_max)
-                curr_lon = lon_min
-                while curr_lon < lon_max:
-                    next_lon = min(curr_lon + lon_step, lon_max)
-                    chunk_coords = {
-                        "lat_min": curr_lat,
-                        "lat_max": next_lat,
-                        "long_min": curr_lon,
-                        "long_max": next_lon,
-                    }
-                    data = session.fetch_mp2(chunk_coords)
-                    if data:
-                        all_chunks.append(data)
-                    curr_lon += lon_step
-                curr_lat += lat_step
+            for zone in zones:
+                chunk_coords = {
+                    "lat_min": zone.min_latitude,
+                    "lat_max": zone.max_latitude,
+                    "long_min": zone.min_longitude,
+                    "long_max": zone.max_longitude,
+                }
+                data = session.fetch_mp2(chunk_coords)
+                if data:
+                    all_chunks.append(data)
             return all_chunks
         except Exception as exc:
             logger.error("Error fetching VesselFinder data: %s", exc)
