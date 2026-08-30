@@ -9,7 +9,7 @@
 {% block content %}
     <div class="gallery-container">
         {% for scan in scans %}
-        <div class="scan-card" id="card-{{ scan.folder }}" data-folder="{{ scan.folder }}">
+        <div class="scan-card" id="card-{{ scan.folder }}" data-folder="{{ scan.folder }}" data-custom-name="{{ scan.metadata.custom_name or '' }}">
             <div class="image-section" onclick='window.location.href={{ ("/?load=" ~ scan.folder)|tojson }}'>
                 {% if scan.images %}
                 <img src="{{ scan.images[0] }}" alt="Satellite Imagery">
@@ -18,7 +18,7 @@
             <div class="details-section">
                 <div class="meta-group">
                     <span class="label">Layer Identity</span>
-                    <span class="value custom-name-label" style="font-weight: bold; color: #007bff;">{{ scan.metadata.custom_name or scan.folder }}</span>
+                    <input type="text" class="custom-name-input" value="{{ scan.metadata.custom_name or scan.folder }}" onchange="saveScanName('{{ scan.folder }}', this.value)" style="padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-weight: bold; color: #007bff; width: 100%; max-width: 320px;" placeholder="Custom Layer Label">
                 </div>
                 <div class="meta-group">
                     <span class="label">Location</span>
@@ -71,6 +71,22 @@
             updateUI();
         }
 
+        async function saveScanName(folder, newName) {
+            const customNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+            customNames[folder] = newName.trim();
+            localStorage.setItem('layer_custom_names', JSON.stringify(customNames));
+            
+            try {
+                await fetch(`/api/update_metadata/${encodeURIComponent(folder)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ custom_name: newName.trim() || null })
+                });
+            } catch (e) {
+                console.error("Failed to update scan custom name on server", e);
+            }
+        }
+
         function updateUI() {
             const list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
             const customNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
@@ -79,12 +95,12 @@
                 const folder = card.dataset.folder;
                 card.dataset.status = list.includes(folder) ? 'active' : 'inactive';
                 
-                // Update the Custom Name display
-                const nameLabel = card.querySelector('.custom-name-label');
-                if (customNames[folder]) {
-                    nameLabel.innerText = customNames[folder];
-                } else {
-                    nameLabel.innerText = folder;
+                // Update the Custom Name display without wiping out server-saved names
+                const nameInput = card.querySelector('.custom-name-input');
+                if (nameInput) {
+                    const serverName = card.dataset.customName;
+                    const displayName = customNames[folder] || serverName || folder;
+                    nameInput.value = displayName;
                 }
             });
         }

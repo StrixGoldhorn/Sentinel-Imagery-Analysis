@@ -14,7 +14,13 @@ from sentinel_analysis.infrastructure.annotation.filesystem import (
     JSONAnnotationProgressRepository,
 )
 from sentinel_analysis.interfaces.cli.annotate import AnnotateCommand
-from sentinel_analysis.interfaces.desktop.annotation import lee_filter, rough_ship_boxes
+from sentinel_analysis.interfaces.desktop.annotation import (
+    OpenCVBoxEditor,
+    lee_filter,
+    load_boxes_from_file,
+    mask_image_with_dem,
+    rough_ship_boxes,
+)
 
 
 RUNTIME = Path(__file__).resolve().parent / "runtime" / "annotation"
@@ -116,6 +122,38 @@ class AnnotationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             lee_filter(image, 4)
 
+    def test_load_boxes_from_file_parses_existing_labels(self) -> None:
+        label_file = RUNTIME / "test_labels.txt"
+        label_file.write_text("0 10 20 50 60\n0 100 120 150 170\n", encoding="utf-8")
+        try:
+            boxes = load_boxes_from_file(label_file)
+            self.assertEqual(boxes, [[10, 20, 50, 60], [100, 120, 150, 170]])
+        finally:
+            label_file.unlink(missing_ok=True)
+
+    def test_mask_image_with_dem_handles_different_shapes_gracefully(self) -> None:
+        sar = np.zeros((100, 100), dtype=np.uint8)
+        dem_path = RUNTIME / "dem_mismatch.png"
+        Image.new("L", (80, 80), 0).save(dem_path)
+        try:
+            masked, mask = mask_image_with_dem(sar, dem_path)
+            self.assertEqual(masked.shape, (100, 100))
+        finally:
+            dem_path.unlink(missing_ok=True)
+
+    def test_box_editor_save_persists_labels_correctly(self) -> None:
+        output_path = RUNTIME / "saved_boxes.txt"
+        output_path.unlink(missing_ok=True)
+        dummy_img = np.zeros((200, 200), dtype=np.uint8)
+        editor = OpenCVBoxEditor(dummy_img, [(10, 10, 20, 20)], output_path)
+        editor._save()
+        try:
+            self.assertTrue(output_path.is_file())
+            content = output_path.read_text(encoding="utf-8")
+            self.assertIn("0 10 10 30 30", content)
+        finally:
+            output_path.unlink(missing_ok=True)
+
     def test_annotation_cli_delegates_to_workflow(self) -> None:
         class UseCase:
             def __init__(self):
@@ -135,6 +173,7 @@ class AnnotationTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertFalse(use_case.calls[0][2])
         self.assertIn("Processed 2 of 2", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,7 +18,7 @@ def load_image(image_path: Path | str) -> np.ndarray:
 def mask_image_with_dem(image: np.ndarray, dem_path: Path | str) -> tuple[np.ndarray, np.ndarray]:
     dem = load_image(dem_path)
     if dem.shape != image.shape:
-        raise ValueError("SAR and DEM images must have identical dimensions")
+        dem = cv2.resize(dem, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
     _, mask = cv2.threshold(dem, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((27, 27), np.uint8), iterations=2)
     expanded = cv2.dilate(mask, np.ones((81, 81), np.uint8), iterations=2)
@@ -46,6 +46,32 @@ def rough_ship_boxes(
     return boxes
 
 
+def load_boxes_from_file(label_path: Path | str) -> list[list[int]]:
+    path = Path(label_path)
+    if not path.is_file():
+        return []
+    boxes: list[list[int]] = []
+    try:
+        content = path.read_text(encoding="utf-8").strip()
+        for line in content.splitlines():
+            parts = line.strip().split()
+            if len(parts) == 5:
+                # Format: class_id x1 y1 x2 y2
+                try:
+                    boxes.append([int(float(parts[1])), int(float(parts[2])), int(float(parts[3])), int(float(parts[4]))])
+                except ValueError:
+                    continue
+            elif len(parts) == 4:
+                # Format: x1 y1 x2 y2
+                try:
+                    boxes.append([int(float(parts[0])), int(float(parts[1])), int(float(parts[2])), int(float(parts[3]))])
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return boxes
+
+
 def lee_filter(image: np.ndarray, window_size: int = 5, noise_variance: float = 0.25) -> np.ndarray:
     if isinstance(window_size, bool) or not isinstance(window_size, int) or window_size <= 0 or window_size % 2 == 0:
         raise ValueError("Lee-filter window size must be a positive odd integer")
@@ -67,19 +93,27 @@ def lee_filter(image: np.ndarray, window_size: int = 5, noise_variance: float = 
 
 
 class OpenCVBoxEditor:
-    """Edit rectangular labels with zoom, pan, add, delete, and undo controls."""
+    """Edit rectangular labels with zoom, pan, add, delete, undo, and clear controls."""
 
     def __init__(
         self,
         image: np.ndarray,
-        initial_boxes: list[tuple[int, int, int, int]],
+        initial_boxes: list[tuple[int, int, int, int]] | list[list[int]],
         output_path: Path | str,
         window_size: tuple[int, int] = (1280, 720),
     ) -> None:
         if image.size == 0:
             raise ValueError("Annotation image cannot be empty")
         self.image = image
-        self.boxes = [[x, y, x + width, y + height] for x, y, width, height in initial_boxes]
+        self.boxes: list[list[int]] = []
+        for box in initial_boxes:
+            if len(box) == 4:
+                x1, y1, third, fourth = box
+                # If width/height format, convert to x2, y2
+                if third < x1 or fourth < y1 or (third <= (image.shape[1] - x1) and fourth <= (image.shape[0] - y1) and third < image.shape[1] // 2 and fourth < image.shape[0] // 2):
+                    self.boxes.append([int(x1), int(y1), int(x1 + third), int(y1 + fourth)])
+                else:
+                    self.boxes.append([int(x1), int(y1), int(third), int(fourth)])
         self.output_path = Path(output_path)
         self.window_width, self.window_height = window_size
         height, width = image.shape[:2]
@@ -90,7 +124,7 @@ class OpenCVBoxEditor:
         self.is_drawing = False
         self.start_x = self.start_y = self.current_x = self.current_y = 0
         self.pan_start_x = self.pan_start_y = 0
-        self.window_name = "Batch SAR Annotator (Scroll=Zoom | Mid=Pan | S=Next | Q=Quit)"
+        self.window_name = "SAR Annotator (Wheel=Zoom | Mid=Pan | L-Drag=Draw | R-Click=Del | Z=Undo | C=Clear | S=Save | Q=Quit)"
 
     def _image_coordinates(self, display_x: int, display_y: int) -> tuple[float, float]:
         return (display_x - self.pan_x) / self.zoom, (display_y - self.pan_y) / self.zoom
@@ -126,7 +160,7 @@ class OpenCVBoxEditor:
             y1 = max(0, min(height, int(min(first_y, second_y))))
             x2 = max(0, min(width, int(max(first_x, second_x))))
             y2 = max(0, min(height, int(max(first_y, second_y))))
-            if x2 - x1 > 5 and y2 - y1 > 5:
+            if x2 - x1 > 4 and y2 - y1 > 4:
                 self.boxes.append([x1, y1, x2, y2])
         elif event == cv2.EVENT_RBUTTONDOWN:
             image_x, image_y = self._image_coordinates(x, y)
@@ -167,12 +201,21 @@ class OpenCVBoxEditor:
                     input_x1:input_x2,
                 ]
 
+        box_thickness = max(1, min(3, int(round(1.5 * self.zoom))))
         for index, (x1, y1, x2, y2) in enumerate(self.boxes, 1):
             first = int(x1 * self.zoom + self.pan_x), int(y1 * self.zoom + self.pan_y)
             second = int(x2 * self.zoom + self.pan_x), int(y2 * self.zoom + self.pan_y)
-            thickness = max(1, int(2 * self.zoom))
-            cv2.rectangle(canvas, first, second, (255, 0, 0), thickness)
-            cv2.putText(canvas, str(index), (first[0], first[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), thickness)
+            # High-visibility bounding box (Cyan / Blue)
+            cv2.rectangle(canvas, first, second, (255, 128, 0), box_thickness)
+            
+            # Text badge with background for crisp readability
+            label_text = f"#{index}"
+            (text_w, text_h), baseline = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            badge_y1 = max(0, first[1] - text_h - 6)
+            badge_y2 = max(text_h + 4, first[1])
+            cv2.rectangle(canvas, (first[0], badge_y1), (first[0] + text_w + 6, badge_y2), (255, 128, 0), -1)
+            cv2.putText(canvas, label_text, (first[0] + 3, badge_y2 - 3), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+
         if self.is_drawing:
             cv2.rectangle(
                 canvas,
@@ -206,6 +249,8 @@ class OpenCVBoxEditor:
                     return True
                 if key == ord("z") and self.boxes:
                     self.boxes.pop()
+                if key == ord("c"):
+                    self.boxes.clear()
                 if key in {ord("q"), 27}:
                     return False
         finally:
@@ -215,10 +260,18 @@ class OpenCVBoxEditor:
 class OpenCVAnnotationEditor:
     def edit(self, tile: AnnotationTile, label_path: Path, use_lee_filter: bool) -> bool:
         original = load_image(tile.sar_path)
-        detection_image = original
-        if tile.dem_path is not None:
-            detection_image, _ = mask_image_with_dem(detection_image, tile.dem_path)
-        if use_lee_filter:
-            detection_image = lee_filter(detection_image, window_size=7, noise_variance=0.75)
-        initial_boxes = rough_ship_boxes(detection_image)
+        
+        # If label file already exists and has annotations, load them
+        existing_boxes = load_boxes_from_file(label_path)
+        if existing_boxes:
+            initial_boxes = existing_boxes
+        else:
+            detection_image = original
+            if tile.dem_path is not None:
+                detection_image, _ = mask_image_with_dem(detection_image, tile.dem_path)
+            if use_lee_filter:
+                detection_image = lee_filter(detection_image, window_size=7, noise_variance=0.75)
+            initial_boxes = rough_ship_boxes(detection_image)
+
         return OpenCVBoxEditor(original, initial_boxes, label_path).run()
+
