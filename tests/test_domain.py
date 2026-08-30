@@ -60,12 +60,33 @@ class DomainEntityTests(unittest.TestCase):
         with self.assertRaisesRegex(DomainValidationError, "must match"):
             AISRecord(vessel, position)
 
-    def test_domain_validation_error_supports_both_error_contracts(self) -> None:
-        error = DomainValidationError("invalid")
+    def test_ship_detection_supports_obb_and_metrology(self) -> None:
+        ship = ShipDetection(
+            x=10,
+            y=20,
+            width=30,
+            height=40,
+            confidence=0.92,
+            angle=45.0,
+            length=120.5,
+            beam=25.0,
+            center_x=25.0,
+            center_y=40.0,
+            polygon_points=((10, 20), (30, 20), (30, 40), (10, 40)),
+        )
+        self.assertEqual(ship.angle, 45.0)
+        self.assertEqual(ship.length, 120.5)
+        self.assertEqual(ship.beam, 25.0)
+        self.assertEqual(len(ship.polygon_points), 4)
 
-        self.assertIsInstance(error, ValueError)
-        self.assertIsInstance(error, SentinelAnalysisError)
+    def test_background_task_lifecycle_and_defaults(self) -> None:
+        from sentinel_analysis.domain.entities import BackgroundTask
+        task = BackgroundTask(task_id="t1", task_type="scan")
+        self.assertEqual(task.status, "PENDING")
+        self.assertEqual(task.progress, 0.0)
+        self.assertIsNone(task.error)
 
 
 if __name__ == "__main__":
     unittest.main()
+

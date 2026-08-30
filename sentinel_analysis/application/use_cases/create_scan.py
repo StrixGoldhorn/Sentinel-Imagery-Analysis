@@ -22,13 +22,15 @@ class CreateScan:
         self._scans = scans
         self._locations = locations
 
-    def execute(self, bbox: BoundingBox, days_ago: int = 30) -> Scan:
-        if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
-            raise ValueError("Imagery search window must be a positive number of days")
+    def execute(self, bbox: BoundingBox, days_ago: int | None = None) -> Scan:
+        if days_ago is not None:
+            if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
+                raise ValueError("Imagery search window must be a positive number of days")
 
         acquisition = self._imagery.find_latest_acquisition(bbox, days_ago)
         if acquisition is None:
             raise NoImageryFoundError("No SAR coverage found for this area")
+
 
         now = datetime.now(timezone.utc)
         folder_name = f"{acquisition.acquired_at:%Y%m%d_%H%M%S}_{now:%H%M%S%f}"

@@ -17,6 +17,8 @@ from sentinel_analysis.application.ports import (
     PassPredictor,
     ScanRepository,
     ShipDetector,
+    TaskQueue,
+    TileCache,
 )
 
 
@@ -25,8 +27,9 @@ class CompleteAdapter:
 
     name = "complete"
 
-    def find_latest_acquisition(self, bbox, days_ago=30):
+    def find_latest_acquisition(self, bbox, days_ago=None):
         return None
+
 
     def calculate_tiles(self, bbox):
         return []
@@ -94,6 +97,22 @@ class CompleteAdapter:
     def edit(self, tile, label_path, use_lee_filter):
         return True
 
+    def set(self, key, data):
+        return None
+
+    def has(self, key):
+        return True
+
+    def submit(self, task_type, task_id, func, *args, **kwargs):
+        return None
+
+    def get_task(self, task_id):
+        return None
+
+    def update_progress(self, task_id, progress, message=""):
+        return None
+
+
 
 class ApplicationPortTests(unittest.TestCase):
     def test_ports_support_structural_runtime_checks(self) -> None:
@@ -112,6 +131,8 @@ class ApplicationPortTests(unittest.TestCase):
             PassPredictor,
             ScanRepository,
             ShipDetector,
+            TaskQueue,
+            TileCache,
         )
 
         for port in ports:
@@ -120,6 +141,7 @@ class ApplicationPortTests(unittest.TestCase):
 
     def test_incomplete_adapter_fails_runtime_contract(self) -> None:
         self.assertNotIsInstance(object(), ImageryProvider)
+
 
 if __name__ == "__main__":
     unittest.main()

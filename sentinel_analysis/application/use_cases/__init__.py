@@ -11,11 +11,13 @@ from sentinel_analysis.application.use_cases.manage_aois import (
 )
 from sentinel_analysis.application.use_cases.manage_scans import GetScan, ListScans, RenameScan
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
+from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 
 __all__ = [
     "AddAreaOfInterest",
     "AnnotationSummary",
     "BatchAnnotateTiles",
+    "CheckAndScheduleAOIs",
     "CreateScan",
     "DetectShips",
     "GetScan",

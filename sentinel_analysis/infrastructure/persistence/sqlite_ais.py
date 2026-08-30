@@ -5,53 +5,18 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from sentinel_analysis.domain.entities import AISRecord
+from sentinel_analysis.infrastructure.persistence.migrations.runner import MigrationRunner
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
 
 class SQLiteAISRepository:
     def __init__(self, database_path: Path | str, timeout: float = 5) -> None:
-        self._database = SQLiteDatabase(database_path, timeout)
+        self._database_path = Path(database_path).resolve()
+        self._database = SQLiteDatabase(self._database_path, timeout)
         self.initialize()
 
     def initialize(self) -> None:
-        with self._database.connection() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS vessels (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    imo TEXT NOT NULL,
-                    mmsi TEXT NOT NULL,
-                    vessel_name TEXT,
-                    vessel_type TEXT,
-                    callsign TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (imo, mmsi)
-                );
-                CREATE TABLE IF NOT EXISTS vessel_locations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    vessel_id INTEGER NOT NULL,
-                    latitude REAL NOT NULL,
-                    longitude REAL NOT NULL,
-                    speed REAL,
-                    heading REAL,
-                    timestamp DATETIME NOT NULL,
-                    source_plugin TEXT NOT NULL,
-                    FOREIGN KEY (vessel_id) REFERENCES vessels (id)
-                );
-                CREATE INDEX IF NOT EXISTS idx_vessel_locations_vessel
-                    ON vessel_locations(vessel_id);
-                CREATE INDEX IF NOT EXISTS idx_vessel_locations_timestamp
-                    ON vessel_locations(timestamp);
-                CREATE TABLE IF NOT EXISTS scraper_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    plugin_name TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    records_inserted INTEGER DEFAULT 0,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    error_message TEXT
-                );
-                """
-            )
+        MigrationRunner(self._database_path).run_migrations()
 
     def save_records(self, records: Iterable[AISRecord], source_plugin: str) -> int:
         if not isinstance(source_plugin, str) or not source_plugin.strip():

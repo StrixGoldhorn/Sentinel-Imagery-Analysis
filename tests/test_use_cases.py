@@ -32,8 +32,9 @@ BBOX = BoundingBox(103, 1, 104, 2)
 
 
 class EmptyImageryProvider:
-    def find_latest_acquisition(self, bbox, days_ago=30):
+    def find_latest_acquisition(self, bbox, days_ago=None):
         return Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
+
 
     def calculate_tiles(self, bbox):
         return []
@@ -254,6 +255,34 @@ class UseCaseTests(unittest.TestCase):
         with self.assertRaises(ScanNotFoundError):
             RenameScan(repository).execute("missing", " name ")
 
+    def test_check_and_schedule_aois_triggers_scans(self) -> None:
+        from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+
+        now = datetime.now(timezone.utc)
+        due_aoi = AreaOfInterest("Due AOI", BBOX, id=1, auto_capture_enabled=True)
+        disabled_aoi = AreaOfInterest("Disabled AOI", BBOX, id=2, auto_capture_enabled=False)
+
+        class MultiAOIRepository:
+            def __init__(self):
+                self.aois = [due_aoi, disabled_aoi]
+                self.updated = []
+            def list(self):
+                return self.aois
+            def update_prediction(self, aoi_id, next_scan, last_checked):
+                self.updated.append((aoi_id, next_scan, last_checked))
+
+        repo = MultiAOIRepository()
+        predictor = FakePredictor([{"time": "2026-08-30T12:00:00Z"}])
+        scheduler = CheckAndScheduleAOIs(repo, predictor)
+        results = scheduler.execute("api_key")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["aoi_id"], 1)
+        self.assertEqual(results[0]["status"], "SCHEDULED")
+        self.assertEqual(len(repo.updated), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

@@ -20,11 +20,14 @@ class Settings:
     n2yo_api_key: str | None
     debug: bool = False
     port: int = 5050
+    cache_root: Path | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "project_root", Path(self.project_root).resolve())
         object.__setattr__(self, "database_path", Path(self.database_path).resolve())
         object.__setattr__(self, "output_root", Path(self.output_root).resolve())
+        cache = self.cache_root if self.cache_root is not None else self.output_root / ".cache"
+        object.__setattr__(self, "cache_root", Path(cache).resolve())
         if isinstance(self.port, bool) or not isinstance(self.port, int) or not 1 <= self.port <= 65535:
             raise ValueError("Application port must be between 1 and 65535")
 
@@ -55,4 +58,5 @@ class Settings:
             n2yo_api_key=os.getenv("N2YO_API_KEY"),
             debug=debug_value in {"1", "true", "yes"},
             port=port,
+            cache_root=environment_path("CACHE_ROOT", root / ".cache"),
         )

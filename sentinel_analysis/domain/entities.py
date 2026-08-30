@@ -92,12 +92,16 @@ class Acquisition:
     satellite: str
     product_type: str
     product_id: Optional[str] = None
+    polarizations: tuple[str, ...] = ("VH",)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "acquired_at", _utc_datetime(self.acquired_at, "Acquisition time"))
         object.__setattr__(self, "satellite", _required_text(self.satellite, "Satellite"))
         object.__setattr__(self, "product_type", _required_text(self.product_type, "Product type"))
         object.__setattr__(self, "product_id", _optional_text(self.product_id, "Product ID"))
+        if not isinstance(self.polarizations, (list, tuple)) or not self.polarizations:
+            raise DomainValidationError("Polarizations must be a non-empty sequence of strings")
+        object.__setattr__(self, "polarizations", tuple(str(p).strip().upper() for p in self.polarizations if str(p).strip()))
 
 
 @dataclass(frozen=True)
@@ -140,6 +144,7 @@ class AreaOfInterest:
     id: Optional[int] = None
     next_scan: Optional[datetime] = None
     last_checked: Optional[datetime] = None
+    auto_capture_enabled: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _required_text(self.name, "Area-of-interest name"))
@@ -149,6 +154,7 @@ class AreaOfInterest:
             object.__setattr__(self, "next_scan", _utc_datetime(self.next_scan, "Next scan time"))
         if self.last_checked is not None:
             object.__setattr__(self, "last_checked", _utc_datetime(self.last_checked, "Last-checked time"))
+        object.__setattr__(self, "auto_capture_enabled", bool(self.auto_capture_enabled))
 
 
 @dataclass(frozen=True)
@@ -158,6 +164,12 @@ class ShipDetection:
     width: int
     height: int
     confidence: Optional[float] = None
+    angle: Optional[float] = None
+    length: Optional[float] = None
+    beam: Optional[float] = None
+    center_x: Optional[float] = None
+    center_y: Optional[float] = None
+    polygon_points: Optional[tuple[tuple[float, float], ...]] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -171,6 +183,58 @@ class ShipDetection:
             if not 0 <= confidence <= 1:
                 raise DomainValidationError("Detection confidence must be between 0 and 1")
             object.__setattr__(self, "confidence", confidence)
+        if self.angle is not None:
+            object.__setattr__(self, "angle", _number(self.angle, "Detection angle"))
+        if self.length is not None:
+            length = _number(self.length, "Detection length")
+            if length <= 0:
+                raise DomainValidationError("Detection length must be positive")
+            object.__setattr__(self, "length", length)
+        if self.beam is not None:
+            beam = _number(self.beam, "Detection beam")
+            if beam <= 0:
+                raise DomainValidationError("Detection beam must be positive")
+            object.__setattr__(self, "beam", beam)
+        if self.center_x is not None:
+            object.__setattr__(self, "center_x", _number(self.center_x, "Detection center x"))
+        if self.center_y is not None:
+            object.__setattr__(self, "center_y", _number(self.center_y, "Detection center y"))
+        if self.polygon_points is not None:
+            if not isinstance(self.polygon_points, (list, tuple)) or len(self.polygon_points) < 3:
+                raise DomainValidationError("Polygon points must contain at least 3 vertices")
+            pts = tuple((float(pt[0]), float(pt[1])) for pt in self.polygon_points)
+            object.__setattr__(self, "polygon_points", pts)
+
+
+@dataclass(frozen=True)
+class BackgroundTask:
+    task_id: str
+    task_type: str
+    status: str
+    progress: float = 0.0
+    message: str = ""
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    result: Optional[dict[str, object]] = None
+    error: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "task_id", _required_text(self.task_id, "Task ID"))
+        object.__setattr__(self, "task_type", _required_text(self.task_type, "Task type"))
+        object.__setattr__(self, "status", _required_text(self.status, "Task status").upper())
+        progress = _number(self.progress, "Task progress")
+        if not 0.0 <= progress <= 100.0:
+            raise DomainValidationError("Task progress must be between 0.0 and 100.0")
+        object.__setattr__(self, "progress", progress)
+        object.__setattr__(self, "message", str(self.message or "").strip())
+        if self.created_at is not None:
+            object.__setattr__(self, "created_at", _utc_datetime(self.created_at, "Task created at"))
+        if self.completed_at is not None:
+            object.__setattr__(self, "completed_at", _utc_datetime(self.completed_at, "Task completed at"))
+        if self.result is not None and not isinstance(self.result, dict):
+            raise DomainValidationError("Task result must be a dictionary")
+        if self.error is not None:
+            object.__setattr__(self, "error", _optional_text(self.error, "Task error"))
 
 
 @dataclass(frozen=True)

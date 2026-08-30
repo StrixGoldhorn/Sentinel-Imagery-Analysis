@@ -16,9 +16,10 @@ class ImageryProvider(Protocol):
     def find_latest_acquisition(
         self,
         bbox: BoundingBox,
-        days_ago: int = 30,
+        days_ago: int | None = None,
     ) -> Acquisition | None:
         ...
+
 
     def calculate_tiles(self, bbox: BoundingBox) -> Sequence[ImageTile]:
         ...
