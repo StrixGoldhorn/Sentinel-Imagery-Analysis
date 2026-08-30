@@ -33,5 +33,6 @@ const CONFIG = {
     API_GET_SCAN: '/api/scan',
     API_AOI: '/api/aoi',
     API_AIS_VESSELS: '/api/ais/vessels',
+    API_AIS_TIMELINE: '/api/ais/timeline',
     NOTIFICATION_DURATION_MS: 3000
 };

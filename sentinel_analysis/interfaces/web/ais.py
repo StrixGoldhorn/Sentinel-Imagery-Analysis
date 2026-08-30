@@ -75,3 +75,12 @@ def list_vessels():
         latest_only=latest_only,
     )
     return jsonify(status="success", count=len(vessels), vessels=vessels)
+
+
+@blueprint.get("/api/ais/timeline")
+def get_ais_timeline():
+    repo = getattr(container(), "ais_repository", None)
+    if repo is not None and hasattr(repo, "get_timeline_bounds"):
+        bounds = repo.get_timeline_bounds()
+        return jsonify(status="success", **bounds)
+    return jsonify(status="success", min_timestamp=None, max_timestamp=None, total_records=0)

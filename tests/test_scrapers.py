@@ -412,6 +412,22 @@ class ScrapersTestSuite(unittest.TestCase):
             self.assertEqual(len(uc_results), 1)
             self.assertEqual(uc_results[0]["name"], "PACIFIC TRADER")
 
+            # Timeline bounds
+            bounds = repo.get_timeline_bounds()
+            self.assertEqual(bounds["count"], 3)
+            self.assertIsNotNone(bounds["min_timestamp"])
+            self.assertIsNotNone(bounds["max_timestamp"])
+
+            # Time range query
+            t_early = datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc)
+            t_mid = datetime(2026, 8, 30, 10, 10, tzinfo=timezone.utc)
+            early_vessels = repo.get_vessel_positions(time_range=(t_early, t_mid), latest_only=True)
+            self.assertEqual(len(early_vessels), 2)
+            trader_early = next(v for v in early_vessels if v["mmsi"] == "563000111")
+            # Should have the 10:00 position, speed 10.5
+            self.assertAlmostEqual(trader_early["speed"], 10.5)
+
+
     def test_bounding_box_split_into_zones(self) -> None:
         from sentinel_analysis.infrastructure.ais.zone_splitter import split_into_zones
 

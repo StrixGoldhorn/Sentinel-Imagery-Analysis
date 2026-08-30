@@ -280,6 +280,16 @@ class WebInterfaceTests(unittest.TestCase):
         self.assertEqual(response.json["vessels"][0]["name"], "PACIFIC TRADER")
         self.assertEqual(response.json["vessels"][0]["type"], "Cargo")
 
+    def test_ais_timeline_route(self) -> None:
+        client, _ = self.make_client()
+        response = client.get("/api/ais/timeline")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["status"], "success")
+        self.assertIn("min_timestamp", response.json)
+        self.assertIn("max_timestamp", response.json)
+        self.assertIn("count", response.json)
+
+
 
 if __name__ == "__main__":
     unittest.main()

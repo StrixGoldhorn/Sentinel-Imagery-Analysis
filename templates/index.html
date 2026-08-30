@@ -58,6 +58,65 @@
                         <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Other" checked onchange="applyAisFilters()"> <span style="color: #6c757d; font-weight: bold;">●</span> Other</label>
                     </div>
                 </div>
+
+                <!-- AIS Date & Time Range Slider Control -->
+                <div class="ais-timeline-box" style="margin-top: 10px; padding: 10px; background: #ffffff; border: 1px solid #dee2e6; border-radius: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span style="font-weight: 600; font-size: 0.82em; color: #333;">📅 Date Range Slider</span>
+                        <span id="aisTimelineModeBadge" class="badge" style="font-size: 0.72rem; padding: 2px 6px; background-color: #28a745; color: #fff; border-radius: 4px;">LIVE</span>
+                    </div>
+
+                    <!-- Presets -->
+                    <div class="ais-presets-row" style="display: flex; gap: 4px; margin-bottom: 8px;">
+                        <button type="button" class="btn-preset active" data-preset="live" onclick="setAisTimelinePreset('live')">Live</button>
+                        <button type="button" class="btn-preset" data-preset="24h" onclick="setAisTimelinePreset('24h')">24h</button>
+                        <button type="button" class="btn-preset" data-preset="3d" onclick="setAisTimelinePreset('3d')">3d</button>
+                        <button type="button" class="btn-preset" data-preset="7d" onclick="setAisTimelinePreset('7d')">7d</button>
+                        <button type="button" class="btn-preset" data-preset="custom" onclick="toggleAisCustomDateInputs()">Custom</button>
+                    </div>
+
+                    <!-- Selected Date Label Display -->
+                    <div id="aisSelectedDateDisplay" style="font-size: 0.8em; font-weight: bold; color: #007bff; text-align: center; margin-bottom: 6px; padding: 4px; background: #f0f7ff; border-radius: 4px; border: 1px solid #cce5ff;">
+                        Live Positions (Current)
+                    </div>
+
+                    <!-- Date Scrubber Slider -->
+                    <div style="position: relative; margin: 8px 0;">
+                        <input type="range" id="aisDateSlider" min="0" max="100" value="100" step="1" style="width: 100%; cursor: pointer; accent-color: #007bff;" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.7em; color: #888; margin-top: 2px;">
+                            <span id="aisSliderMinLabel">-7 Days</span>
+                            <span id="aisSliderMaxLabel">Now</span>
+                        </div>
+                    </div>
+
+                    <!-- Playback Controls -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 4px;">
+                        <button type="button" id="aisPlayPauseBtn" style="flex: 1; padding: 4px 6px; font-size: 0.78em; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="toggleAisTimelinePlayback()">
+                            ▶ Play Timeline
+                        </button>
+                        <button type="button" style="padding: 4px 8px; font-size: 0.78em; background: #e9ecef; color: #333; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer;" onclick="stepAisTimeline(-1)" title="Step back 1 hour">
+                            ◀ -1h
+                        </button>
+                        <button type="button" style="padding: 4px 8px; font-size: 0.78em; background: #e9ecef; color: #333; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer;" onclick="stepAisTimeline(1)" title="Step forward 1 hour">
+                            +1h ▶
+                        </button>
+                    </div>
+
+                    <!-- Collapsible Custom Date/Time Pickers -->
+                    <div id="aisCustomDatePanel" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #ced4da; font-size: 0.78em;">
+                        <div style="margin-bottom: 6px;">
+                            <label style="display: block; color: #666; margin-bottom: 2px;">Start Date & Time (UTC):</label>
+                            <input type="datetime-local" id="aisCustomStartInput" style="width: 100%; padding: 4px; font-size: 0.85em; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px;">
+                        </div>
+                        <div style="margin-bottom: 6px;">
+                            <label style="display: block; color: #666; margin-bottom: 2px;">End Date & Time (UTC):</label>
+                            <input type="datetime-local" id="aisCustomEndInput" style="width: 100%; padding: 4px; font-size: 0.85em; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 4px;">
+                        </div>
+                        <button type="button" style="width: 100%; padding: 4px; font-size: 0.8em; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="applyAisCustomDateRange()">
+                            Apply Date Range
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 12px;">
@@ -102,6 +161,33 @@
 </div>
 
 <div id="map"></div>
+
+<!-- Floating Map Timeline Player for AIS Vessels -->
+<div id="aisFloatingTimeline" class="ais-floating-timeline" style="display: none;">
+    <div class="floating-timeline-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="timeline-radar-dot"></span>
+            <span style="font-weight: 600; font-size: 0.82rem; letter-spacing: 0.5px;">AIS TIMELINE</span>
+            <span id="floatingTimelineBadge" class="badge badge-success" style="font-size: 0.68rem; padding: 2px 6px;">LIVE</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="floatingTimelineTimeDisplay" style="font-family: monospace; font-size: 0.82rem; color: #60a5fa;">Live Positions</span>
+            <button type="button" class="timeline-btn-mini" onclick="setAisTimelinePreset('live')" title="Jump to Live">🔴 Live</button>
+            <button type="button" class="timeline-btn-mini" onclick="toggleFloatingTimelineMin()" id="floatingMinBtn" title="Minimize / Expand">_</button>
+        </div>
+    </div>
+    <div class="floating-timeline-controls" id="floatingTimelineControls">
+        <button type="button" id="floatingPlayBtn" class="timeline-ctrl-btn" onclick="toggleAisTimelinePlayback()" title="Play / Pause Timeline">▶</button>
+        <button type="button" class="timeline-ctrl-btn" onclick="stepAisTimeline(-1)" title="Step Back 1 Hour">⏮</button>
+        <input type="range" id="floatingDateSlider" min="0" max="100" value="100" step="1" class="floating-slider" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
+        <button type="button" class="timeline-ctrl-btn" onclick="stepAisTimeline(1)" title="Step Forward 1 Hour">⏭</button>
+        <select id="floatingPlaybackSpeed" class="timeline-speed-select" onchange="setPlaybackSpeed(this.value)">
+            <option value="1">1x</option>
+            <option value="2">2x</option>
+            <option value="5">5x</option>
+        </select>
+    </div>
+</div>
 
 <div id="notification-container" class="notification-container"></div>
 

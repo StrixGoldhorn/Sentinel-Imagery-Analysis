@@ -5,13 +5,32 @@
  * - Maritime-standard color coding by vessel type (Cargo, Tanker, Passenger, Tug, Fishing, etc.)
  * - Projected speed vectors based on Speed Over Ground (SOG)
  * - Rich tooltips & interactive inspector popups
- * - Vessel type filtering and toggleable map layer
+ * - Date Range Slider control and temporal scrubbing
+ * - Timeline presets (Live, 24h, 3d, 7d, Custom Range)
+ * - Automatic radar timeline playback animation & 1h stepping
+ * - Synchronized floating timeline control on map
  */
 
 let aisVesselLayer = null;
 let aisVesselsData = [];
 let aisLayerEnabled = true;
 let activeTypeFilters = new Set(['Cargo', 'Tanker', 'Passenger', 'Tug', 'Fishing', 'Military', 'Pleasure', 'Other']);
+
+// Timeline state
+const aisTimelineState = {
+    isLive: true,
+    minTime: Date.now() - 7 * 24 * 3600 * 1000,
+    maxTime: Date.now(),
+    selectedTime: Date.now(),
+    customStart: null,
+    customEnd: null,
+    preset: 'live',
+    isPlaying: false,
+    playbackSpeed: 1,
+    playbackInterval: null,
+    windowHours: 6,
+    isMinimized: false
+};
 
 const VESSEL_TYPE_COLORS = {
     'Cargo': '#28a745',
@@ -61,6 +80,55 @@ function getVesselColor(typeStr) {
     return VESSEL_TYPE_COLORS[category] || VESSEL_TYPE_COLORS['Other'];
 }
 
+function formatAisDateTime(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    const year = d.getUTCFullYear();
+    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const hours = String(d.getUTCHours()).padStart(2, '0');
+    const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+}
+
+function formatAisShortDate(ts) {
+    if (!ts) return '-';
+    const d = new Date(ts);
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[d.getUTCMonth()]} ${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+async function initAisTimelineBounds() {
+    try {
+        if (!CONFIG.API_AIS_TIMELINE) return;
+        const res = await fetch(CONFIG.API_AIS_TIMELINE);
+        const data = await res.json();
+        if (res.ok && data.status === 'success' && data.min_timestamp && data.max_timestamp) {
+            const minMs = new Date(data.min_timestamp.replace('Z', '+00:00')).getTime();
+            const maxMs = new Date(data.max_timestamp.replace('Z', '+00:00')).getTime();
+            if (!isNaN(minMs) && !isNaN(maxMs) && minMs < maxMs) {
+                // Keep at least a 24h span
+                aisTimelineState.minTime = Math.min(minMs, Date.now() - 7 * 24 * 3600 * 1000);
+                aisTimelineState.maxTime = Math.max(maxMs, Date.now());
+            }
+        }
+    } catch (e) {
+        console.warn('Unable to load AIS timeline bounds:', e);
+    }
+    updateSliderBoundsDisplay();
+}
+
+function updateSliderBoundsDisplay() {
+    const minLabel = document.getElementById('aisSliderMinLabel');
+    const maxLabel = document.getElementById('aisSliderMaxLabel');
+    if (minLabel) {
+        minLabel.textContent = formatAisShortDate(aisTimelineState.minTime);
+    }
+    if (maxLabel) {
+        maxLabel.textContent = aisTimelineState.isLive ? 'Now (Live)' : formatAisShortDate(aisTimelineState.maxTime);
+    }
+}
+
 function initAISVessels(mapInstance) {
     if (!mapInstance) return;
 
@@ -82,25 +150,37 @@ function initAISVessels(mapInstance) {
         });
     }
 
+    const floatingTimeline = document.getElementById('aisFloatingTimeline');
+    if (floatingTimeline) {
+        floatingTimeline.style.display = aisLayerEnabled ? 'flex' : 'none';
+    }
+
+    initAisTimelineBounds();
+
     // Initial fetch of vessels
     loadAISVessels(mapInstance);
 
     // Refresh when map stops moving
-    mapInstance.on('moveend', debounce(() => {
-        if (aisLayerEnabled) {
-            loadAISVessels(mapInstance);
-        }
-    }, 1000));
+    if (typeof debounce === 'function') {
+        mapInstance.on('moveend', debounce(() => {
+            if (aisLayerEnabled) {
+                loadAISVessels(mapInstance);
+            }
+        }, 1000));
+    }
 }
 
 function toggleAISVessels(mapInstance, enable) {
     if (!aisVesselLayer || !mapInstance) return;
+    const floatingTimeline = document.getElementById('aisFloatingTimeline');
+
     if (enable) {
         if (!mapInstance.hasLayer(aisVesselLayer)) {
             aisVesselLayer.addTo(mapInstance);
         }
         aisLayerEnabled = true;
         localStorage.setItem('ais_vessels_enabled', 'true');
+        if (floatingTimeline) floatingTimeline.style.display = 'flex';
         loadAISVessels(mapInstance);
         if (typeof showNotification === 'function') {
             showNotification('AIS Vessel overlay enabled', 'success');
@@ -111,7 +191,294 @@ function toggleAISVessels(mapInstance, enable) {
         }
         aisLayerEnabled = false;
         localStorage.setItem('ais_vessels_enabled', 'false');
+        if (floatingTimeline) floatingTimeline.style.display = 'none';
+        stopAisPlayback();
     }
+}
+
+function syncSliderElements(val) {
+    const slider1 = document.getElementById('aisDateSlider');
+    const slider2 = document.getElementById('floatingDateSlider');
+    if (slider1 && slider1.value !== String(val)) slider1.value = val;
+    if (slider2 && slider2.value !== String(val)) slider2.value = val;
+}
+
+function setSliderValue(val) {
+    syncSliderElements(val);
+}
+
+function updateTimelineLabels(targetTs) {
+    const isLive = aisTimelineState.isLive;
+    const displayStr = isLive 
+        ? 'Live Positions (Current)' 
+        : `Historical: ${formatAisDateTime(targetTs)}`;
+
+    const sidebarDisplay = document.getElementById('aisSelectedDateDisplay');
+    const floatingDisplay = document.getElementById('floatingTimelineTimeDisplay');
+    const sidebarBadge = document.getElementById('aisTimelineModeBadge');
+    const floatingBadge = document.getElementById('floatingTimelineBadge');
+
+    if (sidebarDisplay) {
+        sidebarDisplay.textContent = displayStr;
+        sidebarDisplay.style.color = isLive ? '#28a745' : '#007bff';
+        sidebarDisplay.style.borderColor = isLive ? '#28a745' : '#007bff';
+    }
+    if (floatingDisplay) {
+        floatingDisplay.textContent = isLive ? 'Live Positions' : formatAisDateTime(targetTs);
+    }
+    if (sidebarBadge) {
+        sidebarBadge.textContent = isLive ? 'LIVE' : 'HISTORY';
+        sidebarBadge.className = isLive ? 'badge badge-success' : 'badge badge-warning';
+        sidebarBadge.style.backgroundColor = isLive ? '#28a745' : '#fd7e14';
+    }
+    if (floatingBadge) {
+        floatingBadge.textContent = isLive ? 'LIVE' : 'HISTORY';
+        floatingBadge.className = isLive ? 'badge badge-success' : 'badge badge-warning';
+        floatingBadge.style.backgroundColor = isLive ? '#28a745' : '#fd7e14';
+    }
+}
+
+function highlightPresetButton(preset) {
+    const buttons = document.querySelectorAll('.btn-preset');
+    buttons.forEach(btn => {
+        if (btn.getAttribute('data-preset') === preset) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+function onAisSliderInput(val) {
+    const percent = parseFloat(val) / 100;
+    const targetTs = aisTimelineState.minTime + (aisTimelineState.maxTime - aisTimelineState.minTime) * percent;
+    aisTimelineState.selectedTime = targetTs;
+    aisTimelineState.isLive = (parseFloat(val) >= 99.5);
+
+    syncSliderElements(val);
+    updateTimelineLabels(targetTs);
+}
+
+let aisSliderDebounceTimer = null;
+function onAisSliderChange(val) {
+    onAisSliderInput(val);
+    if (aisTimelineState.isLive) {
+        aisTimelineState.preset = 'live';
+        highlightPresetButton('live');
+    } else {
+        aisTimelineState.preset = 'slider';
+        highlightPresetButton(null);
+    }
+    
+    if (aisSliderDebounceTimer) clearTimeout(aisSliderDebounceTimer);
+    aisSliderDebounceTimer = setTimeout(() => {
+        if (typeof map !== 'undefined' && map) {
+            loadAISVessels(map);
+        }
+    }, 100);
+}
+
+function setAisTimelinePreset(preset) {
+    stopAisPlayback();
+    aisTimelineState.preset = preset;
+    highlightPresetButton(preset);
+
+    const now = Date.now();
+    aisTimelineState.maxTime = now;
+
+    if (preset === 'live') {
+        aisTimelineState.isLive = true;
+        aisTimelineState.selectedTime = now;
+        setSliderValue(100);
+        updateTimelineLabels(now);
+    } else if (preset === '24h') {
+        aisTimelineState.isLive = false;
+        aisTimelineState.minTime = now - 24 * 3600 * 1000;
+        aisTimelineState.selectedTime = now;
+        setSliderValue(100);
+        updateTimelineLabels(now);
+    } else if (preset === '3d') {
+        aisTimelineState.isLive = false;
+        aisTimelineState.minTime = now - 3 * 24 * 3600 * 1000;
+        aisTimelineState.selectedTime = now;
+        setSliderValue(100);
+        updateTimelineLabels(now);
+    } else if (preset === '7d') {
+        aisTimelineState.isLive = false;
+        aisTimelineState.minTime = now - 7 * 24 * 3600 * 1000;
+        aisTimelineState.selectedTime = now;
+        setSliderValue(100);
+        updateTimelineLabels(now);
+    }
+
+    updateSliderBoundsDisplay();
+    if (typeof map !== 'undefined' && map) {
+        loadAISVessels(map);
+    }
+}
+
+function toggleAisCustomDateInputs() {
+    const panel = document.getElementById('aisCustomDatePanel');
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none' || panel.style.display === '';
+    panel.style.display = isHidden ? 'block' : 'none';
+
+    if (isHidden) {
+        const startInput = document.getElementById('aisCustomStartInput');
+        const endInput = document.getElementById('aisCustomEndInput');
+        if (startInput && !startInput.value) {
+            const defaultStart = new Date(Date.now() - 24 * 3600 * 1000);
+            startInput.value = defaultStart.toISOString().slice(0, 16);
+        }
+        if (endInput && !endInput.value) {
+            const defaultEnd = new Date();
+            endInput.value = defaultEnd.toISOString().slice(0, 16);
+        }
+    }
+}
+
+function applyAisCustomDateRange() {
+    const startInput = document.getElementById('aisCustomStartInput');
+    const endInput = document.getElementById('aisCustomEndInput');
+    if (!startInput || !endInput || !startInput.value || !endInput.value) {
+        if (typeof showNotification === 'function') {
+            showNotification('Please provide valid start and end dates', 'warning');
+        }
+        return;
+    }
+
+    const startMs = new Date(startInput.value + ':00Z').getTime();
+    const endMs = new Date(endInput.value + ':00Z').getTime();
+
+    if (isNaN(startMs) || isNaN(endMs) || startMs >= endMs) {
+        if (typeof showNotification === 'function') {
+            showNotification('Start date must be before end date', 'error');
+        }
+        return;
+    }
+
+    stopAisPlayback();
+    aisTimelineState.preset = 'custom';
+    highlightPresetButton('custom');
+    aisTimelineState.isLive = false;
+    aisTimelineState.minTime = startMs;
+    aisTimelineState.maxTime = endMs;
+    aisTimelineState.selectedTime = endMs;
+    aisTimelineState.customStart = new Date(startMs).toISOString();
+    aisTimelineState.customEnd = new Date(endMs).toISOString();
+
+    setSliderValue(100);
+    updateSliderBoundsDisplay();
+    updateTimelineLabels(endMs);
+
+    if (typeof map !== 'undefined' && map) {
+        loadAISVessels(map);
+    }
+    if (typeof showNotification === 'function') {
+        showNotification(`Applied custom date range: ${formatAisShortDate(startMs)} — ${formatAisShortDate(endMs)}`, 'info');
+    }
+}
+
+function toggleAisTimelinePlayback() {
+    if (aisTimelineState.isPlaying) {
+        stopAisPlayback();
+    } else {
+        startAisPlayback();
+    }
+}
+
+function startAisPlayback() {
+    aisTimelineState.isPlaying = true;
+    aisTimelineState.isLive = false;
+    updatePlayButtonUI(true);
+
+    const currentVal = parseFloat(document.getElementById('aisDateSlider')?.value || 100);
+    if (currentVal >= 99) {
+        setSliderValue(0);
+        onAisSliderInput(0);
+    }
+
+    if (aisTimelineState.playbackInterval) clearInterval(aisTimelineState.playbackInterval);
+
+    aisTimelineState.playbackInterval = setInterval(() => {
+        let val = parseFloat(document.getElementById('aisDateSlider')?.value || 0);
+        const step = 1.2 * aisTimelineState.playbackSpeed;
+        val += step;
+
+        if (val >= 100) {
+            val = 100;
+            setSliderValue(100);
+            onAisSliderInput(100);
+            stopAisPlayback();
+            if (typeof map !== 'undefined' && map) loadAISVessels(map);
+            return;
+        }
+
+        setSliderValue(val);
+        onAisSliderInput(val);
+        if (typeof map !== 'undefined' && map) {
+            loadAISVessels(map);
+        }
+    }, 1000);
+}
+
+function stopAisPlayback() {
+    aisTimelineState.isPlaying = false;
+    if (aisTimelineState.playbackInterval) {
+        clearInterval(aisTimelineState.playbackInterval);
+        aisTimelineState.playbackInterval = null;
+    }
+    updatePlayButtonUI(false);
+}
+
+function updatePlayButtonUI(playing) {
+    const sidebarBtn = document.getElementById('aisPlayPauseBtn');
+    const floatingBtn = document.getElementById('floatingPlayBtn');
+
+    if (sidebarBtn) {
+        sidebarBtn.textContent = playing ? '⏸ Pause' : '▶ Play Timeline';
+        sidebarBtn.style.backgroundColor = playing ? '#dc3545' : '#28a745';
+    }
+    if (floatingBtn) {
+        floatingBtn.textContent = playing ? '⏸' : '▶';
+        floatingBtn.style.backgroundColor = playing ? '#dc3545' : 'rgba(255, 255, 255, 0.15)';
+    }
+}
+
+function stepAisTimeline(hours) {
+    stopAisPlayback();
+    const range = aisTimelineState.maxTime - aisTimelineState.minTime;
+    if (range <= 0) return;
+    const msDelta = hours * 3600 * 1000;
+    let targetTs = aisTimelineState.selectedTime + msDelta;
+    targetTs = Math.max(aisTimelineState.minTime, Math.min(aisTimelineState.maxTime, targetTs));
+    aisTimelineState.selectedTime = targetTs;
+    aisTimelineState.isLive = (targetTs >= aisTimelineState.maxTime - 60000);
+
+    const pct = ((targetTs - aisTimelineState.minTime) / range) * 100;
+    setSliderValue(pct);
+    updateTimelineLabels(targetTs);
+
+    if (typeof map !== 'undefined' && map) {
+        loadAISVessels(map);
+    }
+}
+
+function setPlaybackSpeed(speed) {
+    aisTimelineState.playbackSpeed = parseFloat(speed) || 1;
+}
+
+function toggleFloatingTimelineMin() {
+    const controls = document.getElementById('floatingTimelineControls');
+    const minBtn = document.getElementById('floatingMinBtn');
+    if (!controls) return;
+    aisTimelineState.isMinimized = !aisTimelineState.isMinimized;
+    controls.style.display = aisTimelineState.isMinimized ? 'none' : 'flex';
+    if (minBtn) minBtn.textContent = aisTimelineState.isMinimized ? '+' : '_';
+}
+
+function resetAisToLive() {
+    setAisTimelinePreset('live');
 }
 
 async function loadAISVessels(mapInstance, bbox = null) {
@@ -121,6 +488,17 @@ async function loadAISVessels(mapInstance, bbox = null) {
         let url = CONFIG.API_AIS_VESSELS + '?latest_only=true&limit=1000';
         if (bbox) {
             url += `&bbox=${bbox.join(',')}`;
+        }
+
+        if (!aisTimelineState.isLive) {
+            if (aisTimelineState.preset === 'custom' && aisTimelineState.customStart && aisTimelineState.customEnd) {
+                url += `&start=${encodeURIComponent(aisTimelineState.customStart)}&end=${encodeURIComponent(aisTimelineState.customEnd)}`;
+            } else {
+                // Window of windowHours up to selectedTime
+                const end = new Date(aisTimelineState.selectedTime).toISOString();
+                const start = new Date(aisTimelineState.selectedTime - aisTimelineState.windowHours * 3600 * 1000).toISOString();
+                url += `&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+            }
         }
 
         const res = await fetch(url);
@@ -283,3 +661,4 @@ function escapeHtml(str) {
     if (typeof str !== 'string') return String(str ?? '');
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+

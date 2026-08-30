@@ -81,6 +81,23 @@ class SQLiteAISRepository:
                 (plugin_name.strip(), status, records_inserted, error_message),
             )
 
+    def get_timeline_bounds(self) -> dict[str, object]:
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT MIN(timestamp), MAX(timestamp), COUNT(*) FROM vessel_locations"
+            ).fetchone()
+            if row and row[0] is not None and row[1] is not None:
+                return {
+                    "min_timestamp": row[0],
+                    "max_timestamp": row[1],
+                    "total_records": row[2],
+                }
+            return {
+                "min_timestamp": None,
+                "max_timestamp": None,
+                "total_records": 0,
+            }
+
     def get_vessel_positions(
         self,
         bbox: BoundingBox | None = None,
@@ -92,29 +109,65 @@ class SQLiteAISRepository:
         params: list[object] = []
 
         if latest_only:
-            query = """
-                SELECT 
-                    v.id as vessel_id,
-                    v.imo,
-                    v.mmsi,
-                    v.vessel_name,
-                    v.vessel_type,
-                    v.callsign,
-                    vl.latitude,
-                    vl.longitude,
-                    vl.speed,
-                    vl.heading,
-                    vl.timestamp,
-                    vl.source_plugin
-                FROM vessel_locations vl
-                JOIN vessels v ON vl.vessel_id = v.id
-                INNER JOIN (
-                    SELECT vessel_id, MAX(timestamp) as max_time
-                    FROM vessel_locations
-                    GROUP BY vessel_id
-                ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
-                WHERE 1=1
-            """
+            if time_range is not None and (time_range[0] is not None or time_range[1] is not None):
+                sub_conditions = []
+                sub_params = []
+                if time_range[0] is not None:
+                    sub_conditions.append("timestamp >= ?")
+                    sub_params.append(time_range[0].isoformat())
+                if time_range[1] is not None:
+                    sub_conditions.append("timestamp <= ?")
+                    sub_params.append(time_range[1].isoformat())
+                sub_where = f"WHERE {' AND '.join(sub_conditions)}"
+                query = f"""
+                    SELECT 
+                        v.id as vessel_id,
+                        v.imo,
+                        v.mmsi,
+                        v.vessel_name,
+                        v.vessel_type,
+                        v.callsign,
+                        vl.latitude,
+                        vl.longitude,
+                        vl.speed,
+                        vl.heading,
+                        vl.timestamp,
+                        vl.source_plugin
+                    FROM vessel_locations vl
+                    JOIN vessels v ON vl.vessel_id = v.id
+                    INNER JOIN (
+                        SELECT vessel_id, MAX(timestamp) as max_time
+                        FROM vessel_locations
+                        {sub_where}
+                        GROUP BY vessel_id
+                    ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
+                    WHERE 1=1
+                """
+                params.extend(sub_params)
+            else:
+                query = """
+                    SELECT 
+                        v.id as vessel_id,
+                        v.imo,
+                        v.mmsi,
+                        v.vessel_name,
+                        v.vessel_type,
+                        v.callsign,
+                        vl.latitude,
+                        vl.longitude,
+                        vl.speed,
+                        vl.heading,
+                        vl.timestamp,
+                        vl.source_plugin
+                    FROM vessel_locations vl
+                    JOIN vessels v ON vl.vessel_id = v.id
+                    INNER JOIN (
+                        SELECT vessel_id, MAX(timestamp) as max_time
+                        FROM vessel_locations
+                        GROUP BY vessel_id
+                    ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
+                    WHERE 1=1
+                """
         else:
             query = """
                 SELECT 
@@ -139,7 +192,7 @@ class SQLiteAISRepository:
             query += " AND vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?"
             params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
 
-        if time_range is not None:
+        if time_range is not None and not (latest_only and (time_range[0] is not None or time_range[1] is not None)):
             start, end = time_range
             if start is not None:
                 query += " AND vl.timestamp >= ?"
