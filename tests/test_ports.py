@@ -88,6 +88,9 @@ class CompleteAdapter:
     def log_execution(self, plugin_name, status, records_inserted, error_message=None):
         return None
 
+    def get_vessel_positions(self, bbox=None, time_range=None, limit=500, latest_only=True):
+        return []
+
     def list_tiles(self, tile_folder):
         return []
 

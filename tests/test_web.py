@@ -22,9 +22,11 @@ class StubUseCase:
         self.result = result
         self.error = error
         self.calls = []
+        self.keyword_calls = []
 
-    def execute(self, *args):
+    def execute(self, *args, **kwargs):
         self.calls.append(args)
+        self.keyword_calls.append(kwargs)
         if self.error is not None:
             raise self.error
         return self.result
