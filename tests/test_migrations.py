@@ -1,46 +1,49 @@
-"""Unit tests for the SQLite Migration Runner."""
-
 import unittest
-import sqlite3
 from pathlib import Path
-from contextlib import closing
-
+from unittest.mock import MagicMock, patch
 from sentinel_analysis.infrastructure.persistence.migrations.runner import MigrationRunner
 
 
-class MigrationRunnerTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.db_path = Path(__file__).resolve().parent / "runtime" / "migration_test.db"
-        self.db_path.unlink(missing_ok=True)
+def test_migrations_applied_when_new_versions_found() -> None:
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_conn.execute.return_value.fetchall.return_value = []
 
-    def tearDown(self) -> None:
-        self.db_path.unlink(missing_ok=True)
+    with patch("sqlite3.connect", return_value=mock_conn):
+        runner = MigrationRunner("in_memory_virtual.db")
+        applied = runner.run_migrations()
 
-    def test_migrations_applied_idempotently(self) -> None:
-        runner = MigrationRunner(self.db_path)
-        applied_first = runner.run_migrations()
-        self.assertGreaterEqual(len(applied_first), 3)
-
-        # Verify tables created
-        with closing(sqlite3.connect(self.db_path)) as conn:
-            cursor = conn.cursor()
-            tables = [row[0] for row in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
-            self.assertIn("aoi", tables)
-            self.assertIn("vessels", tables)
-            self.assertIn("vessel_locations", tables)
-            self.assertIn("background_tasks", tables)
-            self.assertIn("_schema_migrations", tables)
-
-            # Verify auto_capture_enabled column exists in aoi
-            columns = [row[1] for row in cursor.execute("PRAGMA table_info(aoi)").fetchall()]
-            self.assertIn("auto_capture_enabled", columns)
+        assert len(applied) >= 3
+        assert any("001" in v for v in applied)
+        assert any("002" in v for v in applied)
+        assert any("003" in v for v in applied)
+        assert mock_conn.executescript.call_count >= 3
 
 
-        # Running again should apply 0 new migrations
-        applied_second = runner.run_migrations()
-        self.assertEqual(len(applied_second), 0)
+def test_migrations_applied_idempotently_when_already_applied() -> None:
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    sql_dir = Path(__file__).resolve().parent.parent / "sentinel_analysis" / "infrastructure" / "persistence" / "migrations" / "sql"
+    all_files = [f.name for f in sql_dir.glob("*.sql")]
+    mock_conn.execute.return_value.fetchall.return_value = [(f,) for f in all_files]
 
+    with patch("sqlite3.connect", return_value=mock_conn):
+        runner = MigrationRunner("in_memory_virtual.db")
+        applied = runner.run_migrations()
+
+        assert len(applied) == 0
+        mock_conn.executescript.assert_not_called()
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+

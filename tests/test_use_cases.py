@@ -160,143 +160,194 @@ class MemoryAISRepository:
         self.logs.append((plugin_name, status, records_inserted, error_message))
 
 
-class UseCaseTests(unittest.TestCase):
-    def test_create_scan_rejects_empty_tiles_and_rolls_back_prepared_workspace(self) -> None:
-        repository = TrackingScanRepository()
-        use_case = CreateScan(EmptyImageryProvider(), NoOpStitcher(), repository, NoOpLocationResolver())
+def test_create_scan_rejects_empty_tiles_and_rolls_back_prepared_workspace() -> None:
+    repository = TrackingScanRepository()
+    use_case = CreateScan(EmptyImageryProvider(), NoOpStitcher(), repository, NoOpLocationResolver())
 
-        with self.assertRaises(NoImageryFoundError):
-            use_case.execute(BBOX)
+    try:
+        use_case.execute(BBOX)
+        assert False, "Expected NoImageryFoundError"
+    except NoImageryFoundError:
+        pass
 
-        self.assertEqual(len(repository.deleted), 1)
-
-    def test_create_scan_does_not_delete_when_workspace_preparation_fails(self) -> None:
-        repository = TrackingScanRepository(OSError("cannot prepare"))
-        use_case = CreateScan(EmptyImageryProvider(), NoOpStitcher(), repository, NoOpLocationResolver())
-
-        with self.assertRaises(OSError):
-            use_case.execute(BBOX)
-
-        self.assertEqual(repository.deleted, [])
-
-    def test_detect_ships_validates_threshold_and_returns_named_result(self) -> None:
-        class Detector:
-            def detect(self, image_path, dem_path=None, threshold=40):
-                return [ShipDetection(1, 2, 3, 4)], 100, 50
-
-        use_case = DetectShips(Detector())
-        result = use_case.execute(Path("scan.png"), threshold=20)
-
-        self.assertEqual(result.image_width, 100)
-        self.assertEqual(result[0][0].width, 3)
-        with self.assertRaises(ValueError):
-            use_case.execute(Path("scan.png"), threshold=256)
-
-    def test_predictions_are_validated_normalized_and_sorted(self) -> None:
-        predictor = FakePredictor(
-            [
-                {"time": "2026-08-28T10:00:00+08:00", "max_elevation": "42.5"},
-                {"time": "2026-08-27T01:00:00Z", "max_elevation": None},
-            ]
-        )
-
-        result = PredictPasses(predictor).execute(BBOX, " key ")
-
-        self.assertEqual(predictor.api_key, "key")
-        self.assertEqual(result[0]["time"], "2026-08-27T01:00:00+00:00")
-        self.assertEqual(result[1]["max_elevation"], 42.5)
-
-    def test_invalid_provider_prediction_is_an_expected_application_error(self) -> None:
-        with self.assertRaises(InvalidPredictionError):
-            PredictPasses(FakePredictor([{"time": "invalid", "max_elevation": 10}])).execute(BBOX, "key")
-
-    def test_predict_aoi_updates_repository_with_earliest_pass(self) -> None:
-        repository = MemoryAOIRepository(AreaOfInterest("Harbour", BBOX, id=1))
-        predictor = FakePredictor(
-            [
-                {"time": "2026-08-29T00:00:00Z", "max_elevation": 20},
-                {"time": "2026-08-28T00:00:00Z", "max_elevation": 30},
-            ]
-        )
-
-        predictions = PredictAreaOfInterest(repository, predictor).execute(1, "key")
-
-        self.assertEqual(predictions[0]["time"], "2026-08-28T00:00:00+00:00")
-        self.assertEqual(repository.updated[1], datetime(2026, 8, 28, tzinfo=timezone.utc))
-        with self.assertRaises(AreaOfInterestNotFoundError):
-            PredictAreaOfInterest(repository, predictor).execute(2, "key")
-
-    def test_ais_ingestion_isolates_plugins_and_normalizes_time_range(self) -> None:
-        successful = SuccessfulPlugin()
-        repository = MemoryAISRepository()
-        use_case = IngestAIS(StaticRegistry([FailingPlugin(), successful]), repository)
-        start = datetime(2026, 8, 27)
-        end = datetime(2026, 8, 27, 9, tzinfo=timezone(timedelta(hours=8)))
-
-        result = use_case.execute(BBOX, (start, end))
-
-        self.assertEqual(result["total_inserted"], 1)
-        self.assertEqual([log["status"] for log in result["logs"]], ["FAILED", "SUCCESS"])
-        self.assertEqual(successful.time_range[0].tzinfo, timezone.utc)
-        self.assertEqual(successful.time_range[1].tzinfo, timezone.utc)
-
-    def test_ais_ingestion_rejects_invalid_range_and_unknown_plugin(self) -> None:
-        use_case = IngestAIS(StaticRegistry([]), MemoryAISRepository())
-
-        with self.assertRaises(ValueError):
-            use_case.execute(BBOX, (datetime(2026, 8, 28), datetime(2026, 8, 27)))
-        with self.assertRaises(PluginNotFoundError):
-            use_case.execute(BBOX, (None, None), "missing")
-
-    def test_scan_commands_normalize_names_and_report_missing_scans(self) -> None:
-        repository = TrackingScanRepository()
-
-        with self.assertRaises(ScanNotFoundError):
-            GetScan(repository).execute("missing")
-        with self.assertRaises(ScanNotFoundError):
-            RenameScan(repository).execute("missing", " name ")
-        with self.assertRaises(ScanNotFoundError):
-            DeleteScan(repository).execute("missing")
-
-    def test_delete_scan_deletes_existing_scan(self) -> None:
-        repository = TrackingScanRepository()
-        scan = Scan("scan_1", BBOX, Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar"), "scan.png", {})
-        repository.save(scan)
-
-        DeleteScan(repository).execute(" scan_1 ")
-
-        self.assertEqual(repository.deleted, ["scan_1"])
+    assert len(repository.deleted) == 1
 
 
-    def test_check_and_schedule_aois_triggers_scans(self) -> None:
-        from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+def test_create_scan_does_not_delete_when_workspace_preparation_fails() -> None:
+    repository = TrackingScanRepository(OSError("cannot prepare"))
+    use_case = CreateScan(EmptyImageryProvider(), NoOpStitcher(), repository, NoOpLocationResolver())
 
-        now = datetime.now(timezone.utc)
-        due_aoi = AreaOfInterest("Due AOI", BBOX, id=1, auto_capture_enabled=True)
-        disabled_aoi = AreaOfInterest("Disabled AOI", BBOX, id=2, auto_capture_enabled=False)
+    try:
+        use_case.execute(BBOX)
+        assert False, "Expected OSError"
+    except OSError:
+        pass
 
-        class MultiAOIRepository:
-            def __init__(self):
-                self.aois = [due_aoi, disabled_aoi]
-                self.updated = []
-            def list(self):
-                return self.aois
-            def update_prediction(self, aoi_id, next_scan, last_checked):
-                self.updated.append((aoi_id, next_scan, last_checked))
+    assert repository.deleted == []
 
-        repo = MultiAOIRepository()
-        pass_time = (now + timedelta(days=2)).isoformat()
-        predictor = FakePredictor([{"time": pass_time}])
-        scheduler = CheckAndScheduleAOIs(repo, predictor)
-        results = scheduler.execute("api_key")
 
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["aoi_id"], 1)
-        self.assertEqual(results[0]["status"], "SCHEDULED")
-        self.assertEqual(len(repo.updated), 1)
+def test_detect_ships_validates_threshold_and_returns_named_result() -> None:
+    class Detector:
+        def detect(self, image_path, dem_path=None, threshold=40):
+            return [ShipDetection(1, 2, 3, 4)], 100, 50
+
+    use_case = DetectShips(Detector())
+    result = use_case.execute(Path("scan.png"), threshold=20)
+
+    assert result.image_width == 100
+    assert result[0][0].width == 3
+    try:
+        use_case.execute(Path("scan.png"), threshold=256)
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_predictions_are_validated_normalized_and_sorted() -> None:
+    predictor = FakePredictor(
+        [
+            {"time": "2026-08-28T10:00:00+08:00", "max_elevation": "42.5"},
+            {"time": "2026-08-27T01:00:00Z", "max_elevation": None},
+        ]
+    )
+
+    result = PredictPasses(predictor).execute(BBOX, " key ")
+
+    assert predictor.api_key == "key"
+    assert result[0]["time"] == "2026-08-27T01:00:00+00:00"
+    assert result[1]["max_elevation"] == 42.5
+
+
+def test_invalid_provider_prediction_is_an_expected_application_error() -> None:
+    try:
+        PredictPasses(FakePredictor([{"time": "invalid", "max_elevation": 10}])).execute(BBOX, "key")
+        assert False, "Expected InvalidPredictionError"
+    except InvalidPredictionError:
+        pass
+
+
+def test_predict_aoi_updates_repository_with_earliest_pass() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Harbour", BBOX, id=1))
+    predictor = FakePredictor(
+        [
+            {"time": "2026-08-29T00:00:00Z", "max_elevation": 20},
+            {"time": "2026-08-28T00:00:00Z", "max_elevation": 30},
+        ]
+    )
+
+    predictions = PredictAreaOfInterest(repository, predictor).execute(1, "key")
+
+    assert predictions[0]["time"] == "2026-08-28T00:00:00+00:00"
+    assert repository.updated[1] == datetime(2026, 8, 28, tzinfo=timezone.utc)
+    try:
+        PredictAreaOfInterest(repository, predictor).execute(2, "key")
+        assert False, "Expected AreaOfInterestNotFoundError"
+    except AreaOfInterestNotFoundError:
+        pass
+
+
+def test_ais_ingestion_isolates_plugins_and_normalizes_time_range() -> None:
+    successful = SuccessfulPlugin()
+    repository = MemoryAISRepository()
+    use_case = IngestAIS(StaticRegistry([FailingPlugin(), successful]), repository)
+    start = datetime(2026, 8, 27)
+    end = datetime(2026, 8, 27, 9, tzinfo=timezone(timedelta(hours=8)))
+
+    result = use_case.execute(BBOX, (start, end))
+
+    assert result["total_inserted"] == 1
+    assert [log["status"] for log in result["logs"]] == ["FAILED", "SUCCESS"]
+    assert successful.time_range[0].tzinfo == timezone.utc
+    assert successful.time_range[1].tzinfo == timezone.utc
+
+
+def test_ais_ingestion_rejects_invalid_range_and_unknown_plugin() -> None:
+    use_case = IngestAIS(StaticRegistry([]), MemoryAISRepository())
+
+    try:
+        use_case.execute(BBOX, (datetime(2026, 8, 28), datetime(2026, 8, 27)))
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+    try:
+        use_case.execute(BBOX, (None, None), "missing")
+        assert False, "Expected PluginNotFoundError"
+    except PluginNotFoundError:
+        pass
+
+
+def test_scan_commands_normalize_names_and_report_missing_scans() -> None:
+    repository = TrackingScanRepository()
+
+    try:
+        GetScan(repository).execute("missing")
+        assert False, "Expected ScanNotFoundError"
+    except ScanNotFoundError:
+        pass
+
+    try:
+        RenameScan(repository).execute("missing", " name ")
+        assert False, "Expected ScanNotFoundError"
+    except ScanNotFoundError:
+        pass
+
+    try:
+        DeleteScan(repository).execute("missing")
+        assert False, "Expected ScanNotFoundError"
+    except ScanNotFoundError:
+        pass
+
+
+def test_delete_scan_deletes_existing_scan() -> None:
+    repository = TrackingScanRepository()
+    scan = Scan("scan_1", BBOX, Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar"), "scan.png", {})
+    repository.save(scan)
+
+    DeleteScan(repository).execute(" scan_1 ")
+
+    assert repository.deleted == ["scan_1"]
+
+
+def test_check_and_schedule_aois_triggers_scans() -> None:
+    from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+
+    now = datetime.now(timezone.utc)
+    due_aoi = AreaOfInterest("Due AOI", BBOX, id=1, auto_capture_enabled=True)
+    disabled_aoi = AreaOfInterest("Disabled AOI", BBOX, id=2, auto_capture_enabled=False)
+
+    class MultiAOIRepository:
+        def __init__(self):
+            self.aois = [due_aoi, disabled_aoi]
+            self.updated = []
+        def list(self):
+            return self.aois
+        def update_prediction(self, aoi_id, next_scan, last_checked):
+            self.updated.append((aoi_id, next_scan, last_checked))
+
+    repo = MultiAOIRepository()
+    pass_time = (now + timedelta(days=2)).isoformat()
+    predictor = FakePredictor([{"time": pass_time}])
+    scheduler = CheckAndScheduleAOIs(repo, predictor)
+    results = scheduler.execute("api_key")
+
+    assert len(results) == 1
+    assert results[0]["aoi_id"] == 1
+    assert results[0]["status"] == "SCHEDULED"
+    assert len(repo.updated) == 1
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

@@ -9,41 +9,44 @@ from PIL import Image
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 
 
-class OBBDetectorTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.test_dir = Path(__file__).resolve().parent / "runtime" / "obb_test"
-        self.test_dir.mkdir(parents=True, exist_ok=True)
-        self.image_path = self.test_dir / "synthetic_ship.png"
+def test_obb_calculates_heading_and_dimensions() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        image_path = Path(temp_dir) / "synthetic_ship.png"
 
-    def tearDown(self) -> None:
-        if self.image_path.is_file():
-            self.image_path.unlink(missing_ok=True)
-
-    def test_obb_calculates_heading_and_dimensions(self) -> None:
         # Create 100x100 synthetic SAR image with a bright oriented rectangle
         img = np.zeros((100, 100), dtype=np.uint8)
-        # Create synthetic vessel (oriented blob)
         for y in range(30, 70):
             for x in range(45, 55):
                 img[y, x] = 250
 
-        Image.fromarray(img).save(self.image_path)
+        Image.fromarray(img).save(image_path)
 
         detector = ClassicalShipDetector(min_area=20, pixel_spacing_m=10.0)
-        detections, width, height = detector.detect(self.image_path, threshold=50)
+        detections, width, height = detector.detect(image_path, threshold=50)
 
-        self.assertEqual(width, 100)
-        self.assertEqual(height, 100)
-        self.assertEqual(len(detections), 1)
+        assert width == 100
+        assert height == 100
+        assert len(detections) == 1
 
         ship = detections[0]
-        self.assertGreater(ship.length, 0)
-        self.assertGreater(ship.beam, 0)
-        self.assertGreaterEqual(ship.length, ship.beam)
-        self.assertIsNotNone(ship.angle)
-        self.assertEqual(len(ship.polygon_points), 4)
-        self.assertGreater(ship.confidence, 0.0)
+        assert ship.length > 0
+        assert ship.beam > 0
+        assert ship.length >= ship.beam
+        assert ship.angle is not None
+        assert len(ship.polygon_points) == 4
+        assert ship.confidence > 0.0
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+

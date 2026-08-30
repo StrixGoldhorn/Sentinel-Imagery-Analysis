@@ -61,180 +61,192 @@ class MockIngestAIS:
         return {"total_inserted": 12, "logs": []}
 
 
-class MissionAnalysisTests(unittest.TestCase):
-    def test_analyzer_computes_statistics_from_historical_acquisitions(self) -> None:
-        raw_records = [
-            {
-                "product_id": "S1A_IW_GRDH_1SDV_20260701T103000",
-                "platform": "Sentinel-1A",
-                "acquisition_time": "2026-07-01T10:30:00Z",
-                "orbit_direction": "ASCENDING",
-                "relative_orbit": 142,
-                "polarisation": "VV+VH",
-                "instrument_mode": "IW",
-            },
-            {
-                "product_id": "S1A_IW_GRDH_1SDV_20260713T103000",
-                "platform": "Sentinel-1A",
-                "acquisition_time": "2026-07-13T10:30:00Z",
-                "orbit_direction": "ASCENDING",
-                "relative_orbit": 142,
-                "polarisation": "VV+VH",
-                "instrument_mode": "IW",
-            },
-            {
-                "product_id": "S1C_IW_GRDH_1SDV_20260719T103000",
-                "platform": "Sentinel-1C",
-                "acquisition_time": "2026-07-19T10:30:00Z",
-                "orbit_direction": "ASCENDING",
-                "relative_orbit": 142,
-                "polarisation": "VV+VH",
-                "instrument_mode": "IW",
-            },
-            {
-                "product_id": "S1A_IW_GRDH_1SDV_20260725T223000",
-                "platform": "Sentinel-1A",
-                "acquisition_time": "2026-07-25T22:30:00Z",
-                "orbit_direction": "DESCENDING",
-                "relative_orbit": 69,
-                "polarisation": "VV+VH",
-                "instrument_mode": "IW",
-            },
-        ]
+def test_analyzer_computes_statistics_from_historical_acquisitions() -> None:
+    raw_records = [
+        {
+            "product_id": "S1A_IW_GRDH_1SDV_20260701T103000",
+            "platform": "Sentinel-1A",
+            "acquisition_time": "2026-07-01T10:30:00Z",
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 142,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+        {
+            "product_id": "S1A_IW_GRDH_1SDV_20260713T103000",
+            "platform": "Sentinel-1A",
+            "acquisition_time": "2026-07-13T10:30:00Z",
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 142,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+        {
+            "product_id": "S1C_IW_GRDH_1SDV_20260719T103000",
+            "platform": "Sentinel-1C",
+            "acquisition_time": "2026-07-19T10:30:00Z",
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 142,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+        {
+            "product_id": "S1A_IW_GRDH_1SDV_20260725T223000",
+            "platform": "Sentinel-1A",
+            "acquisition_time": "2026-07-25T22:30:00Z",
+            "orbit_direction": "DESCENDING",
+            "relative_orbit": 69,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+    ]
 
-        analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider(raw_records))
-        summary, history = analyzer.analyze_history(BBOX)
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider(raw_records))
+    summary, history = analyzer.analyze_history(BBOX)
 
-        self.assertEqual(summary["total_acquisitions"], 4)
-        self.assertEqual(summary["dominant_tracks"], [142, 69])
-        self.assertEqual(summary["ascending_count"], 3)
-        self.assertEqual(summary["descending_count"], 1)
-        self.assertEqual(len(history), 4)
-        self.assertIn("ASCENDING", summary["typical_utc_windows"])
-        self.assertIn("DESCENDING", summary["typical_utc_windows"])
+    assert summary["total_acquisitions"] == 4
+    assert summary["dominant_tracks"] == [142, 69]
+    assert summary["ascending_count"] == 3
+    assert summary["descending_count"] == 1
+    assert len(history) == 4
+    assert "ASCENDING" in summary["typical_utc_windows"]
+    assert "DESCENDING" in summary["typical_utc_windows"]
 
-    def test_analyzer_predicts_future_passes_using_12_day_repeat_cycle(self) -> None:
-        now = datetime.now(timezone.utc)
-        # Place a historical pass 10 days before now so the +12d projection falls 2 days in future
-        hist_time = (now - timedelta(days=10)).replace(microsecond=0)
 
-        raw_records = [
-            {
-                "product_id": "S1A_IW_GRDH_1SDV_001",
-                "platform": "Sentinel-1A",
-                "acquisition_time": hist_time.isoformat(),
-                "orbit_direction": "ASCENDING",
-                "relative_orbit": 142,
-                "polarisation": "VV+VH",
-                "instrument_mode": "IW",
-            }
-        ]
+def test_analyzer_predicts_future_passes_using_12_day_repeat_cycle() -> None:
+    now = datetime.now(timezone.utc)
+    hist_time = (now - timedelta(days=10)).replace(microsecond=0)
 
-        analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider(raw_records))
-        predictions = analyzer.predict_from_history(BBOX, days_ahead=15)
+    raw_records = [
+        {
+            "product_id": "S1A_IW_GRDH_1SDV_001",
+            "platform": "Sentinel-1A",
+            "acquisition_time": hist_time.isoformat(),
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 142,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        }
+    ]
 
-        self.assertTrue(len(predictions) >= 1)
-        # Should contain an exact 12-day forward projection
-        projected_times = [datetime.fromisoformat(p["time"].replace("Z", "+00:00")) for p in predictions]
-        self.assertTrue(any(abs((t - (hist_time + timedelta(days=12))).total_seconds()) < 2 for t in projected_times))
-        self.assertEqual(predictions[0]["source"], "HISTORICAL_MISSION")
-        self.assertEqual(predictions[0]["relative_orbit"], 142)
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider(raw_records))
+    predictions = analyzer.predict_from_history(BBOX, days_ahead=15)
 
-    def test_hybrid_predictor_merges_overlapping_passes_into_combined(self) -> None:
-        now = datetime.now(timezone.utc)
-        pass_time = now + timedelta(days=2)
+    assert len(predictions) >= 1
+    projected_times = [datetime.fromisoformat(p["time"].replace("Z", "+00:00")) for p in predictions]
+    assert any(abs((t - (hist_time + timedelta(days=12))).total_seconds()) < 2 for t in projected_times)
+    assert predictions[0]["source"] == "HISTORICAL_MISSION"
+    assert predictions[0]["relative_orbit"] == 142
 
-        n2yo_pass = PassPrediction(
-            time=pass_time.isoformat(),
-            max_elevation=68.0,
-            source="N2YO",
-            satellite="Sentinel-1A",
-        )
-        hist_pass = PassPrediction(
-            time=(pass_time + timedelta(minutes=3)).isoformat(),
-            max_elevation=75.0,
-            source="HISTORICAL_MISSION",
-            satellite="Sentinel-1A",
-            relative_orbit=142,
-            orbit_direction="ASCENDING",
-        )
 
-        n2yo_predictor = MockPassPredictor([n2yo_pass])
-        class StubAnalyzer(Sentinel1MissionAnalyzer):
-            def predict_from_history(self, bbox, days_ahead=10, limit=20):
-                return [hist_pass]
+def test_hybrid_predictor_merges_overlapping_passes_into_combined() -> None:
+    now = datetime.now(timezone.utc)
+    pass_time = now + timedelta(days=2)
 
-        hybrid = HybridPassPredictor(n2yo_predictor, StubAnalyzer())
-        results = hybrid.predict(BBOX, "api_key")
+    n2yo_pass = PassPrediction(
+        time=pass_time.isoformat(),
+        max_elevation=68.0,
+        source="N2YO",
+        satellite="Sentinel-1A",
+    )
+    hist_pass = PassPrediction(
+        time=(pass_time + timedelta(minutes=3)).isoformat(),
+        max_elevation=75.0,
+        source="HISTORICAL_MISSION",
+        satellite="Sentinel-1A",
+        relative_orbit=142,
+        orbit_direction="ASCENDING",
+    )
 
-        self.assertEqual(len(results), 1)
-        combined = results[0]
-        self.assertEqual(combined["source"], "COMBINED")
-        self.assertEqual(combined["relative_orbit"], 142)
-        self.assertEqual(combined["orbit_direction"], "ASCENDING")
-        self.assertEqual(combined["confidence_score"], 0.98)
+    n2yo_predictor = MockPassPredictor([n2yo_pass])
+    class StubAnalyzer(Sentinel1MissionAnalyzer):
+        def predict_from_history(self, bbox, days_ahead=10, limit=20):
+            return [hist_pass]
 
-    def test_hybrid_predictor_keeps_standalone_passes_from_both_sources(self) -> None:
-        now = datetime.now(timezone.utc)
-        pass_1 = PassPrediction(time=(now + timedelta(days=1)).isoformat(), max_elevation=45.0, source="N2YO")
-        pass_2 = PassPrediction(time=(now + timedelta(days=3)).isoformat(), max_elevation=75.0, source="HISTORICAL_MISSION", relative_orbit=88)
+    hybrid = HybridPassPredictor(n2yo_predictor, StubAnalyzer())
+    results = hybrid.predict(BBOX, "api_key")
 
-        n2yo_predictor = MockPassPredictor([pass_1])
-        class StubAnalyzer(Sentinel1MissionAnalyzer):
-            def predict_from_history(self, bbox, days_ahead=10, limit=20):
-                return [pass_2]
+    assert len(results) == 1
+    combined = results[0]
+    assert combined["source"] == "COMBINED"
+    assert combined["relative_orbit"] == 142
+    assert combined["orbit_direction"] == "ASCENDING"
+    assert combined["confidence_score"] == 0.98
 
-        hybrid = HybridPassPredictor(n2yo_predictor, StubAnalyzer())
-        results = hybrid.predict(BBOX, "api_key")
 
-        self.assertEqual(len(results), 2)
-        self.assertEqual(results[0]["source"], "N2YO")
-        self.assertEqual(results[1]["source"], "HISTORICAL_MISSION")
+def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
+    now = datetime.now(timezone.utc)
+    pass_1 = PassPrediction(time=(now + timedelta(days=1)).isoformat(), max_elevation=45.0, source="N2YO")
+    pass_2 = PassPrediction(time=(now + timedelta(days=3)).isoformat(), max_elevation=75.0, source="HISTORICAL_MISSION", relative_orbit=88)
 
-    def test_analyze_mission_passes_use_case(self) -> None:
-        aoi = AreaOfInterest("Singapore Strait", BBOX, id=1)
-        repo = MockAOIRepository([aoi])
-        analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
-        use_case = AnalyzeMissionPasses(repo, analyzer)
+    n2yo_predictor = MockPassPredictor([pass_1])
+    class StubAnalyzer(Sentinel1MissionAnalyzer):
+        def predict_from_history(self, bbox, days_ahead=10, limit=20):
+            return [pass_2]
 
-        result = use_case.execute(1)
-        self.assertEqual(result["aoi_id"], 1)
-        self.assertEqual(result["name"], "Singapore Strait")
-        self.assertIn("mission_analysis", result)
+    hybrid = HybridPassPredictor(n2yo_predictor, StubAnalyzer())
+    results = hybrid.predict(BBOX, "api_key")
 
-    def test_predict_area_of_interest_with_analysis(self) -> None:
-        now = datetime.now(timezone.utc)
-        aoi = AreaOfInterest("Port Area", BBOX, id=1)
-        repo = MockAOIRepository([aoi])
-        predictor = MockPassPredictor([{"time": (now + timedelta(hours=2)).isoformat(), "max_elevation": 60}])
-        analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
+    assert len(results) == 2
+    assert results[0]["source"] == "N2YO"
+    assert results[1]["source"] == "HISTORICAL_MISSION"
 
-        use_case = PredictAreaOfInterest(repo, predictor, analyzer)
-        result = use_case.execute_with_analysis(1, "key")
 
-        self.assertEqual(result["aoi_id"], 1)
-        self.assertTrue(len(result["predictions"]) >= 1)
-        self.assertIsNotNone(result["mission_analysis"])
-        self.assertEqual(len(repo.updates), 1)
+def test_analyze_mission_passes_use_case() -> None:
+    aoi = AreaOfInterest("Singapore Strait", BBOX, id=1)
+    repo = MockAOIRepository([aoi])
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
+    use_case = AnalyzeMissionPasses(repo, analyzer)
 
-    def test_check_and_schedule_aois_executes_1_minute_cadence_ais_scraping_during_flypast(self) -> None:
-        now = datetime.now(timezone.utc)
-        # Flypast active right now: pass is in 2 minutes
-        active_pass_time = now + timedelta(minutes=2)
-        aoi = AreaOfInterest("Active AOI", BBOX, id=1, auto_capture_enabled=True)
-        repo = MockAOIRepository([aoi])
-        predictor = MockPassPredictor([{"time": active_pass_time.isoformat()}])
-        mock_ingest = MockIngestAIS()
+    result = use_case.execute(1)
+    assert result["aoi_id"] == 1
+    assert result["name"] == "Singapore Strait"
+    assert "mission_analysis" in result
 
-        scheduler = CheckAndScheduleAOIs(repo, predictor, ingest_ais=mock_ingest)
-        results = scheduler.execute("api_key")
 
-        self.assertEqual(len(results), 1)
-        self.assertTrue(results[0]["flypast_active"])
-        self.assertEqual(results[0]["status"], "FLYPAST_ACTIVE")
-        self.assertEqual(results[0]["ais_records"], 12)
-        self.assertEqual(len(mock_ingest.calls), 1)
+def test_predict_area_of_interest_with_analysis() -> None:
+    now = datetime.now(timezone.utc)
+    aoi = AreaOfInterest("Port Area", BBOX, id=1)
+    repo = MockAOIRepository([aoi])
+    predictor = MockPassPredictor([{"time": (now + timedelta(hours=2)).isoformat(), "max_elevation": 60}])
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
+
+    use_case = PredictAreaOfInterest(repo, predictor, analyzer)
+    result = use_case.execute_with_analysis(1, "key")
+
+    assert result["aoi_id"] == 1
+    assert len(result["predictions"]) >= 1
+    assert result["mission_analysis"] is not None
+    assert len(repo.updates) == 1
+
+
+def test_check_and_schedule_aois_executes_1_minute_cadence_ais_scraping_during_flypast() -> None:
+    now = datetime.now(timezone.utc)
+    active_pass_time = now + timedelta(minutes=2)
+    aoi = AreaOfInterest("Active AOI", BBOX, id=1, auto_capture_enabled=True)
+    repo = MockAOIRepository([aoi])
+    predictor = MockPassPredictor([{"time": active_pass_time.isoformat()}])
+    mock_ingest = MockIngestAIS()
+
+    scheduler = CheckAndScheduleAOIs(repo, predictor, ingest_ais=mock_ingest)
+    results = scheduler.execute("api_key")
+
+    assert len(results) == 1
+    assert results[0]["flypast_active"] is True
+    assert results[0]["status"] == "FLYPAST_ACTIVE"
+    assert results[0]["ais_records"] == 12
+    assert len(mock_ingest.calls) == 1
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+

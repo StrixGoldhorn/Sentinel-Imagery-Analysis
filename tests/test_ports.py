@@ -121,34 +121,43 @@ class CompleteAdapter:
 
 
 
-class ApplicationPortTests(unittest.TestCase):
-    def test_ports_support_structural_runtime_checks(self) -> None:
-        adapter = CompleteAdapter()
-        ports = (
-            AISPlugin,
-            AISPluginRegistry,
-            AISRepository,
-            AreaOfInterestRepository,
-            AnnotationEditor,
-            AnnotationProgressRepository,
-            AnnotationTileSource,
-            ImageStitcher,
-            ImageryProvider,
-            LocationResolver,
-            PassPredictor,
-            ScanRepository,
-            ShipDetector,
-            TaskQueue,
-            TileCache,
-        )
+def test_ports_support_structural_runtime_checks() -> None:
+    adapter = CompleteAdapter()
+    ports = (
+        AISPlugin,
+        AISPluginRegistry,
+        AISRepository,
+        AreaOfInterestRepository,
+        AnnotationEditor,
+        AnnotationProgressRepository,
+        AnnotationTileSource,
+        ImageStitcher,
+        ImageryProvider,
+        LocationResolver,
+        PassPredictor,
+        ScanRepository,
+        ShipDetector,
+        TaskQueue,
+        TileCache,
+    )
 
-        for port in ports:
-            with self.subTest(port=port.__name__):
-                self.assertIsInstance(adapter, port)
+    for port in ports:
+        assert isinstance(adapter, port), f"Adapter does not implement {port.__name__}"
 
-    def test_incomplete_adapter_fails_runtime_contract(self) -> None:
-        self.assertNotIsInstance(object(), ImageryProvider)
+
+def test_incomplete_adapter_fails_runtime_contract() -> None:
+    assert not isinstance(object(), ImageryProvider)
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+

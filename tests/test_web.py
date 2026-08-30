@@ -82,218 +82,240 @@ class StubContainer:
 
 
 
-class WebInterfaceTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        output_root = RUNTIME / "output"
-        image_path = output_root / "scan_1" / "images" / "scan.png"
-        image_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGBA", (10, 10), (255, 255, 255, 255)).save(image_path)
-        cls.settings = Settings(
-            project_root=Path(__file__).resolve().parents[1],
-            database_path=RUNTIME / "web.db",
-            output_root=output_root,
-            copernicus_username=None,
-            copernicus_password=None,
-            n2yo_api_key="key",
-        )
-        cls.scan = Scan(
-            "scan_1",
-            BBOX,
-            Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar"),
-            str(image_path),
-            {"custom_name": "Test scan"},
-        )
-
-    def make_client(self):
-        container = StubContainer(self.settings, self.scan)
-        app = create_app(container=container)
-        app.config["TESTING"] = True
-        return app.test_client(), container
-
-    def test_factory_uses_injected_container_settings_and_rejects_mismatch(self) -> None:
-        container = StubContainer(self.settings, self.scan)
-        app = create_app(container=container)
-
-        self.assertIs(app.extensions["sentinel_container"], container)
-        different = Settings(
-            project_root=self.settings.project_root,
-            database_path=self.settings.database_path,
-            output_root=self.settings.output_root,
-            copernicus_username=None,
-            copernicus_password=None,
-            n2yo_api_key=None,
-        )
-        with self.assertRaises(ValueError):
-            create_app(different, container)
-
-    def test_json_boundary_rejects_malformed_non_object_and_wrong_media_type(self) -> None:
-        client, _ = self.make_client()
-
-        self.assertEqual(client.post("/scan", data="{", content_type="application/json").status_code, 400)
-        self.assertEqual(client.post("/scan", json=[]).status_code, 400)
-        self.assertEqual(client.post("/scan", json={"bbox": None}).status_code, 400)
-        self.assertEqual(client.post("/scan", data="bbox=1").status_code, 415)
-
-    def test_create_scan_returns_created_response_and_external_media_url(self) -> None:
-        client, _ = self.make_client()
-
-        response = client.post("/scan", json={"bbox": BBOX.as_list()})
-
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json["imageUrl"], "/media/scans/scan_1/images/scan.png")
-        media = client.get(response.json["imageUrl"])
-        try:
-            self.assertEqual(media.status_code, 200)
-            self.assertEqual(media.mimetype, "image/png")
-        finally:
-            media.close()
-
-    def test_expected_failures_are_mapped_to_stable_http_statuses(self) -> None:
-        client, container = self.make_client()
-        container.create_scan.error = NoImageryFoundError("none found")
-        self.assertEqual(client.post("/scan", json={"bbox": BBOX.as_list()}).status_code, 404)
-
-        container.create_scan.error = ExternalServiceError("provider down")
-        self.assertEqual(client.post("/scan", json={"bbox": BBOX.as_list()}).status_code, 502)
-
-        container.get_scan.error = ScanNotFoundError("missing")
-        self.assertEqual(client.get("/api/scan/missing").status_code, 404)
-
-    def test_unexpected_errors_are_logged_but_not_exposed(self) -> None:
-        client, container = self.make_client()
-        container.create_scan.error = RuntimeError("sensitive implementation detail")
-
-        response = client.post("/scan", json={"bbox": BBOX.as_list()})
-
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.json, {"error": "Internal server error"})
-        self.assertNotIn("sensitive", response.get_data(as_text=True))
-
-    def test_route_fields_are_strictly_typed_and_folder_names_are_not_rewritten(self) -> None:
-        client, _ = self.make_client()
-
-        self.assertEqual(
-            client.post("/api/update_metadata/scan_1", json={"custom_name": 42}).status_code,
-            400,
-        )
-        self.assertEqual(client.post("/api/run_cv/scan_1", json={"threshold": True}).status_code, 400)
-        self.assertEqual(client.post("/api/run_cv/scan_1", json={"threshold": 40.5}).status_code, 400)
-        self.assertEqual(client.get("/api/scan/bad%20name").status_code, 400)
-
-    def test_aoi_and_ais_routes_apply_request_contracts(self) -> None:
-        client, container = self.make_client()
-
-        created = client.post("/api/aoi", json={"name": " Harbour ", "bbox": BBOX.as_list()})
-        self.assertEqual(created.status_code, 201)
-        self.assertEqual(container.add_aoi.calls[0][0], "Harbour")
-        self.assertEqual(client.post("/api/aoi", json={"name": 3, "bbox": BBOX.as_list()}).status_code, 400)
-        self.assertEqual(
-            client.post("/api/ingest_ais", json={"bbox": BBOX.as_list(), "plugin": 3}).status_code,
-            400,
-        )
-
-    def test_security_headers_are_applied_to_json_responses(self) -> None:
-        client, _ = self.make_client()
-
-        response = client.get("/api/aoi")
-
-        self.assertEqual(response.headers["X-Content-Type-Options"], "nosniff")
-        self.assertEqual(response.headers["X-Frame-Options"], "SAMEORIGIN")
-        self.assertEqual(response.headers["Cache-Control"], "no-store")
-
-    def test_async_task_and_crop_routes(self) -> None:
-        client, _ = self.make_client()
-
-        # Submit async task
-        async_res = client.post("/api/tasks/scan", json={"bbox": BBOX.as_list()})
-        self.assertEqual(async_res.status_code, 202)
-        task_id = async_res.json["task_id"]
-        self.assertEqual(task_id, "task_123")
-
-        # Get task status
-        status_res = client.get(f"/api/tasks/{task_id}")
-        self.assertEqual(status_res.status_code, 200)
-        self.assertEqual(status_res.json["task_id"], "task_123")
-
-        # Get detection crop
-        crop_res = client.get("/api/scan/scan_1/crop?x=0&y=0&width=5&height=5&padding=2")
-        self.assertEqual(crop_res.status_code, 200)
-        self.assertIn("data_uri", crop_res.json)
-        self.assertIn("stats", crop_res.json)
-
-    def test_templates_escape_dynamic_values_in_browser_generated_markup(self) -> None:
-        client, _ = self.make_client()
-        notifs = (self.settings.project_root / "static" / "js" / "notifications.js").read_text(encoding="utf-8")
-        app_js = (self.settings.project_root / "static" / "js" / "app.js").read_text(encoding="utf-8")
-
-        self.assertEqual(client.get("/gallery").status_code, 200)
-        self.assertIn("function escapeHtml(value)", notifs)
-        self.assertIn("div.textContent = item.display_name", app_js)
-        self.assertNotIn("div.innerHTML = item.display_name", app_js)
-
-    def test_delete_scan_route_success_and_error_handling(self) -> None:
-        client, container = self.make_client()
-
-        # Successful DELETE
-        res = client.delete("/api/scan/scan_1")
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json["status"], "success")
-        self.assertEqual(container.delete_scan.calls[-1], ("scan_1",))
-
-        # Successful POST /api/scan/<folder>/delete
-        res_post = client.post("/api/scan/scan_1/delete")
-        self.assertEqual(res_post.status_code, 200)
-        self.assertEqual(res_post.json["status"], "success")
-
-        # Scan not found -> 404
-        container.delete_scan.error = ScanNotFoundError("missing")
-        res_404 = client.delete("/api/scan/missing")
-        self.assertEqual(res_404.status_code, 404)
-
-        # Invalid folder name -> 400
-        res_400 = client.delete("/api/scan/invalid%20name")
-        self.assertEqual(res_400.status_code, 400)
-
-    def test_aois_page_route_renders_successfully(self) -> None:
-        client, _ = self.make_client()
-        response = client.get("/aois")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Areas of Interest", response.get_data(as_text=True))
-        self.assertIn("/static/js/aois_page.js", response.get_data(as_text=True))
-
-    def test_force_ais_scan_route(self) -> None:
-        client, container = self.make_client()
-        response = client.post("/api/aoi/1/force_ais_scan", json={"force": True})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["status"], "success")
-        self.assertTrue(response.json["forced"])
-        self.assertEqual(container.scrape_aoi_ais.calls[-1], (1,))
-        self.assertTrue(container.scrape_aoi_ais.keyword_calls[-1].get("force_now"))
-
-    def test_list_vessels_route(self) -> None:
-        client, container = self.make_client()
-        response = client.get("/api/ais/vessels?bbox=103.8,1.2,103.9,1.3&latest_only=true&limit=50")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["status"], "success")
-        self.assertEqual(response.json["count"], 1)
-        self.assertEqual(response.json["vessels"][0]["name"], "PACIFIC TRADER")
-        self.assertEqual(response.json["vessels"][0]["type"], "Cargo")
-
-    def test_ais_timeline_route(self) -> None:
-        client, _ = self.make_client()
-        response = client.get("/api/ais/timeline")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["status"], "success")
-        self.assertIn("min_timestamp", response.json)
-        self.assertIn("max_timestamp", response.json)
-        self.assertIn("total_records", response.json)
-        self.assertIn("count", response.json)
+def _get_test_context():
+    output_root = RUNTIME / "output"
+    image_path = output_root / "scan_1" / "images" / "scan.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGBA", (10, 10), (255, 255, 255, 255)).save(image_path)
+    settings = Settings(
+        project_root=Path(__file__).resolve().parents[1],
+        database_path=RUNTIME / "web.db",
+        output_root=output_root,
+        copernicus_username=None,
+        copernicus_password=None,
+        n2yo_api_key="key",
+    )
+    scan = Scan(
+        "scan_1",
+        BBOX,
+        Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar"),
+        str(image_path),
+        {"custom_name": "Test scan"},
+    )
+    return settings, scan
 
 
+def make_client():
+    settings, scan = _get_test_context()
+    container = StubContainer(settings, scan)
+    app = create_app(container=container)
+    app.config["TESTING"] = True
+    return app.test_client(), container, settings, scan
+
+
+def test_factory_uses_injected_container_settings_and_rejects_mismatch() -> None:
+    settings, scan = _get_test_context()
+    container = StubContainer(settings, scan)
+    app = create_app(container=container)
+
+    assert app.extensions["sentinel_container"] is container
+    different = Settings(
+        project_root=settings.project_root,
+        database_path=settings.database_path,
+        output_root=settings.output_root,
+        copernicus_username=None,
+        copernicus_password=None,
+        n2yo_api_key=None,
+    )
+    try:
+        create_app(different, container)
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_json_boundary_rejects_malformed_non_object_and_wrong_media_type() -> None:
+    client, _, _, _ = make_client()
+
+    assert client.post("/scan", data="{", content_type="application/json").status_code == 400
+    assert client.post("/scan", json=[]).status_code == 400
+    assert client.post("/scan", json={"bbox": None}).status_code == 400
+    assert client.post("/scan", data="bbox=1").status_code == 415
+
+
+def test_create_scan_returns_created_response_and_external_media_url() -> None:
+    client, _, _, _ = make_client()
+
+    response = client.post("/scan", json={"bbox": BBOX.as_list()})
+
+    assert response.status_code == 201
+    assert response.json["imageUrl"] == "/media/scans/scan_1/images/scan.png"
+    media = client.get(response.json["imageUrl"])
+    try:
+        assert media.status_code == 200
+        assert media.mimetype == "image/png"
+    finally:
+        media.close()
+
+
+def test_expected_failures_are_mapped_to_stable_http_statuses() -> None:
+    client, container, _, _ = make_client()
+    container.create_scan.error = NoImageryFoundError("none found")
+    assert client.post("/scan", json={"bbox": BBOX.as_list()}).status_code == 404
+
+    container.create_scan.error = ExternalServiceError("provider down")
+    assert client.post("/scan", json={"bbox": BBOX.as_list()}).status_code == 502
+
+    container.get_scan.error = ScanNotFoundError("missing")
+    assert client.get("/api/scan/missing").status_code == 404
+
+
+def test_unexpected_errors_are_logged_but_not_exposed() -> None:
+    client, container, _, _ = make_client()
+    container.create_scan.error = RuntimeError("sensitive implementation detail")
+
+    response = client.post("/scan", json={"bbox": BBOX.as_list()})
+
+    assert response.status_code == 500
+    assert response.json == {"error": "Internal server error"}
+    assert "sensitive" not in response.get_data(as_text=True)
+
+
+def test_route_fields_are_strictly_typed_and_folder_names_are_not_rewritten() -> None:
+    client, _, _, _ = make_client()
+
+    assert client.post("/api/update_metadata/scan_1", json={"custom_name": 42}).status_code == 400
+    assert client.post("/api/run_cv/scan_1", json={"threshold": True}).status_code == 400
+    assert client.post("/api/run_cv/scan_1", json={"threshold": 40.5}).status_code == 400
+    assert client.get("/api/scan/bad%20name").status_code == 400
+
+
+def test_aoi_and_ais_routes_apply_request_contracts() -> None:
+    client, container, _, _ = make_client()
+
+    created = client.post("/api/aoi", json={"name": " Harbour ", "bbox": BBOX.as_list()})
+    assert created.status_code == 201
+    assert container.add_aoi.calls[0][0] == "Harbour"
+    assert client.post("/api/aoi", json={"name": 3, "bbox": BBOX.as_list()}).status_code == 400
+    assert client.post("/api/ingest_ais", json={"bbox": BBOX.as_list(), "plugin": 3}).status_code == 400
+
+
+def test_security_headers_are_applied_to_json_responses() -> None:
+    client, _, _, _ = make_client()
+
+    response = client.get("/api/aoi")
+
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert response.headers["Cache-Control"] == "no-store"
+
+
+def test_async_task_and_crop_routes() -> None:
+    client, _, _, _ = make_client()
+
+    # Submit async task
+    async_res = client.post("/api/tasks/scan", json={"bbox": BBOX.as_list()})
+    assert async_res.status_code == 202
+    task_id = async_res.json["task_id"]
+    assert task_id == "task_123"
+
+    # Get task status
+    status_res = client.get(f"/api/tasks/{task_id}")
+    assert status_res.status_code == 200
+    assert status_res.json["task_id"] == "task_123"
+
+    # Get detection crop
+    crop_res = client.get("/api/scan/scan_1/crop?x=0&y=0&width=5&height=5&padding=2")
+    assert crop_res.status_code == 200
+    assert "data_uri" in crop_res.json
+    assert "stats" in crop_res.json
+
+
+def test_templates_escape_dynamic_values_in_browser_generated_markup() -> None:
+    client, _, settings, _ = make_client()
+    notifs = (settings.project_root / "static" / "js" / "notifications.js").read_text(encoding="utf-8")
+    app_js = (settings.project_root / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+    assert client.get("/gallery").status_code == 200
+    assert "function escapeHtml(value)" in notifs
+    assert "div.textContent = item.display_name" in app_js
+    assert "div.innerHTML = item.display_name" not in app_js
+
+
+def test_delete_scan_route_success_and_error_handling() -> None:
+    client, container, _, _ = make_client()
+
+    # Successful DELETE
+    res = client.delete("/api/scan/scan_1")
+    assert res.status_code == 200
+    assert res.json["status"] == "success"
+    assert container.delete_scan.calls[-1] == ("scan_1",)
+
+    # Successful POST /api/scan/<folder>/delete
+    res_post = client.post("/api/scan/scan_1/delete")
+    assert res_post.status_code == 200
+    assert res_post.json["status"] == "success"
+
+    # Scan not found -> 404
+    container.delete_scan.error = ScanNotFoundError("missing")
+    res_404 = client.delete("/api/scan/missing")
+    assert res_404.status_code == 404
+
+    # Invalid folder name -> 400
+    res_400 = client.delete("/api/scan/invalid%20name")
+    assert res_400.status_code == 400
+
+
+def test_aois_page_route_renders_successfully() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/aois")
+    assert response.status_code == 200
+    assert "Areas of Interest" in response.get_data(as_text=True)
+    assert "/static/js/aois_page.js" in response.get_data(as_text=True)
+
+
+def test_force_ais_scan_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/aoi/1/force_ais_scan", json={"force": True})
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["forced"] is True
+    assert container.scrape_aoi_ais.calls[-1] == (1,)
+    assert container.scrape_aoi_ais.keyword_calls[-1].get("force_now") is True
+
+
+def test_list_vessels_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/ais/vessels?bbox=103.8,1.2,103.9,1.3&latest_only=true&limit=50")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["count"] == 1
+    assert response.json["vessels"][0]["name"] == "PACIFIC TRADER"
+    assert response.json["vessels"][0]["type"] == "Cargo"
+
+
+def test_ais_timeline_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/ais/timeline")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert "min_timestamp" in response.json
+    assert "max_timestamp" in response.json
+    assert "total_records" in response.json
+    assert "count" in response.json
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

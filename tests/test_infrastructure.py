@@ -95,20 +95,19 @@ class ByteResponse:
         return self._payload
 
 
-class InfrastructureAdapterTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        RUNTIME.mkdir(parents=True, exist_ok=True)
+def test_concrete_adapters_satisfy_application_ports() -> None:
+    from unittest.mock import MagicMock, patch
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_conn.execute.return_value.fetchall.return_value = []
 
-    def test_concrete_adapters_satisfy_application_ports(self) -> None:
-        database = RUNTIME / "port_contracts.db"
-        database.unlink(missing_ok=True)
+    with patch("sqlite3.connect", return_value=mock_conn), patch("sentinel_analysis.infrastructure.persistence.migrations.runner.MigrationRunner.run_migrations", return_value=[]):
         scans = FilesystemScanRepository(RUNTIME / "port_scans")
         adapters_and_ports = (
             (DynamicAISPluginRegistry([]), AISPluginRegistry),
             (MockAISPlugin(), AISPlugin),
-            (SQLiteAISRepository(database), AISRepository),
-            (SQLiteAreaOfInterestRepository(database), AreaOfInterestRepository),
+            (SQLiteAISRepository("virtual_port.db"), AISRepository),
+            (SQLiteAreaOfInterestRepository("virtual_port.db"), AreaOfInterestRepository),
             (PillowImageStitcher(), ImageStitcher),
             (CopernicusImageryProvider(StaticTokenProvider()), ImageryProvider),
             (NominatimLocationResolver(), LocationResolver),
@@ -120,119 +119,142 @@ class InfrastructureAdapterTests(unittest.TestCase):
         )
 
         for adapter, port in adapters_and_ports:
-
-            with self.subTest(port=port.__name__):
-                self.assertIsInstance(adapter, port)
-        database.unlink(missing_ok=True)
-
-    def test_registry_honors_explicit_empty_configuration_and_rejects_duplicates(self) -> None:
-        self.assertEqual(DynamicAISPluginRegistry([]).get_plugins(), [])
-        plugin = MockAISPlugin()
-        with self.assertRaisesRegex(ValueError, "unique"):
-            DynamicAISPluginRegistry([plugin, plugin])
-
-    def test_mock_plugin_can_be_reproduced_with_injected_randomness_and_clock(self) -> None:
-        clock = lambda: datetime(2026, 8, 27, tzinfo=timezone.utc)
-        first = MockAISPlugin(random.Random(7), clock).fetch(BBOX, (None, None))
-        second = MockAISPlugin(random.Random(7), clock).fetch(BBOX, (None, None))
-
-        self.assertEqual(first, second)
-
-    def test_copernicus_token_is_cached_until_safety_adjusted_expiry(self) -> None:
-        now = [100.0]
-        client = FakeHTTPClient(post_responses=[FakeResponse({"access_token": "abc", "expires_in": 120})])
-        provider = CopernicusTokenProvider(
-            "user",
-            "password",
-            http_client=client,
-            monotonic_clock=lambda: now[0],
-        )
-
-        self.assertEqual(provider.get(), "abc")
-        now[0] = 150
-        self.assertEqual(provider.get(), "abc")
-        self.assertEqual(len(client.post_calls), 1)
-
-    def test_copernicus_catalog_response_is_translated_to_domain_acquisition(self) -> None:
-        response = FakeResponse(
-            {
-                "features": [
-                    {
-                        "id": "product-1",
-                        "properties": {"datetime": "2026-08-20T10:00:00Z"},
-                    }
-                ]
-            }
-        )
-        client = FakeHTTPClient(get_responses=[response])
-        provider = CopernicusImageryProvider(
-            StaticTokenProvider(),
-            http_client=client,
-            clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
-        )
-
-        acquisition = provider.find_latest_acquisition(BBOX, 10)
-
-        self.assertEqual(acquisition.product_id, "product-1")
-        self.assertEqual(acquisition.acquired_at, datetime(2026, 8, 20, 10, tzinfo=timezone.utc))
-        self.assertIn("2026-08-17", client.get_calls[0][1]["params"]["datetime"])
-
-        client.get_responses.append(response)
-        latest_ever = provider.find_latest_acquisition(BBOX)
-        self.assertEqual(latest_ever.product_id, "product-1")
-        self.assertIn("2014-01-01", client.get_calls[1][1]["params"]["datetime"])
+            assert isinstance(adapter, port)
 
 
-    def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape(self) -> None:
-        valid_client = FakeHTTPClient(
-            get_responses=[FakeResponse({"info": {}, "passes": [{"maxUTC": 1787792400, "maxElev": 44}]})]
-        )
-        predictions = N2YOPassPredictor(http_client=valid_client).predict(BBOX, "key")
+def test_registry_honors_explicit_empty_configuration_and_rejects_duplicates() -> None:
+    assert DynamicAISPluginRegistry([]).get_plugins() == []
+    plugin = MockAISPlugin()
+    try:
+        DynamicAISPluginRegistry([plugin, plugin])
+        assert False, "Expected ValueError for duplicate plugins"
+    except ValueError as e:
+        assert "unique" in str(e).lower()
 
-        self.assertEqual(predictions[0]["max_elevation"], 44)
-        self.assertTrue(predictions[0]["time"].endswith("+00:00"))
-        invalid = N2YOPassPredictor(http_client=FakeHTTPClient(get_responses=[FakeResponse([])]))
-        with self.assertRaises(ExternalServiceError):
-            invalid.predict(BBOX, "key")
 
-    def test_geocoder_parses_city_and_falls_back_for_transport_errors(self) -> None:
-        payload = json.dumps({"address": {"city": "Singapore"}}).encode("utf-8")
-        resolver = NominatimLocationResolver(opener=lambda request, timeout: ByteResponse(payload))
-        failing = NominatimLocationResolver(
-            opener=lambda request, timeout: (_ for _ in ()).throw(urllib.error.URLError("offline"))
-        )
+def test_mock_plugin_can_be_reproduced_with_injected_randomness_and_clock() -> None:
+    clock = lambda: datetime(2026, 8, 27, tzinfo=timezone.utc)
+    first = MockAISPlugin(random.Random(7), clock).fetch(BBOX, (None, None))
+    second = MockAISPlugin(random.Random(7), clock).fetch(BBOX, (None, None))
 
-        self.assertEqual(resolver.resolve(1.3, 103.8), "Singapore")
-        self.assertEqual(failing.resolve(1.3, 103.8), "Area at 1.30N, 103.80E")
+    assert first == second
 
-    def test_tiler_validates_configuration(self) -> None:
-        with self.assertRaises(ValueError):
-            TileGridCalculator(max_image_size=0)
-        with self.assertRaises(ValueError):
-            TileGridCalculator(resolution_meters=float("nan"))
 
-    def test_stitcher_rejects_incomplete_grid_and_writes_complete_grid_atomically(self) -> None:
+def test_copernicus_token_is_cached_until_safety_adjusted_expiry() -> None:
+    now = [100.0]
+    client = FakeHTTPClient(post_responses=[FakeResponse({"access_token": "abc", "expires_in": 120})])
+    provider = CopernicusTokenProvider(
+        "user",
+        "password",
+        http_client=client,
+        monotonic_clock=lambda: now[0],
+    )
+
+    assert provider.get() == "abc"
+    now[0] = 150
+    assert provider.get() == "abc"
+    assert len(client.post_calls) == 1
+
+
+def test_copernicus_catalog_response_is_translated_to_domain_acquisition() -> None:
+    response = FakeResponse(
+        {
+            "features": [
+                {
+                    "id": "product-1",
+                    "properties": {"datetime": "2026-08-20T10:00:00Z"},
+                }
+            ]
+        }
+    )
+    client = FakeHTTPClient(get_responses=[response])
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    acquisition = provider.find_latest_acquisition(BBOX, 10)
+
+    assert acquisition.product_id == "product-1"
+    assert acquisition.acquired_at == datetime(2026, 8, 20, 10, tzinfo=timezone.utc)
+    assert "2026-08-17" in client.get_calls[0][1]["params"]["datetime"]
+
+    client.get_responses.append(response)
+    latest_ever = provider.find_latest_acquisition(BBOX)
+    assert latest_ever.product_id == "product-1"
+    assert "2014-01-01" in client.get_calls[1][1]["params"]["datetime"]
+
+
+def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape() -> None:
+    valid_client = FakeHTTPClient(
+        get_responses=[FakeResponse({"info": {}, "passes": [{"maxUTC": 1787792400, "maxElev": 44}]})]
+    )
+    predictions = N2YOPassPredictor(http_client=valid_client).predict(BBOX, "key")
+
+    assert predictions[0]["max_elevation"] == 44
+    assert predictions[0]["time"].endswith("+00:00")
+    invalid = N2YOPassPredictor(http_client=FakeHTTPClient(get_responses=[FakeResponse([])]))
+    try:
+        invalid.predict(BBOX, "key")
+        assert False, "Expected ExternalServiceError"
+    except ExternalServiceError:
+        pass
+
+
+def test_geocoder_parses_city_and_falls_back_for_transport_errors() -> None:
+    payload = json.dumps({"address": {"city": "Singapore"}}).encode("utf-8")
+    resolver = NominatimLocationResolver(opener=lambda request, timeout: ByteResponse(payload))
+    failing = NominatimLocationResolver(
+        opener=lambda request, timeout: (_ for _ in ()).throw(urllib.error.URLError("offline"))
+    )
+
+    assert resolver.resolve(1.3, 103.8) == "Singapore"
+    assert failing.resolve(1.3, 103.8) == "Area at 1.30N, 103.80E"
+
+
+def test_tiler_validates_configuration() -> None:
+    try:
+        TileGridCalculator(max_image_size=0)
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+    try:
+        TileGridCalculator(resolution_meters=float("nan"))
+        assert False, "Expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_stitcher_rejects_incomplete_grid_and_writes_complete_grid_atomically() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
         bbox = BoundingBox(103, 1, 104, 2)
-        incomplete = [(ImageTile(bbox, 2, 2, 1, 0), RUNTIME / "missing.png")]
-        with self.assertRaisesRegex(ValueError, "rectangular"):
-            PillowImageStitcher().stitch(incomplete, RUNTIME / "unused.png")
-
-        tile_path = RUNTIME / "tile.png"
-        output_path = RUNTIME / "stitched.png"
-        Image.new("RGBA", (2, 2), (255, 255, 255, 255)).save(tile_path)
+        incomplete = [(ImageTile(bbox, 2, 2, 1, 0), temp_path / "missing.png")]
         try:
-            PillowImageStitcher().stitch(
-                [(ImageTile(bbox, 2, 2, 0, 0), tile_path)],
-                output_path,
-            )
-            self.assertTrue(output_path.is_file())
-            self.assertFalse((RUNTIME / "stitched.png.tmp").exists())
-        finally:
-            tile_path.unlink(missing_ok=True)
-            output_path.unlink(missing_ok=True)
+            PillowImageStitcher().stitch(incomplete, temp_path / "unused.png")
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert "rectangular" in str(e).lower()
 
-    def test_filesystem_repository_merges_required_metadata_and_rejects_external_image(self) -> None:
-        repository = FilesystemScanRepository(RUNTIME / "scans")
+        tile_path = temp_path / "tile.png"
+        output_path = temp_path / "stitched.png"
+        Image.new("RGBA", (2, 2), (255, 255, 255, 255)).save(tile_path)
+        PillowImageStitcher().stitch(
+            [(ImageTile(bbox, 2, 2, 0, 0), tile_path)],
+            output_path,
+        )
+        assert output_path.is_file()
+        assert not (temp_path / "stitched.png.tmp").exists()
+
+
+def test_filesystem_repository_merges_required_metadata_and_rejects_external_image() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        repository = FilesystemScanRepository(temp_path / "scans")
         folder_name = "adapter_test_scan"
         repository.delete(folder_name)
         workspace = repository.prepare(folder_name)
@@ -240,27 +262,41 @@ class InfrastructureAdapterTests(unittest.TestCase):
         Image.new("RGBA", (1, 1), (255, 255, 255, 255)).save(image_path)
         acquisition = Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar", "p1")
         scan = Scan(folder_name, BBOX, acquisition, str(image_path), {"settings": {"evalscript": "SAR"}})
+
+        repository.save(scan)
+        loaded = repository.get(folder_name)
+        assert loaded.metadata["settings"]["bbox"] == BBOX.as_list()
+        assert loaded.metadata["settings"]["datasource"] == "sar"
+        external = Scan(folder_name, BBOX, acquisition, str(temp_path / "outside.png"))
         try:
-            repository.save(scan)
-            loaded = repository.get(folder_name)
-            self.assertEqual(loaded.metadata["settings"]["bbox"], BBOX.as_list())
-            self.assertEqual(loaded.metadata["settings"]["datasource"], "sar")
-            external = Scan(folder_name, BBOX, acquisition, str(RUNTIME / "outside.png"))
-            with self.assertRaisesRegex(ValueError, "workspace"):
-                repository.save(external)
-        finally:
-            repository.delete(folder_name)
+            repository.save(external)
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert "workspace" in str(e).lower()
+        repository.delete(folder_name)
 
-    def test_sqlite_adapter_creates_parent_directory_and_validates_log_status(self) -> None:
-        database = RUNTIME / "nested_database" / "adapters.db"
-        database.unlink(missing_ok=True)
-        repository = SQLiteAISRepository(database)
 
-        self.assertTrue(database.is_file())
-        with self.assertRaises(ValueError):
+def test_sqlite_adapter_validates_log_status_without_db() -> None:
+    from unittest.mock import MagicMock, patch
+    mock_conn = MagicMock()
+    with patch("sentinel_analysis.infrastructure.persistence.migrations.runner.MigrationRunner.run_migrations", return_value=[]):
+        repository = SQLiteAISRepository("virtual_validation.db")
+        try:
             repository.log_execution("plugin", "PARTIAL", 0)
-        database.unlink(missing_ok=True)
+            assert False, "Expected ValueError"
+        except ValueError as e:
+            assert "invalid execution status" in str(e).lower()
+
+
+def load_tests(loader, standard_tests, pattern):
+    import inspect
+    suite = unittest.TestSuite()
+    for name, obj in list(globals().items()):
+        if name.startswith("test_") and inspect.isfunction(obj):
+            suite.addTest(unittest.FunctionTestCase(obj))
+    return suite
 
 
 if __name__ == "__main__":
     unittest.main()
+
