@@ -248,9 +248,10 @@ class ShipDetection:
 class BackgroundTask:
     task_id: str
     task_type: str
-    status: str
+    status: str = "PENDING"
     progress: float = 0.0
     message: str = ""
+    scan_id: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     result: Optional[dict[str, object]] = None
@@ -265,6 +266,8 @@ class BackgroundTask:
             raise DomainValidationError("Task progress must be between 0.0 and 100.0")
         object.__setattr__(self, "progress", progress)
         object.__setattr__(self, "message", str(self.message or "").strip())
+        if self.scan_id is not None:
+            object.__setattr__(self, "scan_id", _optional_text(self.scan_id, "Scan ID"))
         if self.created_at is not None:
             object.__setattr__(self, "created_at", _utc_datetime(self.created_at, "Task created at"))
         if self.completed_at is not None:

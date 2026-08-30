@@ -124,7 +124,7 @@ class CLIInterfaceTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(use_case.calls[0][1], "configured-key")
-        self.assertIn("max elevation: 42", stdout.getvalue())
+        self.assertIn("max elev: 42°", stdout.getvalue())
 
     def test_commands_translate_expected_errors_to_stderr_and_exit_one(self) -> None:
         command = PredictCommand(

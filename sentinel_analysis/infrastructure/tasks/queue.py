@@ -37,6 +37,7 @@ class ThreadedTaskQueue:
             status="RUNNING",
             progress=0.0,
             message="Task initialized",
+            scan_id=task_id,
             created_at=datetime.now(timezone.utc),
         )
         with self._lock:
@@ -53,6 +54,7 @@ class ThreadedTaskQueue:
                         status="COMPLETED",
                         progress=100.0,
                         message="Task completed successfully",
+                        scan_id=task_id,
                         created_at=current.created_at if current else None,
                         completed_at=datetime.now(timezone.utc),
                         result=result if isinstance(result, dict) else {"data": result},
@@ -60,7 +62,6 @@ class ThreadedTaskQueue:
             except Exception as exc:
                 logger.exception("Background task %s (%s) failed", actual_id, task_type, exc_info=exc)
                 with self._lock:
-
                     current = self._tasks.get(actual_id)
                     self._tasks[actual_id] = BackgroundTask(
                         task_id=actual_id,
@@ -68,6 +69,7 @@ class ThreadedTaskQueue:
                         status="FAILED",
                         progress=current.progress if current else 0.0,
                         message=str(exc) or "Task execution failed",
+                        scan_id=task_id,
                         created_at=current.created_at if current else None,
                         completed_at=datetime.now(timezone.utc),
                         error=str(exc) or "Unknown error",

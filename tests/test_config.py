@@ -14,6 +14,7 @@ class SettingsTests(unittest.TestCase):
         environment = {
             "DATABASE_PATH": "runtime/app.db",
             "OUTPUT_ROOT": "runtime/output",
+            "CACHE_ROOT": "runtime/cache",
             "FLASK_DEBUG": " yes ",
             "PORT": "5051",
         }

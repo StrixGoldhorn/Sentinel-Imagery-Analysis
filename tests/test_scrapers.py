@@ -372,19 +372,19 @@ class ScrapersTestSuite(unittest.TestCase):
 
     def test_sqlite_ais_get_vessel_positions_filtering(self) -> None:
         from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
-        from sentinel_analysis.domain.entities import AISPosition, AISVessel
+        from sentinel_analysis.domain.entities import Vessel, VesselPosition
 
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "test_ais.db"
             repo = SQLiteAISRepository(db_path)
 
             # Insert 2 vessels
-            vessel1 = AISVessel(imo="9123456", mmsi="563000111", name="PACIFIC TRADER", vessel_type="Cargo", callsign="9V123")
-            pos1_old = AISPosition(mmsi="563000111", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10.5, heading=90.0)
-            pos1_new = AISPosition(mmsi="563000111", latitude=1.26, longitude=103.86, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=12.0, heading=95.0)
+            vessel1 = Vessel(imo="9123456", mmsi="563000111", name="PACIFIC TRADER", vessel_type="Cargo", callsign="9V123")
+            pos1_old = VesselPosition(mmsi="563000111", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10.5, heading=90.0)
+            pos1_new = VesselPosition(mmsi="563000111", latitude=1.26, longitude=103.86, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=12.0, heading=95.0)
 
-            vessel2 = AISVessel(imo="9654321", mmsi="563000222", name="OCEAN TANKER", vessel_type="Tanker", callsign="9V456")
-            pos2 = AISPosition(mmsi="563000222", latitude=2.50, longitude=104.50, timestamp=datetime(2026, 8, 30, 10, 3, tzinfo=timezone.utc), speed=14.0, heading=180.0)
+            vessel2 = Vessel(imo="9654321", mmsi="563000222", name="OCEAN TANKER", vessel_type="Tanker", callsign="9V456")
+            pos2 = VesselPosition(mmsi="563000222", latitude=2.50, longitude=104.50, timestamp=datetime(2026, 8, 30, 10, 3, tzinfo=timezone.utc), speed=14.0, heading=180.0)
 
             repo.save_records([AISRecord(vessel=vessel1, position=pos1_old)], "TestPlugin")
             repo.save_records([AISRecord(vessel=vessel1, position=pos1_new)], "TestPlugin")
@@ -436,12 +436,12 @@ class ScrapersTestSuite(unittest.TestCase):
         self.assertAlmostEqual(max_lat, large_bbox.max_latitude)
 
     def test_deduplicate_ais_records(self) -> None:
-        from sentinel_analysis.domain.entities import AISPosition, AISVessel
+        from sentinel_analysis.domain.entities import Vessel, VesselPosition
         from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records
 
-        vessel = AISVessel(imo="9123456", mmsi="563000111", name="VESSEL A", vessel_type="Cargo", callsign=None)
-        rec_old = AISRecord(vessel=vessel, position=AISPosition(mmsi="563000111", latitude=1.2, longitude=103.8, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10, heading=90))
-        rec_new = AISRecord(vessel=vessel, position=AISPosition(mmsi="563000111", latitude=1.21, longitude=103.81, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=11, heading=95))
+        vessel = Vessel(imo="9123456", mmsi="563000111", name="VESSEL A", vessel_type="Cargo", callsign=None)
+        rec_old = AISRecord(vessel=vessel, position=VesselPosition(mmsi="563000111", latitude=1.2, longitude=103.8, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10, heading=90))
+        rec_new = AISRecord(vessel=vessel, position=VesselPosition(mmsi="563000111", latitude=1.21, longitude=103.81, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=11, heading=95))
 
         deduped = deduplicate_ais_records([rec_old, rec_new])
         self.assertEqual(len(deduped), 1)

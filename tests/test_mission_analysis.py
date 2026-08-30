@@ -115,8 +115,8 @@ class MissionAnalysisTests(unittest.TestCase):
 
     def test_analyzer_predicts_future_passes_using_12_day_repeat_cycle(self) -> None:
         now = datetime.now(timezone.utc)
-        # Place a historical pass exactly 12 days before now
-        hist_time = (now - timedelta(days=12)).replace(microsecond=0)
+        # Place a historical pass 10 days before now so the +12d projection falls 2 days in future
+        hist_time = (now - timedelta(days=10)).replace(microsecond=0)
 
         raw_records = [
             {

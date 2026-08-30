@@ -22,6 +22,7 @@ from sentinel_analysis.domain.entities import (
     Acquisition,
     AreaOfInterest,
     BoundingBox,
+    Scan,
     ShipDetection,
     Vessel,
     VesselPosition,
