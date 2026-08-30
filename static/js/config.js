@@ -32,5 +32,6 @@ const CONFIG = {
     API_TASK_STATUS: '/api/tasks',
     API_GET_SCAN: '/api/scan',
     API_AOI: '/api/aoi',
+    API_AIS_VESSELS: '/api/ais/vessels',
     NOTIFICATION_DURATION_MS: 3000
 };

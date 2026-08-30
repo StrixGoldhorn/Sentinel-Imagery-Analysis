@@ -88,6 +88,7 @@ function toggleAccordion(header) {
 document.addEventListener('DOMContentLoaded', async () => {
     initMap();
     initNauticalChart(map);
+    initAISVessels(map);
     initSearch();
     initScannerHandlers();
     initAoiHandlers();

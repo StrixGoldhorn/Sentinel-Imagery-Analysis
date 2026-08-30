@@ -2,6 +2,7 @@ from sentinel_analysis.application.use_cases.analyze_mission_passes import Analy
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.manage_aois import (
     AddAreaOfInterest,
@@ -31,6 +32,7 @@ __all__ = [
     "DeleteScan",
     "DetectShips",
     "GetScan",
+    "GetVesselPositions",
     "IngestAIS",
     "ListAreasOfInterest",
     "ListScans",

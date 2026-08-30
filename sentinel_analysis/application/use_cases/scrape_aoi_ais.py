@@ -40,6 +40,7 @@ class ScrapeAreaOfInterestAIS:
         plugin_name: str | None = None,
         pass_time: datetime | None = None,
         window_minutes: int = 5,
+        force_now: bool = False,
     ) -> IngestionResult:
         if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
             raise ValueError("Area-of-interest ID must be a positive integer")
@@ -48,8 +49,16 @@ class ScrapeAreaOfInterestAIS:
         if aoi is None:
             raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
 
-        target_pass = pass_time or aoi.next_scan or datetime.now(timezone.utc)
-        time_range = calculate_pass_window(target_pass, window_minutes=window_minutes)
+        if force_now or (pass_time is None and aoi.next_scan is None):
+            # Immediate live force-scan regardless of flyby / satellite pass
+            now = datetime.now(timezone.utc)
+            time_range = (now - timedelta(minutes=max(15, window_minutes)), now + timedelta(minutes=5))
+        elif pass_time is not None:
+            time_range = calculate_pass_window(pass_time, window_minutes=window_minutes)
+        elif aoi.next_scan is not None:
+            time_range = calculate_pass_window(aoi.next_scan, window_minutes=window_minutes)
+        else:
+            time_range = (None, None)
 
         return self._ingest_ais.execute(
             aoi.bbox,

@@ -1,8 +1,7 @@
-"""Persistence contract for normalized AIS records and ingestion logs."""
-
+from datetime import datetime
 from typing import Iterable, Protocol, runtime_checkable
 
-from sentinel_analysis.domain.entities import AISRecord
+from sentinel_analysis.domain.entities import AISRecord, BoundingBox
 
 
 @runtime_checkable
@@ -19,4 +18,13 @@ class AISRepository(Protocol):
         records_inserted: int,
         error_message: str | None = None,
     ) -> None:
+        ...
+
+    def get_vessel_positions(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        limit: int = 500,
+        latest_only: bool = True,
+    ) -> list[dict]:
         ...

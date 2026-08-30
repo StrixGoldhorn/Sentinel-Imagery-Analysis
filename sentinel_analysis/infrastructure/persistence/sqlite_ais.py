@@ -1,10 +1,9 @@
-"""SQLite implementation of the AIS repository port."""
-
-import sqlite3
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
+import sqlite3
 
-from sentinel_analysis.domain.entities import AISRecord
+from sentinel_analysis.domain.entities import AISRecord, BoundingBox
 from sentinel_analysis.infrastructure.persistence.migrations.runner import MigrationRunner
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
@@ -81,3 +80,93 @@ class SQLiteAISRepository:
                 """,
                 (plugin_name.strip(), status, records_inserted, error_message),
             )
+
+    def get_vessel_positions(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        limit: int = 500,
+        latest_only: bool = True,
+    ) -> list[dict]:
+        limit = max(1, min(int(limit), 2000))
+        params: list[object] = []
+
+        if latest_only:
+            query = """
+                SELECT 
+                    v.id as vessel_id,
+                    v.imo,
+                    v.mmsi,
+                    v.vessel_name,
+                    v.vessel_type,
+                    v.callsign,
+                    vl.latitude,
+                    vl.longitude,
+                    vl.speed,
+                    vl.heading,
+                    vl.timestamp,
+                    vl.source_plugin
+                FROM vessel_locations vl
+                JOIN vessels v ON vl.vessel_id = v.id
+                INNER JOIN (
+                    SELECT vessel_id, MAX(timestamp) as max_time
+                    FROM vessel_locations
+                    GROUP BY vessel_id
+                ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
+                WHERE 1=1
+            """
+        else:
+            query = """
+                SELECT 
+                    v.id as vessel_id,
+                    v.imo,
+                    v.mmsi,
+                    v.vessel_name,
+                    v.vessel_type,
+                    v.callsign,
+                    vl.latitude,
+                    vl.longitude,
+                    vl.speed,
+                    vl.heading,
+                    vl.timestamp,
+                    vl.source_plugin
+                FROM vessel_locations vl
+                JOIN vessels v ON vl.vessel_id = v.id
+                WHERE 1=1
+            """
+
+        if bbox is not None:
+            query += " AND vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?"
+            params.extend([bbox.min_lon, bbox.min_lat, bbox.max_lon, bbox.max_lat])
+
+        if time_range is not None:
+            start, end = time_range
+            if start is not None:
+                query += " AND vl.timestamp >= ?"
+                params.append(start.isoformat())
+            if end is not None:
+                query += " AND vl.timestamp <= ?"
+                params.append(end.isoformat())
+
+        query += " ORDER BY vl.timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        results: list[dict] = []
+        with self._database.connection() as connection:
+            cursor = connection.execute(query, tuple(params))
+            for row in cursor.fetchall():
+                results.append({
+                    "vessel_id": row[0],
+                    "imo": row[1],
+                    "mmsi": row[2],
+                    "name": row[3] or f"MMSI: {row[2]}",
+                    "type": row[4] or "Unspecified",
+                    "callsign": row[5],
+                    "latitude": float(row[6]),
+                    "longitude": float(row[7]),
+                    "speed": float(row[8]) if row[8] is not None else None,
+                    "heading": float(row[9]) if row[9] is not None else None,
+                    "timestamp": row[10],
+                    "source_plugin": row[11],
+                })
+        return results

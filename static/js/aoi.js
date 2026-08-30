@@ -60,9 +60,12 @@ async function loadAOIs() {
                         <strong>${safeAoiName}</strong>
                         ${nextScanText}
                     </div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 4px; flex-wrap: wrap;">
                         <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
-                        <button class="btn" style="padding: 4px 8px; font-size: 0.8em;" onclick="predictAOI(${aoi.id})">Predict Scan</button>
+                        <div style="display: flex; gap: 4px;">
+                            <button class="btn" style="padding: 3px 6px; font-size: 0.75em;" onclick="predictAOI(${aoi.id})">Predict</button>
+                            <button class="btn" style="padding: 3px 6px; font-size: 0.75em; background: #f39c12; color: white; border: none;" onclick="forceScanAOI(${aoi.id})" title="Force immediate AIS vessel scan regardless of flyby">Force AIS</button>
+                        </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8em; color: #444;">
                         <input type="checkbox" id="auto-cap-${aoi.id}" ${isAuto} onchange="toggleAutoCapture(${aoi.id}, this.checked)">
@@ -201,3 +204,28 @@ function initAoiHandlers() {
         }
     });
 }
+
+async function forceScanAOI(aoiId) {
+    try {
+        showNotification("Initiating immediate AIS vessel scan...", "info");
+        const res = await fetch(`/api/aoi/${aoiId}/force_ais_scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            const count = (data.results && data.results.total_inserted) || 0;
+            showNotification(`Force AIS scan complete: ${count} vessel records ingested!`, "success");
+            if (typeof refreshAISVessels === 'function' && typeof map !== 'undefined' && map) {
+                refreshAISVessels(map);
+            }
+        } else {
+            showNotification(`Force AIS scan failed: ${data.error || 'Unknown error'}`, "error");
+        }
+    } catch (err) {
+        console.error("Error running force AIS scan:", err);
+        showNotification("Failed to trigger force AIS scan.", "error");
+    }
+}
+

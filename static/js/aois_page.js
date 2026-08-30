@@ -92,6 +92,12 @@ function createAoiCard(aoi) {
                         Next 5 Flypasts ▾
                     </button>
                 </div>
+                <button class="btn btn-warning" id="btn-force-scan-${aoi.id}" onclick="forceScanAOIAIS(${aoi.id})" title="Force immediate AIS vessel scan regardless of satellite flypass timing">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                    </svg>
+                    Force AIS Scan Now (No Flyby Needed)
+                </button>
             </div>
 
             <div class="flypast-dropdown" id="flypasts-panel-${aoi.id}" style="display: none;">
@@ -278,6 +284,39 @@ async function scrapePassAIS(aoiId, passTime) {
     } catch (err) {
         console.error('Error scraping AIS:', err);
         showToast('Failed to trigger AIS scrape.', 'error');
+    }
+}
+
+async function forceScanAOIAIS(aoiId) {
+    const btn = document.getElementById(`btn-force-scan-${aoiId}`);
+    const originalContent = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading-spinner"></span> Scanning Ships...';
+    }
+
+    try {
+        showToast('Initiating immediate live AIS vessel scan...', 'info');
+        const res = await fetch(`/api/aoi/${aoiId}/force_ais_scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            const total = (data.results && data.results.total_inserted) || 0;
+            showToast(`Force AIS scan complete: ${total} vessel records ingested!`, 'success');
+        } else {
+            showToast('Force AIS scan failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        console.error('Error in force AIS scan:', err);
+        showToast('Connection error during force AIS scan.', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
     }
 }
 

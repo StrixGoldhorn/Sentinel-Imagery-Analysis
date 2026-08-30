@@ -79,12 +79,33 @@ def scrape_aoi_ais(aoi_id: int):
     payload = request.get_json(silent=True) or {}
     plugin = optional_string(payload, "plugin") if isinstance(payload, dict) else None
     pass_time_str = optional_string(payload, "pass_time") if isinstance(payload, dict) else None
+    force_now = False
+    if isinstance(payload, dict):
+        force_now = bool(payload.get("force") or payload.get("force_now"))
+
     pass_time = None
-    if pass_time_str:
+    if pass_time_str and not force_now:
         try:
             pass_time = datetime.fromisoformat(pass_time_str.replace("Z", "+00:00"))
         except ValueError as exc:
             raise RequestValidationError("Invalid pass_time format, must be ISO datetime") from exc
 
-    results = container().scrape_aoi_ais.execute(aoi_id, plugin_name=plugin, pass_time=pass_time)
+    results = container().scrape_aoi_ais.execute(
+        aoi_id,
+        plugin_name=plugin,
+        pass_time=pass_time,
+        force_now=force_now,
+    )
     return jsonify(status="success", results=results)
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/force_ais_scan")
+def force_ais_scan(aoi_id: int):
+    payload = request.get_json(silent=True) or {}
+    plugin = optional_string(payload, "plugin") if isinstance(payload, dict) else None
+    results = container().scrape_aoi_ais.execute(
+        aoi_id,
+        plugin_name=plugin,
+        force_now=True,
+    )
+    return jsonify(status="success", results=results, forced=True)

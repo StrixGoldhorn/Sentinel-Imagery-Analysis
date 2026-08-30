@@ -26,6 +26,41 @@
         <div id="layers-page" class="accordion-content">
             <h3>Overlays & Charts</h3>
             <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; font-weight: 600; cursor: pointer; margin-bottom: 0;">
+                        <input type="checkbox" id="aisVesselToggle" checked>
+                        <span>AIS Vessels Overlay</span>
+                    </label>
+                    <span id="aisVesselCount" class="badge badge-success" style="font-size: 0.75rem; padding: 2px 6px; background-color: #28a745; color: #fff; border-radius: 4px;">0 vessels</span>
+                </div>
+                <small style="color: #6c757d; display: block; margin-top: 4px; font-size: 0.78em;">Live vessel positions with true heading, speed, and ship classification.</small>
+                
+                <div style="display: flex; gap: 6px; margin-top: 8px;">
+                    <button type="button" id="refreshAisBtn" style="flex: 1; padding: 4px 8px; font-size: 0.8em; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="refreshAISVessels(map)">
+                        ↻ Refresh Vessels
+                    </button>
+                    <button type="button" id="filterAisBtn" style="padding: 4px 8px; font-size: 0.8em; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="toggleAisFilterPanel()">
+                        Filter ▾
+                    </button>
+                </div>
+
+                <!-- AIS Vessel Legend & Type Filter -->
+                <div id="aisFilterPanel" style="display: none; margin-top: 10px; padding-top: 8px; border-top: 1px solid #dee2e6; font-size: 0.78em;">
+                    <strong style="display: block; margin-bottom: 6px; color: #495057;">Filter by Ship Type:</strong>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Cargo" checked onchange="applyAisFilters()"> <span style="color: #28a745; font-weight: bold;">●</span> Cargo</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tanker" checked onchange="applyAisFilters()"> <span style="color: #dc3545; font-weight: bold;">●</span> Tanker</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Passenger" checked onchange="applyAisFilters()"> <span style="color: #007bff; font-weight: bold;">●</span> Passenger</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tug" checked onchange="applyAisFilters()"> <span style="color: #17a2b8; font-weight: bold;">●</span> Tug / Pilot</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Fishing" checked onchange="applyAisFilters()"> <span style="color: #fd7e14; font-weight: bold;">●</span> Fishing</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Military" checked onchange="applyAisFilters()"> <span style="color: #6f42c1; font-weight: bold;">●</span> Military/SAR</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Pleasure" checked onchange="applyAisFilters()"> <span style="color: #20c997; font-weight: bold;">●</span> Pleasure</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Other" checked onchange="applyAisFilters()"> <span style="color: #6c757d; font-weight: bold;">●</span> Other</label>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 12px;">
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; font-weight: 600; cursor: pointer;">
                     <input type="checkbox" id="nauticalChartToggle">
                     <span>OpenSeaMap Nautical Chart</span>
@@ -123,6 +158,7 @@
 <script src="{{ url_for('static', filename='js/layers.js') }}"></script>
 <script src="{{ url_for('static', filename='js/aoi.js') }}"></script>
 <script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ais_vessels.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 {% endblock %}

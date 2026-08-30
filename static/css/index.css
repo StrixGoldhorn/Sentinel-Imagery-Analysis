@@ -330,3 +330,110 @@ details.closing summary ~ * {
     font-weight: 600;
     color: #212529;
 }
+
+/* AIS Vessel Map Markers & Popups */
+.vessel-div-icon {
+    background: transparent !important;
+    border: none !important;
+}
+
+.vessel-marker-wrapper {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform-origin: center center;
+    transition: transform 0.2s ease-out;
+    cursor: pointer;
+}
+
+.vessel-marker-wrapper:hover {
+    filter: drop-shadow(0 0 6px rgba(0, 123, 255, 0.9));
+}
+
+.vessel-marker-svg {
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.4));
+}
+
+.vessel-circle-marker {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.vessel-circle-inner {
+    width: 4px;
+    height: 4px;
+    background: #ffffff;
+    border-radius: 50%;
+}
+
+/* Vessel Tooltip */
+.vessel-tooltip {
+    font-size: 0.85rem;
+    line-height: 1.3;
+    padding: 2px 4px;
+}
+
+/* Vessel Popup Card */
+.vessel-popup-card {
+    min-width: 250px;
+    max-width: 320px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #212529;
+}
+
+.vessel-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-left: 8px;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.vessel-popup-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #1a202c;
+    word-break: break-word;
+}
+
+.vessel-popup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+    font-size: 0.82rem;
+    background: #f8f9fa;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.vessel-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.vessel-label {
+    font-size: 0.72rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.vessel-val {
+    color: #2d3748;
+}
+
+.vessel-popup-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+}

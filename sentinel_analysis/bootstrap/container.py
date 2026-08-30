@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases import (
     DeleteScan,
     DetectShips,
     GetScan,
+    GetVesselPositions,
     IngestAIS,
     ListAreasOfInterest,
     ListScans,
@@ -74,6 +75,7 @@ class ApplicationContainer:
             self.mission_analyzer,
         )
         self.ingest_ais = IngestAIS(DynamicAISPluginRegistry(), self.ais_repository)
+        self.get_vessels = GetVesselPositions(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,

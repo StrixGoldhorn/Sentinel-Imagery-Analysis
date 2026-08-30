@@ -56,6 +56,24 @@ class StubContainer:
         self.add_aoi = StubUseCase(1)
         self.predict_aoi = StubUseCase([])
         self.ingest_ais = StubUseCase({"total_inserted": 0, "logs": []})
+        self.get_vessels = StubUseCase([
+            {
+                "vessel_id": 1,
+                "imo": "9123456",
+                "mmsi": "563000111",
+                "name": "PACIFIC TRADER",
+                "type": "Cargo",
+                "callsign": "9V123",
+                "latitude": 1.25,
+                "longitude": 103.85,
+                "speed": 12.5,
+                "heading": 90.0,
+                "timestamp": "2026-08-30T10:00:00+00:00",
+                "source_plugin": "MockAISPlugin",
+            }
+        ])
+        self.scrape_aoi_ais = StubUseCase({"total_inserted": 8, "logs": []})
+        self.analyze_mission_passes = StubUseCase({"total_acquisitions": 0, "passes": []})
         self.task_queue = StubTaskQueue()
         self.aoi_repository = None
         self.pass_scheduler = None
@@ -242,7 +260,26 @@ class WebInterfaceTests(unittest.TestCase):
         self.assertIn("Areas of Interest", response.get_data(as_text=True))
         self.assertIn("/static/js/aois_page.js", response.get_data(as_text=True))
 
+    def test_force_ais_scan_route(self) -> None:
+        client, container = self.make_client()
+        response = client.post("/api/aoi/1/force_ais_scan", json={"force": True})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["status"], "success")
+        self.assertTrue(response.json["forced"])
+        self.assertEqual(container.scrape_aoi_ais.calls[-1], (1,))
+        self.assertTrue(container.scrape_aoi_ais.keyword_calls[-1].get("force_now"))
+
+    def test_list_vessels_route(self) -> None:
+        client, container = self.make_client()
+        response = client.get("/api/ais/vessels?bbox=103.8,1.2,103.9,1.3&latest_only=true&limit=50")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["status"], "success")
+        self.assertEqual(response.json["count"], 1)
+        self.assertEqual(response.json["vessels"][0]["name"], "PACIFIC TRADER")
+        self.assertEqual(response.json["vessels"][0]["type"], "Cargo")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

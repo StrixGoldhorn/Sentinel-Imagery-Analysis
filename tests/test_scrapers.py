@@ -344,6 +344,75 @@ class ScrapersTestSuite(unittest.TestCase):
         self.assertEqual(start_w, datetime(2026, 8, 30, 13, 55, 0, tzinfo=timezone.utc))
         self.assertEqual(end_w, datetime(2026, 8, 30, 14, 5, 0, tzinfo=timezone.utc))
 
+    def test_scrape_aoi_ais_force_scan_ignores_pass_time(self) -> None:
+        from sentinel_analysis.application.use_cases.scrape_aoi_ais import ScrapeAreaOfInterestAIS
+        from sentinel_analysis.domain.entities import AreaOfInterest
+
+        # Next scan is far in the future
+        pass_time = datetime(2026, 9, 15, 14, 0, 0, tzinfo=timezone.utc)
+        aoi = AreaOfInterest("Singapore Strait", BBOX, id=1, next_scan=pass_time)
+
+        mock_aoi_repo = MagicMock()
+        mock_aoi_repo.get.return_value = aoi
+
+        mock_ingest = MagicMock()
+        mock_ingest.execute.return_value = {"total_inserted": 12, "logs": []}
+
+        use_case = ScrapeAreaOfInterestAIS(mock_aoi_repo, mock_ingest)
+        result = use_case.execute(aoi_id=1, force_now=True)
+
+        self.assertEqual(result["total_inserted"], 12)
+        mock_ingest.execute.assert_called_once()
+        args = mock_ingest.execute.call_args[0]
+        self.assertEqual(args[0], BBOX)
+        # Should NOT use the future 2026-09-15 date; should use live current time window
+        start_w, end_w = args[1]
+        self.assertNotEqual(start_w.year, 2026 if start_w.month == 9 and start_w.day == 15 else -1)
+        self.assertTrue((end_w - start_w).total_seconds() > 0)
+
+    def test_sqlite_ais_get_vessel_positions_filtering(self) -> None:
+        from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
+        from sentinel_analysis.domain.entities import AISPosition, AISVessel
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "test_ais.db"
+            repo = SQLiteAISRepository(db_path)
+
+            # Insert 2 vessels
+            vessel1 = AISVessel(imo="9123456", mmsi="563000111", name="PACIFIC TRADER", vessel_type="Cargo", callsign="9V123")
+            pos1_old = AISPosition(mmsi="563000111", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 8, 30, 10, 0, tzinfo=timezone.utc), speed=10.5, heading=90.0)
+            pos1_new = AISPosition(mmsi="563000111", latitude=1.26, longitude=103.86, timestamp=datetime(2026, 8, 30, 10, 5, tzinfo=timezone.utc), speed=12.0, heading=95.0)
+
+            vessel2 = AISVessel(imo="9654321", mmsi="563000222", name="OCEAN TANKER", vessel_type="Tanker", callsign="9V456")
+            pos2 = AISPosition(mmsi="563000222", latitude=2.50, longitude=104.50, timestamp=datetime(2026, 8, 30, 10, 3, tzinfo=timezone.utc), speed=14.0, heading=180.0)
+
+            repo.save_records([AISRecord(vessel=vessel1, position=pos1_old)], "TestPlugin")
+            repo.save_records([AISRecord(vessel=vessel1, position=pos1_new)], "TestPlugin")
+            repo.save_records([AISRecord(vessel=vessel2, position=pos2)], "TestPlugin")
+
+            # Query all latest
+            all_latest = repo.get_vessel_positions(latest_only=True)
+            self.assertEqual(len(all_latest), 2)
+            # Check PACIFIC TRADER returns the newer position
+            trader = next(v for v in all_latest if v["mmsi"] == "563000111")
+            self.assertAlmostEqual(trader["latitude"], 1.26)
+            self.assertAlmostEqual(trader["speed"], 12.0)
+            self.assertEqual(trader["name"], "PACIFIC TRADER")
+            self.assertEqual(trader["type"], "Cargo")
+
+            # Query with bbox filtering (matching only vessel1)
+            bbox_sg = BoundingBox(103.80, 1.20, 103.90, 1.30)
+            sg_vessels = repo.get_vessel_positions(bbox=bbox_sg, latest_only=True)
+            self.assertEqual(len(sg_vessels), 1)
+            self.assertEqual(sg_vessels[0]["mmsi"], "563000111")
+
+            # Use Case execution
+            use_case = GetVesselPositions(repo)
+            uc_results = use_case.execute(bbox=bbox_sg)
+            self.assertEqual(len(uc_results), 1)
+            self.assertEqual(uc_results[0]["name"], "PACIFIC TRADER")
+
 
 if __name__ == "__main__":
     unittest.main()
+
