@@ -229,6 +229,7 @@ def test_in_memory_repositories_and_ais_use_case() -> None:
 def test_flask_factory_routes() -> None:
     from unittest.mock import MagicMock
     import tempfile
+    from sentinel_analysis.application.exceptions import PluginNotFoundError
 
     with tempfile.TemporaryDirectory() as temp_dir:
         settings = Settings(
@@ -241,10 +242,12 @@ def test_flask_factory_routes() -> None:
         )
         container = MagicMock()
         container.settings = settings
+        container.list_aois.execute.return_value = []
         container.aoi_repository.list_all.return_value = []
         container.ais_repository.get_vessel_positions.return_value = []
         container.scan_repository.list_recent.return_value = []
         container.task_queue.submit = MagicMock()
+        container.ingest_ais.execute.side_effect = PluginNotFoundError("Unknown AIS plugin: missing")
 
         app = create_app(settings, container)
         client = app.test_client()
