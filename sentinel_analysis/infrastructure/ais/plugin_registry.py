@@ -3,7 +3,14 @@
 from collections.abc import Sequence
 
 from sentinel_analysis.application.ports.ais import AISPlugin
-from sentinel_analysis.infrastructure.ais.plugins import MockAISPlugin, MockPublicAISPlugin
+from sentinel_analysis.infrastructure.ais.plugins import (
+    AISFriendsPlugin,
+    AprsFiPlugin,
+    MockAISPlugin,
+    MockPublicAISPlugin,
+    UDPListenerPlugin,
+    VesselFinderPlugin,
+)
 
 
 class DynamicAISPluginRegistry:
@@ -14,7 +21,18 @@ class DynamicAISPluginRegistry:
     """
 
     def __init__(self, plugins: Sequence[AISPlugin] | None = None) -> None:
-        self._plugins = list(plugins) if plugins is not None else [MockAISPlugin(), MockPublicAISPlugin()]
+        self._plugins = (
+            list(plugins)
+            if plugins is not None
+            else [
+                MockAISPlugin(),
+                MockPublicAISPlugin(),
+                AISFriendsPlugin(),
+                VesselFinderPlugin(),
+                AprsFiPlugin(),
+                UDPListenerPlugin(),
+            ]
+        )
         names = [plugin.name for plugin in self._plugins]
         if any(not isinstance(name, str) or not name.strip() for name in names):
             raise ValueError("AIS plugin names must be non-empty strings")

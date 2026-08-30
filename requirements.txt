@@ -4,3 +4,6 @@ Pillow
 opencv-python
 numpy
 python-dotenv
+playwright
+playwright-stealth
+pyais
