@@ -1,4 +1,5 @@
 import ast
+import dataclasses
 import sqlite3
 import unittest
 from contextlib import closing
@@ -68,8 +69,8 @@ class InMemoryAOIRepository:
 
     def add(self, aoi):
         self._id += 1
-        aoi.id = self._id
-        self._aois[self._id] = aoi
+        stored = dataclasses.replace(aoi, id=self._id)
+        self._aois[self._id] = stored
         return self._id
 
     def get(self, aoi_id):
@@ -239,6 +240,7 @@ def test_flask_factory_routes() -> None:
             n2yo_api_key=None,
         )
         container = MagicMock()
+        container.settings = settings
         container.aoi_repository.list_all.return_value = []
         container.ais_repository.get_vessel_positions.return_value = []
         container.scan_repository.list_recent.return_value = []

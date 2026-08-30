@@ -68,7 +68,7 @@ class SQLiteAISRepository:
         if not isinstance(plugin_name, str) or not plugin_name.strip():
             raise ValueError("AIS plugin name is required")
         if status not in {"SUCCESS", "FAILED"}:
-            raise ValueError("AIS execution status must be SUCCESS or FAILED")
+            raise ValueError("Invalid execution status: AIS execution status must be SUCCESS or FAILED")
         if isinstance(records_inserted, bool) or not isinstance(records_inserted, int) or records_inserted < 0:
             raise ValueError("Inserted record count must be a non-negative integer")
         with self._database.connection() as connection:

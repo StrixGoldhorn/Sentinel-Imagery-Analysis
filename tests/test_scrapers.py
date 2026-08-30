@@ -360,7 +360,7 @@ def test_end_to_end_ingestion_with_in_memory_repository() -> None:
 
     vessels = repo.get_vessel_positions()
     assert len(vessels) == 1
-    assert vessels[0]["imo"] == 9876543
+    assert vessels[0]["imo"] == "9876543"
     assert vessels[0]["mmsi"] == "566111222"
     assert vessels[0]["name"] == "MAERSK TEST"
     assert vessels[0]["type"] == "Cargo"
