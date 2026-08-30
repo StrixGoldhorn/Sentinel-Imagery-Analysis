@@ -285,7 +285,8 @@ class UseCaseTests(unittest.TestCase):
                 self.updated.append((aoi_id, next_scan, last_checked))
 
         repo = MultiAOIRepository()
-        predictor = FakePredictor([{"time": "2026-08-30T12:00:00Z"}])
+        pass_time = (now + timedelta(days=2)).isoformat()
+        predictor = FakePredictor([{"time": pass_time}])
         scheduler = CheckAndScheduleAOIs(repo, predictor)
         results = scheduler.execute("api_key")
 

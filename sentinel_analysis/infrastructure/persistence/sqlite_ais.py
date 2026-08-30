@@ -137,7 +137,7 @@ class SQLiteAISRepository:
 
         if bbox is not None:
             query += " AND vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?"
-            params.extend([bbox.min_lon, bbox.min_lat, bbox.max_lon, bbox.max_lat])
+            params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
 
         if time_range is not None:
             start, end = time_range
