@@ -12,3 +12,6 @@ notes.md
 *.txt
 progress.json
 *.db
+.cache/
+tests/runtime/
+

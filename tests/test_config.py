@@ -22,8 +22,10 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.database_path, (root / "runtime/app.db").resolve())
         self.assertEqual(settings.output_root, (root / "runtime/output").resolve())
+        self.assertEqual(settings.cache_root, (root / "runtime/cache").resolve())
         self.assertTrue(settings.debug)
         self.assertEqual(settings.port, 5051)
+
 
     def test_absolute_paths_are_preserved(self) -> None:
         root = (Path.cwd() / "settings-test-root").resolve()
