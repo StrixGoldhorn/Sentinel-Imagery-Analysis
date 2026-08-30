@@ -20,6 +20,8 @@ from sentinel_analysis.application.ports import (
     PassPredictor,
     ScanRepository,
     ShipDetector,
+    TaskQueue,
+    TileCache,
 )
 from sentinel_analysis.application.exceptions import ExternalServiceError
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile, Scan
@@ -27,6 +29,7 @@ from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPlugi
 from sentinel_analysis.infrastructure.ais.plugins.mock import MockAISPlugin
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 from sentinel_analysis.infrastructure.geocoding import NominatimLocationResolver
+from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.copernicus import (
     CopernicusImageryProvider,
     CopernicusTokenProvider,
@@ -37,6 +40,8 @@ from sentinel_analysis.infrastructure.persistence.filesystem_scans import Filesy
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
+from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
+
 
 
 BBOX = BoundingBox(103, 1, 104, 2)
@@ -110,9 +115,12 @@ class InfrastructureAdapterTests(unittest.TestCase):
             (N2YOPassPredictor(), PassPredictor),
             (scans, ScanRepository),
             (ClassicalShipDetector(), ShipDetector),
+            (FilesystemTileCache(RUNTIME / "port_cache"), TileCache),
+            (ThreadedTaskQueue(), TaskQueue),
         )
 
         for adapter, port in adapters_and_ports:
+
             with self.subTest(port=port.__name__):
                 self.assertIsInstance(adapter, port)
         database.unlink(missing_ok=True)
@@ -168,6 +176,12 @@ class InfrastructureAdapterTests(unittest.TestCase):
         self.assertEqual(acquisition.product_id, "product-1")
         self.assertEqual(acquisition.acquired_at, datetime(2026, 8, 20, 10, tzinfo=timezone.utc))
         self.assertIn("2026-08-17", client.get_calls[0][1]["params"]["datetime"])
+
+        client.get_responses.append(response)
+        latest_ever = provider.find_latest_acquisition(BBOX)
+        self.assertEqual(latest_ever.product_id, "product-1")
+        self.assertIn("2014-01-01", client.get_calls[1][1]["params"]["datetime"])
+
 
     def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape(self) -> None:
         valid_client = FakeHTTPClient(

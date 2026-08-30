@@ -29,3 +29,20 @@ function evaluatePixel(sample) {
   return [grayValue, grayValue, grayValue, alpha];
 }"""
 
+SAR_DUAL_POL = """//VERSION=3
+function setup() {
+  return {
+    input: ["VV", "VH", "dataMask"],
+    output: {bands: 4, sampleType: SampleType.UINT8}
+  };
+}
+function evaluatePixel(sample) {
+  let alpha = sample.dataMask === 1 ? 255 : 0;
+  if (alpha === 0) return [0, 0, 0, 0];
+  let vvVal = Math.min(255, Math.round(sample.VV * 2 * 255));
+  let vhVal = Math.min(255, Math.round(sample.VH * 2 * 255));
+  let ratio = Math.min(255, Math.round((sample.VH / (sample.VV + 0.001)) * 64));
+  return [vvVal, vhVal, ratio, alpha];
+}"""
+
+

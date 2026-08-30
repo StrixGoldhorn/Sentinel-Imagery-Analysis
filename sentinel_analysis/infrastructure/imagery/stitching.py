@@ -5,7 +5,9 @@ from pathlib import Path
 
 from PIL import Image
 
+from sentinel_analysis.application.exceptions import NoImageryFoundError
 from sentinel_analysis.application.ports.imagery import TileImage
+
 
 
 class PillowImageStitcher:
@@ -47,7 +49,8 @@ class PillowImageStitcher:
                         canvas.paste(image, (x_offset, y_offset))
 
             if not canvas.getbbox():
-                raise ValueError("No valid imagery coverage returned for this bounding box")
+                raise NoImageryFoundError("No valid imagery coverage returned for this bounding box")
+
             output_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = output_path.with_name(f"{output_path.name}.tmp")
             canvas.save(temporary, format="PNG")
