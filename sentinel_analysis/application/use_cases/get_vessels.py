@@ -20,9 +20,25 @@ class GetVesselPositions:
         limit: int = 500,
         latest_only: bool = True,
     ) -> list[dict[str, Any]]:
-        return self._repository.get_vessel_positions(
+        positions = self._repository.get_vessel_positions(
             bbox=bbox,
             time_range=time_range,
             limit=limit,
             latest_only=latest_only,
         )
+        if latest_only:
+            seen_mmsi: dict[str, dict[str, Any]] = {}
+            for pos in positions:
+                mmsi = str(pos.get("mmsi") or "")
+                if not mmsi:
+                    continue
+                if mmsi not in seen_mmsi:
+                    seen_mmsi[mmsi] = pos
+                else:
+                    cur_ts = str(seen_mmsi[mmsi].get("timestamp") or "")
+                    new_ts = str(pos.get("timestamp") or "")
+                    if new_ts > cur_ts:
+                        seen_mmsi[mmsi] = pos
+            return list(seen_mmsi.values())
+        return positions
+

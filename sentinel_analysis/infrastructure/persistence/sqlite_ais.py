@@ -109,19 +109,26 @@ class SQLiteAISRepository:
     ) -> list[dict]:
         limit = max(1, min(int(limit), 2000))
         params: list[object] = []
+        where_conditions: list[str] = []
+
+        if bbox is not None:
+            where_conditions.append("vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?")
+            params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
+
+        if time_range is not None:
+            start, end = time_range
+            if start is not None:
+                where_conditions.append("vl.timestamp >= ?")
+                params.append(start.isoformat())
+            if end is not None:
+                where_conditions.append("vl.timestamp <= ?")
+                params.append(end.isoformat())
+
+        where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
 
         if latest_only:
-            if time_range is not None and (time_range[0] is not None or time_range[1] is not None):
-                sub_conditions = []
-                sub_params = []
-                if time_range[0] is not None:
-                    sub_conditions.append("timestamp >= ?")
-                    sub_params.append(time_range[0].isoformat())
-                if time_range[1] is not None:
-                    sub_conditions.append("timestamp <= ?")
-                    sub_params.append(time_range[1].isoformat())
-                sub_where = f"WHERE {' AND '.join(sub_conditions)}"
-                query = f"""
+            query = f"""
+                WITH ranked AS (
                     SELECT 
                         v.id as vessel_id,
                         v.imo,
@@ -134,44 +141,25 @@ class SQLiteAISRepository:
                         vl.speed,
                         vl.heading,
                         vl.timestamp,
-                        vl.source_plugin
+                        vl.source_plugin,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY v.mmsi 
+                            ORDER BY vl.timestamp DESC, vl.id DESC
+                        ) as rn
                     FROM vessel_locations vl
                     JOIN vessels v ON vl.vessel_id = v.id
-                    INNER JOIN (
-                        SELECT vessel_id, MAX(timestamp) as max_time
-                        FROM vessel_locations
-                        {sub_where}
-                        GROUP BY vessel_id
-                    ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
-                    WHERE 1=1
-                """
-                params.extend(sub_params)
-            else:
-                query = """
-                    SELECT 
-                        v.id as vessel_id,
-                        v.imo,
-                        v.mmsi,
-                        v.vessel_name,
-                        v.vessel_type,
-                        v.callsign,
-                        vl.latitude,
-                        vl.longitude,
-                        vl.speed,
-                        vl.heading,
-                        vl.timestamp,
-                        vl.source_plugin
-                    FROM vessel_locations vl
-                    JOIN vessels v ON vl.vessel_id = v.id
-                    INNER JOIN (
-                        SELECT vessel_id, MAX(timestamp) as max_time
-                        FROM vessel_locations
-                        GROUP BY vessel_id
-                    ) latest ON vl.vessel_id = latest.vessel_id AND vl.timestamp = latest.max_time
-                    WHERE 1=1
-                """
+                    {where_clause}
+                )
+                SELECT 
+                    vessel_id, imo, mmsi, vessel_name, vessel_type, callsign,
+                    latitude, longitude, speed, heading, timestamp, source_plugin
+                FROM ranked
+                WHERE rn = 1
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """
         else:
-            query = """
+            query = f"""
                 SELECT 
                     v.id as vessel_id,
                     v.imo,
@@ -187,23 +175,10 @@ class SQLiteAISRepository:
                     vl.source_plugin
                 FROM vessel_locations vl
                 JOIN vessels v ON vl.vessel_id = v.id
-                WHERE 1=1
+                {where_clause}
+                ORDER BY vl.timestamp DESC
+                LIMIT ?
             """
-
-        if bbox is not None:
-            query += " AND vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?"
-            params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
-
-        if time_range is not None and not (latest_only and (time_range[0] is not None or time_range[1] is not None)):
-            start, end = time_range
-            if start is not None:
-                query += " AND vl.timestamp >= ?"
-                params.append(start.isoformat())
-            if end is not None:
-                query += " AND vl.timestamp <= ?"
-                params.append(end.isoformat())
-
-        query += " ORDER BY vl.timestamp DESC LIMIT ?"
         params.append(limit)
 
         results: list[dict] = []
@@ -225,3 +200,4 @@ class SQLiteAISRepository:
                     "source_plugin": row[11],
                 })
         return results
+

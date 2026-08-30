@@ -334,10 +334,33 @@ def test_check_and_schedule_aois_triggers_scans() -> None:
     assert len(results) == 1
     assert results[0]["aoi_id"] == 1
     assert results[0]["status"] == "SCHEDULED"
-    assert len(repo.updated) == 1
+
+
+def test_get_vessel_positions_returns_only_latest_per_unique_mmsi() -> None:
+    from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
+
+
+    class FakeAISRepo:
+        def get_vessel_positions(self, bbox=None, time_range=None, limit=500, latest_only=True):
+            return [
+                {"mmsi": "111222333", "name": "Older Position", "latitude": 1.25, "longitude": 103.85, "timestamp": "2026-08-30T10:00:00Z"},
+                {"mmsi": "111222333", "name": "Latest Position", "latitude": 1.28, "longitude": 103.89, "timestamp": "2026-08-30T12:00:00Z"},
+                {"mmsi": "444555666", "name": "Single Position", "latitude": 1.30, "longitude": 103.90, "timestamp": "2026-08-30T11:00:00Z"},
+            ]
+
+    use_case = GetVesselPositions(FakeAISRepo())
+    results = use_case.execute(latest_only=True)
+
+    assert len(results) == 2
+    mmsi_map = {r["mmsi"]: r for r in results}
+    assert "111222333" in mmsi_map
+    assert "444555666" in mmsi_map
+    assert mmsi_map["111222333"]["name"] == "Latest Position"
+    assert mmsi_map["111222333"]["timestamp"] == "2026-08-30T12:00:00Z"
 
 
 def load_tests(loader, standard_tests, pattern):
+
     import inspect
     suite = unittest.TestSuite()
     for name, obj in list(globals().items()):

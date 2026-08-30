@@ -285,13 +285,15 @@ def test_force_ais_scan_route() -> None:
 
 
 def test_list_vessels_route() -> None:
-    client, _, _, _ = make_client()
+    client, container, _, _ = make_client()
     response = client.get("/api/ais/vessels?bbox=103.8,1.2,103.9,1.3&latest_only=true&limit=50")
     assert response.status_code == 200
     assert response.json["status"] == "success"
     assert response.json["count"] == 1
     assert response.json["vessels"][0]["name"] == "PACIFIC TRADER"
     assert response.json["vessels"][0]["type"] == "Cargo"
+    assert container.get_vessels.keyword_calls[-1].get("latest_only") is True
+
 
 
 def test_ais_timeline_route() -> None:

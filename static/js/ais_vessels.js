@@ -505,7 +505,22 @@ async function loadAISVessels(mapInstance, bbox = null) {
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {
-            aisVesselsData = data.vessels || [];
+            const rawVessels = data.vessels || [];
+            const latestByMmsi = new Map();
+            for (const v of rawVessels) {
+                if (!v || !v.mmsi) continue;
+                const existing = latestByMmsi.get(v.mmsi);
+                if (!existing) {
+                    latestByMmsi.set(v.mmsi, v);
+                } else {
+                    const existingTs = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
+                    const newTs = v.timestamp ? new Date(v.timestamp).getTime() : 0;
+                    if (newTs >= existingTs) {
+                        latestByMmsi.set(v.mmsi, v);
+                    }
+                }
+            }
+            aisVesselsData = Array.from(latestByMmsi.values());
             renderVesselsOnMap(mapInstance);
             updateVesselCountBadge(aisVesselsData.length);
         }
@@ -527,9 +542,26 @@ function renderVesselsOnMap(mapInstance) {
 
     if (!aisLayerEnabled) return;
 
+    // Retain only the latest position per unique MMSI after category filtering
+    const latestFilteredByMmsi = new Map();
     aisVesselsData.forEach(vessel => {
+        if (!vessel || !vessel.mmsi) return;
         const category = classifyVesselType(vessel.type);
         if (!activeTypeFilters.has(category)) return;
+
+        const existing = latestFilteredByMmsi.get(vessel.mmsi);
+        if (!existing) {
+            latestFilteredByMmsi.set(vessel.mmsi, vessel);
+        } else {
+            const existingTs = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
+            const newTs = vessel.timestamp ? new Date(vessel.timestamp).getTime() : 0;
+            if (newTs >= existingTs) {
+                latestFilteredByMmsi.set(vessel.mmsi, vessel);
+            }
+        }
+    });
+
+    latestFilteredByMmsi.forEach(vessel => {
 
         const color = getVesselColor(vessel.type);
         const heading = (vessel.heading !== null && vessel.heading !== undefined && !isNaN(vessel.heading) && vessel.heading <= 360) 
