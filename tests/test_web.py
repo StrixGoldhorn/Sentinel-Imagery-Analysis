@@ -9,7 +9,7 @@ from PIL import Image
 from sentinel_analysis.application.exceptions import ExternalServiceError, NoImageryFoundError, ScanNotFoundError
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.bootstrap.config import Settings
-from sentinel_analysis.domain.entities import Acquisition, BoundingBox, Scan
+from sentinel_analysis.domain.entities import Acquisition, BackgroundTask, BoundingBox, Scan
 from sentinel_analysis.interfaces.web.application import create_app
 
 
@@ -30,6 +30,19 @@ class StubUseCase:
         return self.result
 
 
+class StubTaskQueue:
+    def __init__(self):
+        self.tasks = {}
+
+    def submit(self, task_type, scan_id, func):
+        task = BackgroundTask(task_id="task_123", task_type=task_type, scan_id=scan_id, status="PENDING")
+        self.tasks["task_123"] = task
+        return task
+
+    def get_task(self, task_id):
+        return self.tasks.get(task_id)
+
+
 class StubContainer:
     def __init__(self, settings, scan):
         self.settings = settings
@@ -42,6 +55,10 @@ class StubContainer:
         self.add_aoi = StubUseCase(1)
         self.predict_aoi = StubUseCase([])
         self.ingest_ais = StubUseCase({"total_inserted": 0, "logs": []})
+        self.task_queue = StubTaskQueue()
+        self.aoi_repository = None
+        self.pass_scheduler = None
+
 
 
 class WebInterfaceTests(unittest.TestCase):
@@ -50,7 +67,7 @@ class WebInterfaceTests(unittest.TestCase):
         output_root = RUNTIME / "output"
         image_path = output_root / "scan_1" / "images" / "scan.png"
         image_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGBA", (1, 1), (255, 255, 255, 255)).save(image_path)
+        Image.new("RGBA", (10, 10), (255, 255, 255, 255)).save(image_path)
         cls.settings = Settings(
             project_root=Path(__file__).resolve().parents[1],
             database_path=RUNTIME / "web.db",
@@ -164,14 +181,35 @@ class WebInterfaceTests(unittest.TestCase):
         self.assertEqual(response.headers["X-Frame-Options"], "SAMEORIGIN")
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
+    def test_async_task_and_crop_routes(self) -> None:
+        client, _ = self.make_client()
+
+        # Submit async task
+        async_res = client.post("/api/tasks/scan", json={"bbox": BBOX.as_list()})
+        self.assertEqual(async_res.status_code, 202)
+        task_id = async_res.json["task_id"]
+        self.assertEqual(task_id, "task_123")
+
+        # Get task status
+        status_res = client.get(f"/api/tasks/{task_id}")
+        self.assertEqual(status_res.status_code, 200)
+        self.assertEqual(status_res.json["task_id"], "task_123")
+
+        # Get detection crop
+        crop_res = client.get("/api/scan/scan_1/crop?x=0&y=0&width=5&height=5&padding=2")
+        self.assertEqual(crop_res.status_code, 200)
+        self.assertIn("data_uri", crop_res.json)
+        self.assertIn("stats", crop_res.json)
+
     def test_templates_escape_dynamic_values_in_browser_generated_markup(self) -> None:
         client, _ = self.make_client()
-        source = (self.settings.project_root / "templates" / "index.html").read_text(encoding="utf-8")
+        notifs = (self.settings.project_root / "static" / "js" / "notifications.js").read_text(encoding="utf-8")
+        app_js = (self.settings.project_root / "static" / "js" / "app.js").read_text(encoding="utf-8")
 
         self.assertEqual(client.get("/gallery").status_code, 200)
-        self.assertIn("function escapeHtml(value)", source)
-        self.assertIn("div.textContent = item.display_name", source)
-        self.assertNotIn("div.innerHTML = item.display_name", source)
+        self.assertIn("function escapeHtml(value)", notifs)
+        self.assertIn("div.textContent = item.display_name", app_js)
+        self.assertNotIn("div.innerHTML = item.display_name", app_js)
 
 
 if __name__ == "__main__":

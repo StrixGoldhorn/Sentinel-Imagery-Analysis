@@ -3,7 +3,13 @@
 from flask import Blueprint, jsonify
 
 from sentinel_analysis.interfaces.web.dependencies import container
-from sentinel_analysis.interfaces.web.request_data import bounding_box, json_object, required_string
+from sentinel_analysis.interfaces.web.request_data import (
+    RequestValidationError,
+    boolean,
+    bounding_box,
+    json_object,
+    required_string,
+)
 from sentinel_analysis.interfaces.web.serialization import serialize_aoi
 
 
@@ -32,3 +38,13 @@ def predict_aoi(aoi_id: int):
     if not predictions:
         return jsonify(error="No upcoming scans found"), 404
     return jsonify(status="success", next_scan=predictions[0]["time"], predictions=predictions)
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/auto_capture")
+def toggle_auto_capture(aoi_id: int):
+    payload = json_object()
+    enabled = boolean(payload, "enabled", True)
+    repo = container().aoi_repository
+    if hasattr(repo, "update_auto_capture"):
+        repo.update_auto_capture(aoi_id, enabled)
+    return jsonify(status="success", auto_capture_enabled=enabled)

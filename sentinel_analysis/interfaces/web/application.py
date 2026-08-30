@@ -4,7 +4,7 @@ from flask import Flask
 
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.bootstrap.container import ApplicationContainer
-from sentinel_analysis.interfaces.web import ais, aois, scans
+from sentinel_analysis.interfaces.web import ais, aois, scans, tasks
 from sentinel_analysis.interfaces.web.errors import register_error_handlers
 
 
@@ -33,6 +33,7 @@ def create_app(
     app.register_blueprint(scans.blueprint)
     app.register_blueprint(aois.blueprint)
     app.register_blueprint(ais.blueprint)
+    app.register_blueprint(tasks.blueprint)
 
     @app.after_request
     def secure_response(response):
@@ -43,4 +44,8 @@ def create_app(
             response.headers.setdefault("Cache-Control", "no-store")
         return response
 
+    if getattr(container, "pass_scheduler", None) is not None:
+        container.pass_scheduler.start()
+
     return app
+

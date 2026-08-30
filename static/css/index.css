@@ -227,8 +227,93 @@ details.closing summary ~ * {
 }
 .folder-tab-sar { border-color: #3498db !important; }
 .folder-tab-cv { border-color: #ff3333 !important; }
+.folder-tab-obb { border-color: #e67e22 !important; }
 .folder-tab-aoi { border-color: #28a745 !important; }
 .folder-tab-tooltip::before,
 .folder-tab-tooltip::after {
     display: none !important; /* Hides default leaflet tooltip arrow */
 }
+
+/* Crop & Detection Inspector Modal */
+.inspector-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+}
+.inspector-modal.active {
+    display: flex;
+}
+.inspector-card {
+    background: white;
+    border-radius: 10px;
+    padding: 24px;
+    width: 480px;
+    max-width: 90vw;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    position: relative;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+.inspector-close-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: #f1f3f5;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.inspector-close-btn:hover {
+    background: #e9ecef;
+}
+.crop-preview-container {
+    background: #1a1a1a;
+    border-radius: 6px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 180px;
+    margin: 15px 0;
+}
+.crop-preview-container img {
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+.metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    font-size: 0.88rem;
+}
+.metrics-grid div {
+    display: flex;
+    flex-direction: column;
+}
+.metrics-grid span.label {
+    font-size: 0.75rem;
+    color: #6c757d;
+    text-transform: uppercase;
+}
+.metrics-grid span.value {
+    font-weight: 600;
+    color: #212529;
+}

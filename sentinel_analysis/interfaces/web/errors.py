@@ -24,8 +24,10 @@ def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(RequestValidationError)
     @app.errorhandler(DomainValidationError)
     @app.errorhandler(PluginNotFoundError)
+    @app.errorhandler(ValueError)
     def invalid_request(exc: Exception):
         return _error(str(exc), 400)
+
 
     @app.errorhandler(ScanNotFoundError)
     @app.errorhandler(AreaOfInterestNotFoundError)

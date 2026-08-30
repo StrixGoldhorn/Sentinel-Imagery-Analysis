@@ -16,15 +16,20 @@ const CONFIG = {
     TOOLTIP_OFFSET: [0, 0],
 
     OSM_TILE_URL: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    OPENSEAMAP_TILE_URL: 'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
     NOMINATIM_SEARCH_URL: 'https://nominatim.openstreetmap.org/search',
 
     COLOR_SAR_OUTLINE: '#3498db',
     COLOR_CV_DETECTION: '#ff3333',
+    COLOR_OBB_DETECTION: '#e67e22',
     COLOR_AOI_OUTLINE: '#28a745',
     COLOR_DRAW_RECTANGLE: '#007bff',
+
     API_UPDATE_METADATA: '/api/update_metadata',
     API_RUN_CV: '/api/run_cv',
     API_SCAN: '/scan',
+    API_ASYNC_SCAN: '/api/tasks/scan',
+    API_TASK_STATUS: '/api/tasks',
     API_GET_SCAN: '/api/scan',
     API_AOI: '/api/aoi',
     NOTIFICATION_DURATION_MS: 3000

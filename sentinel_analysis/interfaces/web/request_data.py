@@ -56,6 +56,19 @@ def bounding_box(payload: dict[str, Any], field: str = "bbox") -> BoundingBox:
     return BoundingBox.from_sequence(value)
 
 
+def boolean(payload: dict[str, Any], field: str, default: bool = False) -> bool:
+    value = payload.get(field, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "yes", "on"}:
+            return True
+        if lowered in {"false", "0", "no", "off"}:
+            return False
+    raise RequestValidationError(f"{field} must be a boolean")
+
+
 def safe_folder_name(folder_name: str) -> str:
     if (
         not folder_name
@@ -64,3 +77,4 @@ def safe_folder_name(folder_name: str) -> str:
     ):
         raise RequestValidationError("Invalid scan folder name")
     return folder_name
+
