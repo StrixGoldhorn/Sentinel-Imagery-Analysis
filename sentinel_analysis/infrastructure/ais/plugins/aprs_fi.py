@@ -158,14 +158,18 @@ class AprsFiPlugin:
         try:
             session.start()
             xml_data = session.fetch_xml2(coords)
-            return self.parse_data(xml_data)
+            return self.parse_data(xml_data, time_range)
         except Exception as exc:
             logger.error("Error fetching APRS data: %s", exc)
             return []
         finally:
             session.cleanup()
 
-    def parse_data(self, data: str) -> list[AISRecord]:
+    def parse_data(
+        self,
+        data: str,
+        time_range: AISTimeRange = (None, None),
+    ) -> list[AISRecord]:
         if not data or not data.strip():
             return []
 
@@ -183,7 +187,7 @@ class AprsFiPlugin:
                 if match:
                     try:
                         vessel_json = json.loads(match.group(1))
-                        record = self._convert_to_record(vessel_json)
+                        record = self._convert_to_record(vessel_json, time_range)
                         if record is not None:
                             records.append(record)
                     except (json.JSONDecodeError, ValueError) as exc:
@@ -192,7 +196,10 @@ class AprsFiPlugin:
         return records
 
     @staticmethod
-    def _convert_to_record(vessel: dict[str, Any]) -> AISRecord | None:
+    def _convert_to_record(
+        vessel: dict[str, Any],
+        time_range: AISTimeRange = (None, None),
+    ) -> AISRecord | None:
         raw_mmsi = vessel.get("name") or vessel.get("mmsi")
         if not raw_mmsi:
             return None
@@ -225,6 +232,12 @@ class AprsFiPlugin:
                 ts = datetime.now(timezone.utc)
         else:
             ts = datetime.now(timezone.utc)
+
+        start_time, end_time = time_range
+        if start_time is not None and ts < start_time:
+            return None
+        if end_time is not None and ts > end_time:
+            return None
 
         speed_val = vessel.get("speed")
         speed: float | None = None

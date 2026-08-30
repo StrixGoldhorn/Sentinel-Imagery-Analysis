@@ -12,6 +12,7 @@ from sentinel_analysis.application.use_cases import (
     ListScans,
     PredictAreaOfInterest,
     RenameScan,
+    ScrapeAreaOfInterestAIS,
 )
 
 from sentinel_analysis.bootstrap.config import Settings
@@ -61,5 +62,11 @@ class ApplicationContainer:
         self.add_aoi = AddAreaOfInterest(self.aoi_repository)
         self.predict_aoi = PredictAreaOfInterest(self.aoi_repository, predictor)
         self.ingest_ais = IngestAIS(DynamicAISPluginRegistry(), self.ais_repository)
-        self.schedule_aois = CheckAndScheduleAOIs(self.aoi_repository, predictor, self.create_scan)
+        self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
+        self.schedule_aois = CheckAndScheduleAOIs(
+            self.aoi_repository,
+            predictor,
+            self.create_scan,
+            self.ingest_ais,
+        )
         self.pass_scheduler = PassSchedulerWorker(self.schedule_aois, settings.n2yo_api_key)

@@ -168,7 +168,7 @@ class VesselFinderPlugin:
         }
 
         chunks = self._fetch_all_chunks(coords)
-        return self.parse_data(chunks)
+        return self.parse_data(chunks, time_range)
 
     def _fetch_all_chunks(self, coords: dict[str, float]) -> list[bytes]:
         session = self._session_factory() if self._session_factory else PlaywrightVesselFinderSession()
@@ -207,10 +207,15 @@ class VesselFinderPlugin:
         finally:
             session.cleanup()
 
-    def parse_data(self, data: bytes | list[bytes]) -> list[AISRecord]:
+    def parse_data(
+        self,
+        data: bytes | list[bytes],
+        time_range: AISTimeRange = (None, None),
+    ) -> list[AISRecord]:
         if not data:
             return []
 
+        start_time, end_time = time_range
         data_list = data if isinstance(data, list) else [data]
         records: list[AISRecord] = []
         mmsi_seen: set[str] = set()
@@ -274,6 +279,14 @@ class VesselFinderPlugin:
 
                     vessel_timestamp = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
 
+                    # Filter against satellite pass / ingestion time window
+                    if start_time is not None and vessel_timestamp < start_time:
+                        pass
+                    elif end_time is not None and vessel_timestamp > end_time:
+                        pass
+                    else:
+                        pass
+
                     if idx + 1 > len(blob):
                         break
                     ship_name_length = blob[idx]
@@ -289,6 +302,11 @@ class VesselFinderPlugin:
                         if idx + 10 > len(blob):
                             break
                         idx += 10
+
+                    if start_time is not None and vessel_timestamp < start_time:
+                        continue
+                    if end_time is not None and vessel_timestamp > end_time:
+                        continue
 
                     if mmsi_str not in mmsi_seen:
                         mmsi_seen.add(mmsi_str)

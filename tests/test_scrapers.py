@@ -278,6 +278,72 @@ class ScrapersTestSuite(unittest.TestCase):
                 self.assertAlmostEqual(locations[0][0], 1.255)
                 self.assertEqual(locations[0][3], "AISFriendsPlugin")
 
+    def test_ais_friends_time_window_filtering(self) -> None:
+        pass_time = datetime(2026, 8, 30, 12, 0, 0, tzinfo=timezone.utc)
+        from sentinel_analysis.application.use_cases.scrape_aoi_ais import calculate_pass_window
+        time_range = calculate_pass_window(pass_time, window_minutes=5)
+        # Window is [11:55:00, 12:05:00]
+
+        items = [
+            # 11:50:00 (10 min before pass -> outside)
+            {"mmsi": 111, "latitude": 1.25, "longitude": 103.85, "timestamp_of_position": int(datetime(2026, 8, 30, 11, 50, 0, tzinfo=timezone.utc).timestamp())},
+            # 11:57:00 (3 min before pass -> inside)
+            {"mmsi": 222, "latitude": 1.25, "longitude": 103.85, "timestamp_of_position": int(datetime(2026, 8, 30, 11, 57, 0, tzinfo=timezone.utc).timestamp())},
+            # 12:02:00 (2 min after pass -> inside)
+            {"mmsi": 333, "latitude": 1.25, "longitude": 103.85, "timestamp_of_position": int(datetime(2026, 8, 30, 12, 2, 0, tzinfo=timezone.utc).timestamp())},
+            # 12:10:00 (10 min after pass -> outside)
+            {"mmsi": 444, "latitude": 1.25, "longitude": 103.85, "timestamp_of_position": int(datetime(2026, 8, 30, 12, 10, 0, tzinfo=timezone.utc).timestamp())},
+        ]
+
+        plugin = AISFriendsPlugin()
+        records = plugin.parse_data(items, time_range)
+        mmsis = [r.vessel.mmsi for r in records]
+        self.assertEqual(mmsis, ["222", "333"])
+
+    def test_aprs_fi_time_window_filtering(self) -> None:
+        pass_time = datetime(2026, 8, 30, 12, 0, 0, tzinfo=timezone.utc)
+        from sentinel_analysis.application.use_cases.scrape_aoi_ais import calculate_pass_window
+        time_range = calculate_pass_window(pass_time, window_minutes=5)
+
+        t_inside = int(datetime(2026, 8, 30, 11, 58, 0, tzinfo=timezone.utc).timestamp())
+        t_outside = int(datetime(2026, 8, 30, 12, 15, 0, tzinfo=timezone.utc).timestamp())
+
+        xml_content = f"""<?xml version="1.0" encoding="utf-8"?>
+        <response>
+            <item>it({{"name": "563999888", "showname": "INSIDE", "lat": 1.25, "lng": 103.85, "time": {t_inside}}});</item>
+            <item>it({{"name": "564111222", "showname": "OUTSIDE", "lat": 1.25, "lng": 103.85, "time": {t_outside}}});</item>
+        </response>
+        """
+        plugin = AprsFiPlugin()
+        records = plugin.parse_data(xml_content, time_range)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].vessel.mmsi, "563999888")
+
+    def test_scrape_aoi_ais_use_case(self) -> None:
+        from sentinel_analysis.application.use_cases.scrape_aoi_ais import ScrapeAreaOfInterestAIS
+        from sentinel_analysis.domain.entities import AreaOfInterest
+
+        pass_time = datetime(2026, 8, 30, 14, 0, 0, tzinfo=timezone.utc)
+        aoi = AreaOfInterest("Singapore Strait", BBOX, id=1, next_scan=pass_time)
+
+        mock_aoi_repo = MagicMock()
+        mock_aoi_repo.get.return_value = aoi
+
+        mock_ingest = MagicMock()
+        mock_ingest.execute.return_value = {"total_inserted": 5, "logs": []}
+
+        use_case = ScrapeAreaOfInterestAIS(mock_aoi_repo, mock_ingest)
+        result = use_case.execute(aoi_id=1)
+
+        self.assertEqual(result["total_inserted"], 5)
+        mock_ingest.execute.assert_called_once()
+        args = mock_ingest.execute.call_args[0]
+        self.assertEqual(args[0], BBOX)
+        # Expected window: 13:55:00 to 14:05:00
+        start_w, end_w = args[1]
+        self.assertEqual(start_w, datetime(2026, 8, 30, 13, 55, 0, tzinfo=timezone.utc))
+        self.assertEqual(end_w, datetime(2026, 8, 30, 14, 5, 0, tzinfo=timezone.utc))
+
 
 if __name__ == "__main__":
     unittest.main()

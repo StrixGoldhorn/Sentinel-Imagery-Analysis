@@ -1,6 +1,5 @@
-"""Area-of-interest HTTP routes."""
-
-from flask import Blueprint, jsonify
+from datetime import datetime
+from flask import Blueprint, jsonify, request
 
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -8,6 +7,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     boolean,
     bounding_box,
     json_object,
+    optional_string,
     required_string,
 )
 from sentinel_analysis.interfaces.web.serialization import serialize_aoi
@@ -48,3 +48,19 @@ def toggle_auto_capture(aoi_id: int):
     if hasattr(repo, "update_auto_capture"):
         repo.update_auto_capture(aoi_id, enabled)
     return jsonify(status="success", auto_capture_enabled=enabled)
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/scrape_ais")
+def scrape_aoi_ais(aoi_id: int):
+    payload = request.get_json(silent=True) or {}
+    plugin = optional_string(payload, "plugin") if isinstance(payload, dict) else None
+    pass_time_str = optional_string(payload, "pass_time") if isinstance(payload, dict) else None
+    pass_time = None
+    if pass_time_str:
+        try:
+            pass_time = datetime.fromisoformat(pass_time_str.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise RequestValidationError("Invalid pass_time format, must be ISO datetime") from exc
+
+    results = container().scrape_aoi_ais.execute(aoi_id, plugin_name=plugin, pass_time=pass_time)
+    return jsonify(status="success", results=results)

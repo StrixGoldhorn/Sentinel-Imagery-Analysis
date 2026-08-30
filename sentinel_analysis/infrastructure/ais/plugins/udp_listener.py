@@ -104,18 +104,27 @@ class UDPListenerPlugin:
             except queue.Empty:
                 break
 
-        records = self.parse_data(raw_messages)
-        # Filter records to bounding box
+        records = self.parse_data(raw_messages, time_range)
+        start_time, end_time = time_range
+        # Filter records to bounding box and time range
         return [
             rec
             for rec in records
             if (
                 bbox.min_latitude <= rec.position.latitude <= bbox.max_latitude
                 and bbox.min_longitude <= rec.position.longitude <= bbox.max_longitude
+                and (start_time is None or rec.position.timestamp >= start_time)
+                and (end_time is None or rec.position.timestamp <= end_time)
             )
         ]
 
-    def parse_data(self, messages: list[str]) -> list[AISRecord]:
+    def parse_data(
+        self,
+        messages: list[str],
+        time_range: AISTimeRange = (None, None),
+    ) -> list[AISRecord]:
+        start_time, end_time = time_range
+        now_dt = datetime.now(timezone.utc)
         records: list[AISRecord] = []
         for message in messages:
             try:
@@ -152,6 +161,17 @@ class UDPListenerPlugin:
                 if not (-90 <= lat_f <= 90 and -180 <= lon_f <= 180):
                     continue
 
+                msg_time = dict_msg.get("timestamp")
+                if isinstance(msg_time, datetime):
+                    pos_ts = msg_time.astimezone(timezone.utc) if msg_time.utcoffset() else msg_time.replace(tzinfo=timezone.utc)
+                else:
+                    pos_ts = now_dt
+
+                if start_time is not None and pos_ts < start_time:
+                    continue
+                if end_time is not None and pos_ts > end_time:
+                    continue
+
                 speed_raw = dict_msg.get("speed")
                 speed: float | None = None
                 if speed_raw is not None and float(speed_raw) < 102.3:
@@ -182,7 +202,7 @@ class UDPListenerPlugin:
                     mmsi=mmsi_str,
                     latitude=lat_f,
                     longitude=lon_f,
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=pos_ts,
                     speed=speed,
                     heading=heading,
                 )

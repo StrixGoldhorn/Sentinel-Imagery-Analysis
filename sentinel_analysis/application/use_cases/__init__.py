@@ -17,6 +17,10 @@ from sentinel_analysis.application.use_cases.manage_scans import (
 )
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
+    ScrapeAreaOfInterestAIS,
+    calculate_pass_window,
+)
 
 __all__ = [
     "AddAreaOfInterest",
@@ -33,4 +37,6 @@ __all__ = [
     "PredictAreaOfInterest",
     "PredictPasses",
     "RenameScan",
+    "ScrapeAreaOfInterestAIS",
+    "calculate_pass_window",
 ]

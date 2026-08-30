@@ -28,7 +28,8 @@ class IngestCommand(CLICommand):
         parser = argparse.ArgumentParser(description="Ingest normalized AIS records")
         parser.add_argument("--bbox", type=float, nargs=4, required=True, metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"))
         parser.add_argument("--plugin", help="Run only the named plugin")
-        parser.add_argument("--hours", type=int, default=24, help="Hours of history to request")
+        parser.add_argument("--hours", type=int, default=24, help="Hours of history to request (ignored if --pass-time is set)")
+        parser.add_argument("--pass-time", help="ISO format satellite pass timestamp to scrape -5min to +5min around")
         return parser
 
     def _get_use_case(self) -> IngestAIS:
@@ -41,10 +42,18 @@ class IngestCommand(CLICommand):
         )
 
     def execute(self, args: argparse.Namespace, stdout: TextIO) -> int:
-        if args.hours <= 0:
-            raise ValueError("Hours of history must be positive")
-        end = self._clock()
-        start = end - timedelta(hours=args.hours)
+        if args.pass_time:
+            p_time = datetime.fromisoformat(args.pass_time.replace("Z", "+00:00"))
+            if p_time.utcoffset() is None:
+                p_time = p_time.replace(tzinfo=timezone.utc)
+            start = p_time.astimezone(timezone.utc) - timedelta(minutes=5)
+            end = p_time.astimezone(timezone.utc) + timedelta(minutes=5)
+        else:
+            if args.hours <= 0:
+                raise ValueError("Hours of history must be positive")
+            end = self._clock()
+            start = end - timedelta(hours=args.hours)
+
         result = self._get_use_case().execute(
             BoundingBox.from_sequence(args.bbox),
             (start, end),

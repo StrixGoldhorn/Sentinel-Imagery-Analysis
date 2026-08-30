@@ -80,9 +80,14 @@ class AISFriendsPlugin:
         if not isinstance(data, list):
             return []
 
-        return self.parse_data(data)
+        return self.parse_data(data, time_range)
 
-    def parse_data(self, items: list[dict[str, Any]]) -> list[AISRecord]:
+    def parse_data(
+        self,
+        items: list[dict[str, Any]],
+        time_range: AISTimeRange = (None, None),
+    ) -> list[AISRecord]:
+        start_time, end_time = time_range
         records: list[AISRecord] = []
         for item in items:
             if not isinstance(item, dict):
@@ -123,6 +128,12 @@ class AISFriendsPlugin:
                     ts = datetime.now(timezone.utc)
             else:
                 ts = datetime.now(timezone.utc)
+
+            # Filter against satellite pass / ingestion time window
+            if start_time is not None and ts < start_time:
+                continue
+            if end_time is not None and ts > end_time:
+                continue
 
             sog = item.get("speed_over_ground")
             speed: float | None = None
