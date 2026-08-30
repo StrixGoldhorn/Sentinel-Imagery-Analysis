@@ -235,6 +235,13 @@ class WebInterfaceTests(unittest.TestCase):
         res_400 = client.delete("/api/scan/invalid%20name")
         self.assertEqual(res_400.status_code, 400)
 
+    def test_aois_page_route_renders_successfully(self) -> None:
+        client, _ = self.make_client()
+        response = client.get("/aois")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Areas of Interest", response.get_data(as_text=True))
+        self.assertIn("/static/js/aois_page.js", response.get_data(as_text=True))
+
 
 if __name__ == "__main__":
     unittest.main()

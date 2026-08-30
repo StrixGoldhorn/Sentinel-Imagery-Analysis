@@ -103,6 +103,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         localStorage.setItem('selected_scans', JSON.stringify(selected));
     }
 
+    // Check for AOI focus from AOIs page
+    const aoiBboxParam = params.get('bbox') || params.get('aoi_bbox');
+    if (aoiBboxParam) {
+        const parts = aoiBboxParam.split(',').map(Number);
+        if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+            const lBounds = L.latLngBounds([[parts[1], parts[0]], [parts[3], parts[2]]]);
+            map.fitBounds(lBounds, { padding: [50, 50] });
+            showNotification("Focused on Area of Interest", "info");
+        }
+    }
+
     for (const folder of selected) {
         try {
             const res = await fetch(`${CONFIG.API_GET_SCAN}/${folder}`);

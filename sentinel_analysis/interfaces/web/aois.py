@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -14,6 +14,11 @@ from sentinel_analysis.interfaces.web.serialization import serialize_aoi
 
 
 blueprint = Blueprint("aois", __name__)
+
+
+@blueprint.get("/aois")
+def aois_page():
+    return render_template("aois.html")
 
 
 @blueprint.get("/api/aoi")
