@@ -418,14 +418,22 @@ class ScrapersTestSuite(unittest.TestCase):
             self.assertIsNotNone(bounds["min_timestamp"])
             self.assertIsNotNone(bounds["max_timestamp"])
 
-            # Time range query
+            # Time range query (window 09:00 to 10:02 captures pos1_old at 10:00, excludes pos1_new at 10:05 & pos2 at 10:03)
             t_early = datetime(2026, 8, 30, 9, 0, tzinfo=timezone.utc)
-            t_mid = datetime(2026, 8, 30, 10, 10, tzinfo=timezone.utc)
+            t_mid = datetime(2026, 8, 30, 10, 2, tzinfo=timezone.utc)
             early_vessels = repo.get_vessel_positions(time_range=(t_early, t_mid), latest_only=True)
-            self.assertEqual(len(early_vessels), 2)
-            trader_early = next(v for v in early_vessels if v["mmsi"] == "563000111")
-            # Should have the 10:00 position, speed 10.5
+            self.assertEqual(len(early_vessels), 1)
+            trader_early = early_vessels[0]
+            self.assertEqual(trader_early["mmsi"], "563000111")
             self.assertAlmostEqual(trader_early["speed"], 10.5)
+
+            # Window up to 10:10 captures latest for both vessels (10:05 for trader, 10:03 for tanker)
+            t_late = datetime(2026, 8, 30, 10, 10, tzinfo=timezone.utc)
+            all_in_window = repo.get_vessel_positions(time_range=(t_early, t_late), latest_only=True)
+            self.assertEqual(len(all_in_window), 2)
+            trader_late = next(v for v in all_in_window if v["mmsi"] == "563000111")
+            self.assertAlmostEqual(trader_late["speed"], 12.0)
+
 
 
     def test_bounding_box_split_into_zones(self) -> None:
