@@ -83,4 +83,4 @@ def get_ais_timeline():
     if repo is not None and hasattr(repo, "get_timeline_bounds"):
         bounds = repo.get_timeline_bounds()
         return jsonify(status="success", **bounds)
-    return jsonify(status="success", min_timestamp=None, max_timestamp=None, total_records=0)
+    return jsonify(status="success", min_timestamp=None, max_timestamp=None, total_records=0, count=0)

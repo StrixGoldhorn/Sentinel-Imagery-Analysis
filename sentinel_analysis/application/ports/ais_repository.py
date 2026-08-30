@@ -28,3 +28,7 @@ class AISRepository(Protocol):
         latest_only: bool = True,
     ) -> list[dict]:
         ...
+
+    def get_timeline_bounds(self) -> dict[str, object]:
+        ...
+

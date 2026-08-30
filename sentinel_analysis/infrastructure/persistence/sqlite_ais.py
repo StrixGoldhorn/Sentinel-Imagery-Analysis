@@ -91,11 +91,13 @@ class SQLiteAISRepository:
                     "min_timestamp": row[0],
                     "max_timestamp": row[1],
                     "total_records": row[2],
+                    "count": row[2],
                 }
             return {
                 "min_timestamp": None,
                 "max_timestamp": None,
                 "total_records": 0,
+                "count": 0,
             }
 
     def get_vessel_positions(

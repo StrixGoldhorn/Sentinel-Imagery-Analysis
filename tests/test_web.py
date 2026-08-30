@@ -287,7 +287,9 @@ class WebInterfaceTests(unittest.TestCase):
         self.assertEqual(response.json["status"], "success")
         self.assertIn("min_timestamp", response.json)
         self.assertIn("max_timestamp", response.json)
+        self.assertIn("total_records", response.json)
         self.assertIn("count", response.json)
+
 
 
 

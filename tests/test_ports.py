@@ -91,6 +91,10 @@ class CompleteAdapter:
     def get_vessel_positions(self, bbox=None, time_range=None, limit=500, latest_only=True):
         return []
 
+    def get_timeline_bounds(self):
+        return {"min_timestamp": None, "max_timestamp": None, "total_records": 0, "count": 0}
+
+
     def list_tiles(self, tile_folder):
         return []
 
