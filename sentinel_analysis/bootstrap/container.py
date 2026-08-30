@@ -2,6 +2,7 @@
 
 from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
+    AnalyzeMissionPasses,
     CheckAndScheduleAOIs,
     CreateScan,
     DeleteScan,
@@ -25,7 +26,9 @@ from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitch
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
+from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
+from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
 from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedulerWorker
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
 
@@ -45,7 +48,8 @@ class ApplicationContainer:
             settings.copernicus_password,
         )
         imagery = CopernicusImageryProvider(token_provider, tile_cache=self.tile_cache)
-        predictor = N2YOPassPredictor()
+        self.mission_analyzer = Sentinel1MissionAnalyzer(imagery)
+        self.hybrid_predictor = HybridPassPredictor(N2YOPassPredictor(), self.mission_analyzer)
 
         self.create_scan = CreateScan(
             imagery,
@@ -60,13 +64,25 @@ class ApplicationContainer:
         self.delete_scan = DeleteScan(self.scan_repository)
         self.list_aois = ListAreasOfInterest(self.aoi_repository)
         self.add_aoi = AddAreaOfInterest(self.aoi_repository)
-        self.predict_aoi = PredictAreaOfInterest(self.aoi_repository, predictor)
+        self.predict_aoi = PredictAreaOfInterest(
+            self.aoi_repository,
+            self.hybrid_predictor,
+            self.mission_analyzer,
+        )
+        self.analyze_mission_passes = AnalyzeMissionPasses(
+            self.aoi_repository,
+            self.mission_analyzer,
+        )
         self.ingest_ais = IngestAIS(DynamicAISPluginRegistry(), self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,
-            predictor,
+            self.hybrid_predictor,
             self.create_scan,
             self.ingest_ais,
         )
-        self.pass_scheduler = PassSchedulerWorker(self.schedule_aois, settings.n2yo_api_key)
+        self.pass_scheduler = PassSchedulerWorker(
+            self.schedule_aois,
+            settings.n2yo_api_key or "default_key",
+            poll_interval_seconds=60.0,
+        )

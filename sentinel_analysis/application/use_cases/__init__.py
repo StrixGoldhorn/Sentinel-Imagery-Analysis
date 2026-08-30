@@ -1,5 +1,4 @@
-"""Application use cases."""
-
+from sentinel_analysis.application.use_cases.analyze_mission_passes import AnalyzeMissionPasses
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
@@ -24,6 +23,7 @@ from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
 
 __all__ = [
     "AddAreaOfInterest",
+    "AnalyzeMissionPasses",
     "AnnotationSummary",
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",

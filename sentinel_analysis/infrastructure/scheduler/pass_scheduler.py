@@ -14,7 +14,7 @@ class PassSchedulerWorker:
         self,
         schedule_use_case: CheckAndScheduleAOIs,
         api_key: Optional[str] = None,
-        poll_interval_seconds: float = 300.0,
+        poll_interval_seconds: float = 60.0,
     ) -> None:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key

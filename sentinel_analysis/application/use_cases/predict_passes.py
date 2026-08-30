@@ -22,15 +22,40 @@ class PredictPasses:
                 if predicted_at.utcoffset() is None:
                     predicted_at = predicted_at.replace(tzinfo=timezone.utc)
                 predicted_at = predicted_at.astimezone(timezone.utc)
-                elevation = prediction["max_elevation"]
+                elevation = prediction.get("max_elevation")
                 if elevation is not None:
                     elevation = float(elevation)
             except (KeyError, TypeError, ValueError, OverflowError) as exc:
                 raise InvalidPredictionError("Pass provider returned an invalid prediction") from exc
+
+            rel_orbit = prediction.get("relative_orbit")
+            if rel_orbit is not None:
+                try:
+                    rel_orbit = int(rel_orbit)
+                except (TypeError, ValueError):
+                    rel_orbit = None
+
+            conf_score = prediction.get("confidence_score")
+            if conf_score is not None:
+                try:
+                    conf_score = float(conf_score)
+                except (TypeError, ValueError):
+                    conf_score = None
+
             normalized.append(
                 (
                     predicted_at,
-                    PassPrediction(time=predicted_at.isoformat(), max_elevation=elevation),
+                    PassPrediction(
+                        time=predicted_at.isoformat(),
+                        max_elevation=elevation,
+                        source=prediction.get("source"),
+                        satellite=prediction.get("satellite"),
+                        orbit_direction=prediction.get("orbit_direction"),
+                        relative_orbit=rel_orbit,
+                        confidence_score=conf_score,
+                        swath_mode=prediction.get("swath_mode"),
+                        historical_match=prediction.get("historical_match"),
+                    ),
                 )
             )
 

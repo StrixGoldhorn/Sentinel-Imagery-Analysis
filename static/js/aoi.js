@@ -132,7 +132,19 @@ async function predictAOI(aoiId) {
         
         if (response.ok && result.status === 'success') {
             loadAOIs();
-            showNotification("Scan predicted successfully!", "success");
+            let msg = "Scan predicted successfully!";
+            const firstPred = (result.predictions && result.predictions.length > 0) ? result.predictions[0] : null;
+            if (firstPred) {
+                const sat = firstPred.satellite || "Sentinel-1";
+                const dir = firstPred.orbit_direction ? ` (${firstPred.orbit_direction})` : '';
+                const conf = firstPred.confidence_score ? ` [${Math.round(firstPred.confidence_score * 100)}% Conf]` : '';
+                const src = firstPred.source ? ` [Source: ${firstPred.source}]` : '';
+                msg = `Next Pass: ${sat}${dir}${conf}${src} at ${new Date(firstPred.time).toLocaleString()}`;
+            }
+            if (result.mission_analysis && result.mission_analysis.total_acquisitions > 0) {
+                msg += ` | Hist: ${result.mission_analysis.total_acquisitions} passes (Avg ~${result.mission_analysis.average_revisit_days}d)`;
+            }
+            showNotification(msg, "success");
         } else {
             showNotification('Error predicting scan: ' + (result.error || 'No upcoming scans found'), "error");
         }

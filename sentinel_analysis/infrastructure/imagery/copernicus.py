@@ -5,7 +5,7 @@ import time
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Any, Callable, Protocol
 
 import requests
 from PIL import Image
@@ -179,6 +179,122 @@ class CopernicusImageryProvider:
             raise ExternalServiceError("Copernicus catalog response invalid") from exc
         return Acquisition(acquired_at, "Sentinel-1", "sentinel-1-grd", str(product_id) if product_id else None)
 
+    def search_historical_acquisitions(
+        self,
+        bbox: BoundingBox,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Search Copernicus Data Space Catalog for historical Sentinel-1 acquisitions."""
+        try:
+            now = self._clock()
+            if now.utcoffset() is None:
+                now = now.replace(tzinfo=timezone.utc)
+            now = now.astimezone(timezone.utc)
+
+            start = start_date or datetime(2014, 1, 1, tzinfo=timezone.utc)
+            if start.utcoffset() is None:
+                start = start.replace(tzinfo=timezone.utc)
+            start = start.astimezone(timezone.utc)
+
+            end = end_date or (now + timedelta(days=1))
+            if end.utcoffset() is None:
+                end = end.replace(tzinfo=timezone.utc)
+            end = end.astimezone(timezone.utc)
+
+            response = self._http.get(
+                CATALOG_URL,
+                headers={"Authorization": f"Bearer {self._token_provider.get()}"},
+                params={
+                    "bbox": ",".join(map(str, bbox.as_list())),
+                    "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
+                    "collections": "sentinel-1-grd",
+                    "limit": max(1, min(limit, 250)),
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, Mapping):
+                raise ValueError("Catalog response must be an object")
+            features = payload.get("features", [])
+            if not isinstance(features, list):
+                return []
+
+            results: list[dict[str, Any]] = []
+            for feat in features:
+                if not isinstance(feat, Mapping):
+                    continue
+                props = feat.get("properties") or {}
+                if not isinstance(props, Mapping):
+                    continue
+                dt_str = props.get("datetime")
+                if not dt_str:
+                    continue
+
+                prod_id = feat.get("id") or ""
+                # Parse platform
+                platform = props.get("platform")
+                if not platform:
+                    if prod_id.startswith("S1A"):
+                        platform = "Sentinel-1A"
+                    elif prod_id.startswith("S1B"):
+                        platform = "Sentinel-1B"
+                    elif prod_id.startswith("S1C"):
+                        platform = "Sentinel-1C"
+                    else:
+                        platform = "Sentinel-1"
+                else:
+                    platform = str(platform).replace("sentinel-", "Sentinel-").replace("1a", "1A").replace("1b", "1B").replace("1c", "1C")
+
+                # Parse orbit direction
+                orbit_dir_raw = props.get("sat:orbit_state") or props.get("orbitDirection") or props.get("orbit_state")
+                orbit_dir = str(orbit_dir_raw).upper() if orbit_dir_raw else "UNKNOWN"
+
+                # Parse relative orbit
+                rel_orbit = props.get("sat:relative_orbit") or props.get("relativeOrbitNumber")
+                rel_orbit_int = int(rel_orbit) if rel_orbit is not None else None
+
+                # Parse polarisation
+                pols = props.get("sar:polarizations") or props.get("polarization")
+                if isinstance(pols, list):
+                    pol_str = "+".join(pols)
+                elif pols:
+                    pol_str = str(pols)
+                elif "1SDV" in prod_id:
+                    pol_str = "VV+VH"
+                elif "1SDH" in prod_id:
+                    pol_str = "HH+HV"
+                elif "1SSV" in prod_id:
+                    pol_str = "VV"
+                elif "1SSH" in prod_id:
+                    pol_str = "HH"
+                else:
+                    pol_str = None
+
+                # Parse mode
+                mode = props.get("sar:instrument_mode") or props.get("instrumentMode") or props.get("sensorMode")
+                if not mode and "_IW_" in prod_id:
+                    mode = "IW"
+                elif not mode and "_EW_" in prod_id:
+                    mode = "EW"
+                elif not mode and "_SM_" in prod_id:
+                    mode = "SM"
+
+                results.append({
+                    "product_id": str(prod_id) if prod_id else None,
+                    "platform": platform,
+                    "acquisition_time": str(dt_str),
+                    "orbit_direction": orbit_dir,
+                    "relative_orbit": rel_orbit_int,
+                    "polarisation": pol_str,
+                    "instrument_mode": str(mode) if mode else "IW",
+                })
+
+            return results
+        except (requests.RequestException, ExternalServiceError, ValueError):
+            return []
 
     def calculate_tiles(self, bbox: BoundingBox) -> list[ImageTile]:
         return self._tiler.calculate(bbox)

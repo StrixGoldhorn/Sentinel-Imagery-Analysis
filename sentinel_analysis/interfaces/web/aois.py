@@ -31,13 +31,32 @@ def add_aoi():
 
 @blueprint.post("/api/aoi/<int:aoi_id>/predict")
 def predict_aoi(aoi_id: int):
-    api_key = container().settings.n2yo_api_key
-    if not api_key:
-        return jsonify(error="N2YO API key is not configured"), 503
-    predictions = container().predict_aoi.execute(aoi_id, api_key)
+    api_key = container().settings.n2yo_api_key or "default_key"
+    use_case = container().predict_aoi
+    if hasattr(use_case, "execute_with_analysis"):
+        result = use_case.execute_with_analysis(aoi_id, api_key)
+        predictions = result.get("predictions", [])
+        next_scan = result.get("next_scan")
+        mission_analysis = result.get("mission_analysis")
+    else:
+        predictions = use_case.execute(aoi_id, api_key)
+        next_scan = predictions[0]["time"] if predictions else None
+        mission_analysis = None
+
     if not predictions:
         return jsonify(error="No upcoming scans found"), 404
-    return jsonify(status="success", next_scan=predictions[0]["time"], predictions=predictions)
+    return jsonify(
+        status="success",
+        next_scan=next_scan,
+        predictions=predictions,
+        mission_analysis=mission_analysis,
+    )
+
+
+@blueprint.get("/api/aoi/<int:aoi_id>/mission_history")
+def aoi_mission_history(aoi_id: int):
+    result = container().analyze_mission_passes.execute(aoi_id)
+    return jsonify(status="success", **result)
 
 
 @blueprint.post("/api/aoi/<int:aoi_id>/auto_capture")

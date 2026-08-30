@@ -47,8 +47,14 @@ class PredictCommand(CLICommand):
             print("No upcoming passes found.", file=stdout)
             return 0
         for index, prediction in enumerate(predictions, 1):
+            sat = prediction.get("satellite") or "Sentinel-1"
+            direction = f" ({prediction['orbit_direction']})" if prediction.get("orbit_direction") else ""
+            track = f" | Track #{prediction['relative_orbit']}" if prediction.get("relative_orbit") is not None else ""
+            conf = f" | {int(prediction['confidence_score'] * 100)}% conf" if prediction.get("confidence_score") is not None else ""
+            source = f" [{prediction['source']}]" if prediction.get("source") else ""
+            elev_str = f"{prediction.get('max_elevation')}°" if prediction.get("max_elevation") is not None else "N/A"
             print(
-                f"{index}. {prediction['time']} | max elevation: {prediction['max_elevation']}",
+                f"{index}. {prediction['time']} | {sat}{direction} | max elev: {elev_str}{track}{conf}{source}",
                 file=stdout,
             )
         return 0

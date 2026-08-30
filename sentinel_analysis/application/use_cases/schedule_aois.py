@@ -44,26 +44,32 @@ class CheckAndScheduleAOIs:
                         valid_passes.append(p_time.astimezone(timezone.utc))
 
                 valid_passes.sort()
-                next_pass = next((p for p in valid_passes if p >= now), None)
+                next_pass = next((p for p in valid_passes if p >= (now - timedelta(minutes=5))), None)
 
                 ais_records_scraped = 0
+                is_flypast_active = False
+
                 if next_pass:
                     self._aois.update_prediction(aoi.id, next_pass, now)
 
-                    # When an automated satellite pass occurs / is active (within pass window),
-                    # trigger scrapers across the -5min to +5min window around the pass
-                    if self._ingest_ais is not None and abs((next_pass - now).total_seconds()) <= 300:
-                        start_time = next_pass - timedelta(minutes=5)
-                        end_time = next_pass + timedelta(minutes=5)
-                        ingest_res = self._ingest_ais.execute(aoi.bbox, (start_time, end_time))
-                        ais_records_scraped = ingest_res["total_inserted"]
+                    # During the flypast (-5min to +5min of pass time), scrape AIS every minute
+                    time_to_pass_sec = (next_pass - now).total_seconds()
+                    if -300 <= time_to_pass_sec <= 300:
+                        is_flypast_active = True
+                        if self._ingest_ais is not None:
+                            # 1-minute scrape window around current minute within the pass window
+                            start_time = max(next_pass - timedelta(minutes=5), now - timedelta(minutes=1))
+                            end_time = min(next_pass + timedelta(minutes=5), now + timedelta(minutes=1))
+                            ingest_res = self._ingest_ais.execute(aoi.bbox, (start_time, end_time))
+                            ais_records_scraped = ingest_res["total_inserted"]
 
                 results.append({
                     "aoi_id": aoi.id,
                     "name": aoi.name,
                     "next_pass": next_pass.isoformat() if next_pass else None,
+                    "flypast_active": is_flypast_active,
                     "ais_records": ais_records_scraped,
-                    "status": "SCHEDULED",
+                    "status": "FLYPAST_ACTIVE" if is_flypast_active else "SCHEDULED",
                 })
             except Exception as exc:
                 results.append({
