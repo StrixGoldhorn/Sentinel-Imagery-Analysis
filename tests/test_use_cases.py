@@ -15,7 +15,7 @@ from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.manage_aois import PredictAreaOfInterest
-from sentinel_analysis.application.use_cases.manage_scans import GetScan, RenameScan
+from sentinel_analysis.application.use_cases.manage_scans import DeleteScan, GetScan, RenameScan
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.domain.entities import (
     AISRecord,
@@ -254,6 +254,18 @@ class UseCaseTests(unittest.TestCase):
             GetScan(repository).execute("missing")
         with self.assertRaises(ScanNotFoundError):
             RenameScan(repository).execute("missing", " name ")
+        with self.assertRaises(ScanNotFoundError):
+            DeleteScan(repository).execute("missing")
+
+    def test_delete_scan_deletes_existing_scan(self) -> None:
+        repository = TrackingScanRepository()
+        scan = Scan("scan_1", BBOX, Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sar"), "scan.png", {})
+        repository.save(scan)
+
+        DeleteScan(repository).execute(" scan_1 ")
+
+        self.assertEqual(repository.deleted, ["scan_1"])
+
 
     def test_check_and_schedule_aois_triggers_scans(self) -> None:
         from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs

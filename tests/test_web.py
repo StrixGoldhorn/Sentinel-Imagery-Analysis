@@ -51,6 +51,7 @@ class StubContainer:
         self.get_scan = StubUseCase(scan)
         self.list_scans = StubUseCase([scan])
         self.rename_scan = StubUseCase(None)
+        self.delete_scan = StubUseCase(None)
         self.list_aois = StubUseCase([])
         self.add_aoi = StubUseCase(1)
         self.predict_aoi = StubUseCase([])
@@ -211,6 +212,30 @@ class WebInterfaceTests(unittest.TestCase):
         self.assertIn("div.textContent = item.display_name", app_js)
         self.assertNotIn("div.innerHTML = item.display_name", app_js)
 
+    def test_delete_scan_route_success_and_error_handling(self) -> None:
+        client, container = self.make_client()
+
+        # Successful DELETE
+        res = client.delete("/api/scan/scan_1")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json["status"], "success")
+        self.assertEqual(container.delete_scan.calls[-1], ("scan_1",))
+
+        # Successful POST /api/scan/<folder>/delete
+        res_post = client.post("/api/scan/scan_1/delete")
+        self.assertEqual(res_post.status_code, 200)
+        self.assertEqual(res_post.json["status"], "success")
+
+        # Scan not found -> 404
+        container.delete_scan.error = ScanNotFoundError("missing")
+        res_404 = client.delete("/api/scan/missing")
+        self.assertEqual(res_404.status_code, 404)
+
+        # Invalid folder name -> 400
+        res_400 = client.delete("/api/scan/invalid%20name")
+        self.assertEqual(res_400.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()
+

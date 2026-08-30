@@ -52,6 +52,7 @@
                     {% if scan.images %}
                     <a href="{{ scan.images[0] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open Imagery in New Tab</a>
                     {% endif %}
+                    <button class="btn btn-delete" onclick='openDeleteModal({{ scan.folder|tojson }}, {{ (scan.metadata.custom_name or scan.folder)|tojson }})'>Delete</button>
                 </div>
             </div>
         </div>
@@ -62,7 +63,137 @@
         {% endfor %}
     </div>
 
+    <!-- Deletion Confirmation Modal -->
+    <div id="deleteConfirmModal" class="delete-modal-backdrop" style="display: none;" onclick="if(event.target === this) closeDeleteModal()">
+        <div class="delete-modal-card" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+            <h3 id="deleteModalTitle" style="margin-top: 0; color: #d9534f; display: flex; align-items: center; gap: 8px;">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                    <line x1="12" y1="9" x2="12" y2="13"></line>
+                    <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                Confirm Deletion
+            </h3>
+            <p style="color: #495057; font-size: 0.95rem; line-height: 1.5; margin-bottom: 12px;">
+                Are you sure you want to permanently delete <strong id="deleteScanLabel" style="color: #212529;"></strong>?
+            </p>
+            <p style="color: #6c757d; font-size: 0.85rem; margin-top: 0; margin-bottom: 20px;">
+                This will permanently delete the imagery tiles, product files, and metadata. This action cannot be undone.
+            </p>
+            <div id="deleteModalError" style="display: none; color: #dc3545; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 8px 12px; margin-bottom: 15px; font-size: 0.85rem;"></div>
+            <div class="delete-modal-actions">
+                <button id="cancelDeleteBtn" class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+                <button id="confirmDeleteBtn" class="btn btn-danger-solid" onclick="confirmDeleteScan()">Delete Imagery</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let pendingDeleteFolder = null;
+
+        function openDeleteModal(folder, defaultName) {
+            pendingDeleteFolder = folder;
+            const customNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+            const displayName = customNames[folder] || defaultName || folder;
+            
+            document.getElementById('deleteScanLabel').textContent = displayName ? `"${displayName}" (${folder})` : folder;
+            const errorEl = document.getElementById('deleteModalError');
+            if (errorEl) {
+                errorEl.style.display = 'none';
+                errorEl.textContent = '';
+            }
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Delete Imagery';
+            }
+            const cancelBtn = document.getElementById('cancelDeleteBtn');
+            if (cancelBtn) cancelBtn.disabled = false;
+
+            const modal = document.getElementById('deleteConfirmModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+        }
+
+        function closeDeleteModal() {
+            pendingDeleteFolder = null;
+            const modal = document.getElementById('deleteConfirmModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeDeleteModal();
+            }
+        });
+
+        async function confirmDeleteScan() {
+            if (!pendingDeleteFolder) return;
+            const folder = pendingDeleteFolder;
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            const cancelBtn = document.getElementById('cancelDeleteBtn');
+            const errorEl = document.getElementById('deleteModalError');
+
+            if (confirmBtn) {
+                confirmBtn.disabled = true;
+                confirmBtn.textContent = 'Deleting...';
+            }
+            if (cancelBtn) cancelBtn.disabled = true;
+
+            try {
+                const response = await fetch(`/api/scan/${encodeURIComponent(folder)}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!response.ok) {
+                    const data = await response.json().catch(() => ({}));
+                    throw new Error(data.error || 'Failed to delete imagery');
+                }
+
+                // Remove from localStorage
+                let list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
+                list = list.filter(i => i !== folder);
+                localStorage.setItem('selected_scans', JSON.stringify(list));
+
+                const customNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
+                delete customNames[folder];
+                localStorage.setItem('layer_custom_names', JSON.stringify(customNames));
+
+                // Animate and remove the card from the UI
+                closeDeleteModal();
+                const card = document.getElementById(`card-${folder}`);
+                if (card) {
+                    card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                    card.style.opacity = '0';
+                    card.style.transform = 'translateY(-10px)';
+                    setTimeout(() => {
+                        card.remove();
+                        const remaining = document.querySelectorAll('.scan-card');
+                        if (remaining.length === 0) {
+                            const container = document.querySelector('.gallery-container');
+                            if (container) {
+                                container.innerHTML = '<div class="no-data"><p>No scans found in the history.</p></div>';
+                            }
+                        }
+                    }, 300);
+                }
+            } catch (err) {
+                if (errorEl) {
+                    errorEl.textContent = err.message || 'An error occurred while deleting the scan.';
+                    errorEl.style.display = 'block';
+                }
+                if (confirmBtn) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Delete Imagery';
+                }
+                if (cancelBtn) cancelBtn.disabled = false;
+            }
+        }
+
         function toggleMapLayer(folder, add) {
             let list = JSON.parse(localStorage.getItem('selected_scans') || '[]');
             if (add && !list.includes(folder)) list.push(folder);

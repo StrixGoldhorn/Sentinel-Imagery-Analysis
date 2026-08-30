@@ -161,6 +161,14 @@ def get_scan(folder_name: str):
     )
 
 
+@blueprint.delete("/api/scan/<folder_name>")
+@blueprint.post("/api/scan/<folder_name>/delete")
+def delete_scan(folder_name: str):
+    container().delete_scan.execute(safe_folder_name(folder_name))
+    return jsonify(status="success", message="Scan deleted successfully")
+
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

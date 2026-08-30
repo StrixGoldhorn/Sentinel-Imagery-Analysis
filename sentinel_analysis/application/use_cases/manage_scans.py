@@ -44,3 +44,15 @@ class RenameScan:
         if self._scans.get(folder_name) is None:
             raise ScanNotFoundError(f"Scan not found: {folder_name}")
         self._scans.update_custom_name(folder_name, custom_name)
+
+
+class DeleteScan:
+    def __init__(self, scans: ScanRepository) -> None:
+        self._scans = scans
+
+    def execute(self, folder_name: str) -> None:
+        folder_name = GetScan._validated_folder_name(folder_name)
+        if self._scans.get(folder_name) is None:
+            raise ScanNotFoundError(f"Scan not found: {folder_name}")
+        self._scans.delete(folder_name)
+

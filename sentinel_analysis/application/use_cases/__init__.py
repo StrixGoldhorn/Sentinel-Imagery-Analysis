@@ -9,7 +9,12 @@ from sentinel_analysis.application.use_cases.manage_aois import (
     ListAreasOfInterest,
     PredictAreaOfInterest,
 )
-from sentinel_analysis.application.use_cases.manage_scans import GetScan, ListScans, RenameScan
+from sentinel_analysis.application.use_cases.manage_scans import (
+    DeleteScan,
+    GetScan,
+    ListScans,
+    RenameScan,
+)
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 
@@ -19,6 +24,7 @@ __all__ = [
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",
     "CreateScan",
+    "DeleteScan",
     "DetectShips",
     "GetScan",
     "IngestAIS",

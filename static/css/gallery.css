@@ -135,6 +135,78 @@ pre {
 .btn-primary { background: #007bff; color: white; }
 .btn-outline { background: white; border: 1px solid #007bff; color: #007bff; }
 .btn-danger { background: #fff5f5; border: 1px solid #ff6b6b; color: #ff6b6b; }
+.btn-delete {
+    background: #fff5f5;
+    border: 1px solid #dc3545;
+    color: #dc3545;
+    transition: background-color 0.2s, color 0.2s;
+}
+.btn-delete:hover {
+    background: #dc3545;
+    color: white;
+}
+.btn-danger-solid {
+    background: #dc3545;
+    color: white;
+    border: 1px solid #dc3545;
+    transition: background-color 0.2s;
+}
+.btn-danger-solid:hover:not(:disabled) {
+    background: #c82333;
+    border-color: #bd2130;
+}
+.btn-danger-solid:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: 1px solid #6c757d;
+    transition: background-color 0.2s;
+}
+.btn-secondary:hover:not(:disabled) {
+    background: #5a6268;
+    border-color: #545b62;
+}
+.delete-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: modal-fade-in 0.2s ease-out;
+}
+.delete-modal-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    max-width: 460px;
+    width: 100%;
+    padding: 25px;
+    border: 1px solid #e1e4e8;
+    animation: modal-pop-in 0.2s ease-out;
+}
+.delete-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+@keyframes modal-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+@keyframes modal-pop-in {
+    from { transform: scale(0.95); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
 .no-data {
     text-align: center;
     padding: 50px;
