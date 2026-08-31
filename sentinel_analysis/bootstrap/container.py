@@ -49,8 +49,9 @@ class ApplicationContainer:
             settings.copernicus_password,
         )
         imagery = CopernicusImageryProvider(token_provider, tile_cache=self.tile_cache)
+        self.n2yo_predictor = N2YOPassPredictor()
         self.mission_analyzer = Sentinel1MissionAnalyzer(imagery)
-        self.hybrid_predictor = HybridPassPredictor(N2YOPassPredictor(), self.mission_analyzer)
+        self.hybrid_predictor = HybridPassPredictor(self.n2yo_predictor, self.mission_analyzer)
 
         self.create_scan = CreateScan(
             imagery,
@@ -69,7 +70,9 @@ class ApplicationContainer:
             self.aoi_repository,
             self.hybrid_predictor,
             self.mission_analyzer,
+            self.n2yo_predictor,
         )
+
         self.analyze_mission_passes = AnalyzeMissionPasses(
             self.aoi_repository,
             self.mission_analyzer,

@@ -18,9 +18,10 @@ BBOX = BoundingBox(103, 1, 104, 2)
 
 
 class StubUseCase:
-    def __init__(self, result=None, error=None):
+    def __init__(self, result=None, error=None, analysis_result=None):
         self.result = result
         self.error = error
+        self.analysis_result = analysis_result
         self.calls = []
         self.keyword_calls = []
 
@@ -30,6 +31,22 @@ class StubUseCase:
         if self.error is not None:
             raise self.error
         return self.result
+
+    def execute_with_analysis(self, *args, **kwargs):
+        self.calls.append(args)
+        self.keyword_calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        if self.analysis_result is not None:
+            return self.analysis_result
+        return {
+            "predictions": self.result if isinstance(self.result, list) else [],
+            "n2yo_predictions": [{"time": "2026-09-01T12:00:00Z", "max_elevation": 60, "source": "N2YO"}],
+            "historical_predictions": [{"time": "2026-09-02T10:00:00Z", "max_elevation": 70, "source": "HISTORICAL_MISSION"}],
+            "next_scan": "2026-09-01T12:00:00Z",
+            "mission_analysis": {"total_acquisitions": 10},
+        }
+
 
 
 class StubTaskQueue:
@@ -307,7 +324,21 @@ def test_ais_timeline_route() -> None:
     assert "count" in response.json
 
 
+def test_predict_aoi_route_returns_n2yo_and_historical_lists() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/aoi/1/predict")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert "n2yo_predictions" in response.json
+    assert "historical_predictions" in response.json
+    assert len(response.json["n2yo_predictions"]) == 1
+    assert len(response.json["historical_predictions"]) == 1
+    assert response.json["n2yo_predictions"][0]["source"] == "N2YO"
+    assert response.json["historical_predictions"][0]["source"] == "HISTORICAL_MISSION"
+
+
 def load_tests(loader, standard_tests, pattern):
+
     import inspect
     suite = unittest.TestSuite()
     for name, obj in list(globals().items()):

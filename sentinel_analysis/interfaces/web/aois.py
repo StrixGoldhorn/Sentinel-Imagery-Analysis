@@ -41,21 +41,28 @@ def predict_aoi(aoi_id: int):
     if hasattr(use_case, "execute_with_analysis"):
         result = use_case.execute_with_analysis(aoi_id, api_key)
         predictions = result.get("predictions", [])
+        n2yo_predictions = result.get("n2yo_predictions", [])
+        historical_predictions = result.get("historical_predictions", [])
         next_scan = result.get("next_scan")
         mission_analysis = result.get("mission_analysis")
     else:
         predictions = use_case.execute(aoi_id, api_key)
+        n2yo_predictions = [p for p in predictions if p.get("source") in ("N2YO", "COMBINED")]
+        historical_predictions = [p for p in predictions if p.get("source") in ("HISTORICAL_MISSION", "COMBINED")]
         next_scan = predictions[0]["time"] if predictions else None
         mission_analysis = None
 
-    if not predictions:
+    if not predictions and not n2yo_predictions and not historical_predictions:
         return jsonify(error="No upcoming scans found"), 404
     return jsonify(
         status="success",
         next_scan=next_scan,
         predictions=predictions,
+        n2yo_predictions=n2yo_predictions,
+        historical_predictions=historical_predictions,
         mission_analysis=mission_analysis,
     )
+
 
 
 @blueprint.get("/api/aoi/<int:aoi_id>/mission_history")

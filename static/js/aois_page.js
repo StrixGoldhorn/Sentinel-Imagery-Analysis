@@ -51,7 +51,7 @@ function createAoiCard(aoi) {
     let nextScanBadge = '<span class="badge badge-secondary">Not predicted</span>';
     if (aoi.next_scan) {
         const d = new Date(aoi.next_scan);
-        nextScanBadge = `<span class="badge badge-success" title="Next Pass: ${d.toISOString()}">${d.toLocaleString()}</span>`;
+        nextScanBadge = `<span class="badge badge-success" title="Next Pass: ${d.toISOString()}">Next Pass: ${d.toLocaleString()}</span>`;
     }
 
     card.innerHTML = `
@@ -63,20 +63,22 @@ function createAoiCard(aoi) {
             <div>${nextScanBadge}</div>
         </div>
         <div class="aoi-card-body">
-            <div class="aoi-info-row">
-                <span class="aoi-info-label">Bounding Box:</span>
-                <span class="coords-box">[${bboxFormatted}]</span>
-            </div>
-            <div class="aoi-info-row">
-                <label for="auto-cap-${aoi.id}" style="cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #495057;">
-                    <input type="checkbox" id="auto-cap-${aoi.id}" ${isAuto} onchange="toggleAutoCapture(${aoi.id}, this.checked)">
-                    <span>Auto-Capture & Scrape on Pass</span>
-                </label>
-            </div>
+            <div class="aoi-summary-row">
+                <div class="aoi-meta-group">
+                    <div class="aoi-meta-item">
+                        <span class="aoi-info-label">Bounding Box:</span>
+                        <span class="coords-box">[${bboxFormatted}]</span>
+                    </div>
+                    <div class="aoi-meta-item">
+                        <label for="auto-cap-${aoi.id}" style="cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: #495057; margin: 0;">
+                            <input type="checkbox" id="auto-cap-${aoi.id}" ${isAuto} onchange="toggleAutoCapture(${aoi.id}, this.checked)">
+                            <span>Auto-Capture & Scrape on Pass</span>
+                        </label>
+                    </div>
+                </div>
 
-            <div class="aoi-actions">
-                <div class="btn-row">
-                    <button class="btn btn-primary" style="flex: 1;" onclick="goToMap([${aoi.bbox.join(',')}], ${aoi.id})">
+                <div class="aoi-actions">
+                    <button class="btn btn-primary" onclick="goToMap([${aoi.bbox.join(',')}], ${aoi.id})">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon>
                             <line x1="8" y1="2" x2="8" y2="18"></line>
@@ -84,20 +86,20 @@ function createAoiCard(aoi) {
                         </svg>
                         View on Map
                     </button>
-                    <button class="btn btn-outline-primary" style="flex: 1;" id="btn-toggle-${aoi.id}" onclick="toggleFlypasts(${aoi.id})">
+                    <button class="btn btn-outline-primary" id="btn-toggle-${aoi.id}" onclick="toggleFlypasts(${aoi.id})">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
                             <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
-                        Next 5 Flypasts ▾
+                        Next Flypasts ▾
+                    </button>
+                    <button class="btn btn-warning" id="btn-force-scan-${aoi.id}" onclick="forceScanAOIAIS(${aoi.id})" title="Force immediate AIS vessel scan regardless of satellite flypass timing">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
+                        </svg>
+                        Force AIS Scan Now
                     </button>
                 </div>
-                <button class="btn btn-warning" id="btn-force-scan-${aoi.id}" onclick="forceScanAOIAIS(${aoi.id})" title="Force immediate AIS vessel scan regardless of satellite flypass timing">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
-                    </svg>
-                    Force AIS Scan Now (No Flyby Needed)
-                </button>
             </div>
 
             <div class="flypast-dropdown" id="flypasts-panel-${aoi.id}" style="display: none;">
@@ -112,6 +114,7 @@ function createAoiCard(aoi) {
 
     return card;
 }
+
 
 function goToMap(bbox, aoiId) {
     if (!bbox || bbox.length !== 4) return;
@@ -131,7 +134,7 @@ async function toggleFlypasts(aoiId) {
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
             </svg>
-            Next 5 Flypasts ▾
+            Next Flypasts ▾
         `;
         return;
     }
@@ -170,10 +173,12 @@ function renderFlypasts(aoiId, data) {
     const container = document.getElementById(`flypasts-content-${aoiId}`);
     if (!container) return;
 
-    const predictions = (data.predictions || []).slice(0, 5);
+    const n2yoPredictions = data.n2yo_predictions || [];
+    const histPredictions = data.historical_predictions || [];
+    const combinedPredictions = (data.predictions || []).slice(0, 10);
     const missionAnalysis = data.mission_analysis;
 
-    if (predictions.length === 0) {
+    if (n2yoPredictions.length === 0 && histPredictions.length === 0 && combinedPredictions.length === 0) {
         container.innerHTML = `<div style="text-align: center; color: #6c757d; font-size: 0.85rem; padding: 8px;">No upcoming satellite passes predicted.</div>`;
         return;
     }
@@ -187,35 +192,102 @@ function renderFlypasts(aoiId, data) {
         `;
     }
 
-    let passesHtml = predictions.map((pred, index) => {
+    const defaultTab = n2yoPredictions.length > 0 ? 'n2yo' : (histPredictions.length > 0 ? 'hist' : 'combined');
+
+    container.innerHTML = `
+        ${statsHtml}
+        <div class="flypast-tabs" id="flypast-tabs-${aoiId}">
+            <button class="flypast-tab-btn ${defaultTab === 'n2yo' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'n2yo')">
+                🛰️ N2YO Tracking <span class="tab-count">${n2yoPredictions.length}</span>
+            </button>
+            <button class="flypast-tab-btn ${defaultTab === 'hist' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'hist')">
+                🔁 Scan Extrapolation <span class="tab-count">${histPredictions.length}</span>
+            </button>
+            <button class="flypast-tab-btn ${defaultTab === 'combined' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'combined')">
+                ✨ Combined <span class="tab-count">${combinedPredictions.length}</span>
+            </button>
+        </div>
+
+        <div id="flypast-tab-n2yo-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'n2yo' ? 'block' : 'none'};">
+            <div class="flypast-section-desc">Astronomical satellite tracking passes from N2YO orbital pass predictions.</div>
+            <div class="flypast-list">
+                ${renderPassListHtml(aoiId, n2yoPredictions, 'No N2YO predictions found (API key required or offline).')}
+            </div>
+        </div>
+
+        <div id="flypast-tab-hist-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'hist' ? 'block' : 'none'};">
+            <div class="flypast-section-desc">Passes extrapolated from previous Sentinel-1 acquisitions and 12-day orbital repeat cycles.</div>
+            <div class="flypast-list">
+                ${renderPassListHtml(aoiId, histPredictions, 'No previous scans found for repeat-cycle extrapolation.')}
+            </div>
+        </div>
+
+        <div id="flypast-tab-combined-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'combined' ? 'block' : 'none'};">
+            <div class="flypast-section-desc">Cross-validated passes merging astronomical tracking and historical repeat cycles.</div>
+            <div class="flypast-list">
+                ${renderPassListHtml(aoiId, combinedPredictions, 'No combined passes available.')}
+            </div>
+        </div>
+    `;
+}
+
+function switchFlypastTab(aoiId, tabKey) {
+    const tabsContainer = document.getElementById(`flypast-tabs-${aoiId}`);
+    if (!tabsContainer) return;
+
+    const buttons = tabsContainer.querySelectorAll('.flypast-tab-btn');
+    const keys = ['n2yo', 'hist', 'combined'];
+    buttons.forEach((btn, idx) => {
+        btn.classList.toggle('active', keys[idx] === tabKey);
+    });
+
+    keys.forEach(key => {
+        const pane = document.getElementById(`flypast-tab-${key}-${aoiId}`);
+        if (pane) {
+            pane.style.display = key === tabKey ? 'block' : 'none';
+        }
+    });
+}
+
+function renderPassListHtml(aoiId, predictions, emptyMessage) {
+    if (!predictions || predictions.length === 0) {
+        return `<div style="text-align: center; color: #6c757d; font-size: 0.85rem; padding: 12px;">${escapeHtml(emptyMessage)}</div>`;
+    }
+
+    return predictions.slice(0, 10).map((pred, index) => {
         const passDate = new Date(pred.time);
         const zuluStr = passDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
         const localStr = passDate.toLocaleString();
         
         const sat = pred.satellite || 'Sentinel-1';
-        const dir = pred.orbit_direction || 'N/A';
+        const dir = pred.orbit_direction || null;
         const dirClass = dir === 'ASCENDING' ? 'badge-ascending' : (dir === 'DESCENDING' ? 'badge-descending' : 'badge-secondary');
         const dirArrow = dir === 'ASCENDING' ? '⬆ Ascending' : (dir === 'DESCENDING' ? '⬇ Descending' : dir);
         
         const track = pred.relative_orbit ? `Track #${pred.relative_orbit}` : '';
         const confPercent = pred.confidence_score ? `${Math.round(pred.confidence_score * 100)}% Conf` : '';
         const source = pred.source || 'N2YO';
+        const sourceLabel = source === 'HISTORICAL_MISSION' ? 'Scan Extrapolation' : (source === 'COMBINED' ? 'Combined' : 'N2YO');
         const sourceClass = source === 'COMBINED' ? 'badge-combined' : (source === 'HISTORICAL_MISSION' ? 'badge-info' : 'badge-secondary');
         const elev = pred.max_elevation ? `Max Elev: ${pred.max_elevation}°` : '';
+        const matchNote = pred.historical_match ? escapeHtml(pred.historical_match) : '';
 
         return `
             <div class="flypast-item">
-                <div class="flypast-item-header">
-                    <span>#${index + 1} &bull; ${localStr}</span>
-                    <span style="font-size: 0.78rem; color: #6c757d;">${zuluStr}</span>
-                </div>
-                <div class="flypast-item-meta">
-                    <span class="badge badge-success">${escapeHtml(sat)}</span>
-                    <span class="badge ${dirClass}">${escapeHtml(dirArrow)}</span>
-                    ${track ? `<span class="badge badge-info">${escapeHtml(track)}</span>` : ''}
-                    ${confPercent ? `<span class="badge badge-warning">${escapeHtml(confPercent)}</span>` : ''}
-                    <span class="badge ${sourceClass}">[${escapeHtml(source)}]</span>
-                    ${elev ? `<span style="font-size: 0.78rem; color: #6c757d;">${escapeHtml(elev)}</span>` : ''}
+                <div class="flypast-item-main">
+                    <div class="flypast-item-header">
+                        <span>#${index + 1} &bull; ${localStr}</span>
+                        <span style="font-size: 0.78rem; color: #6c757d;">${zuluStr}</span>
+                    </div>
+                    <div class="flypast-item-meta">
+                        <span class="badge badge-success">${escapeHtml(sat)}</span>
+                        ${dir ? `<span class="badge ${dirClass}">${escapeHtml(dirArrow)}</span>` : ''}
+                        ${track ? `<span class="badge badge-info">${escapeHtml(track)}</span>` : ''}
+                        ${confPercent ? `<span class="badge badge-warning">${escapeHtml(confPercent)}</span>` : ''}
+                        <span class="badge ${sourceClass}">[${escapeHtml(sourceLabel)}]</span>
+                        ${elev ? `<span style="font-size: 0.78rem; color: #6c757d;">${escapeHtml(elev)}</span>` : ''}
+                    </div>
+                    ${matchNote ? `<div class="flypast-item-detail">🔍 ${matchNote}</div>` : ''}
                 </div>
                 <div class="flypast-item-actions">
                     <button class="btn btn-outline-secondary btn-sm" onclick="scrapePassAIS(${aoiId}, '${pred.time}')" title="Scrape AIS data for the [-5m, +5m] window around this pass">
@@ -228,14 +300,8 @@ function renderFlypasts(aoiId, data) {
             </div>
         `;
     }).join('');
-
-    container.innerHTML = `
-        ${statsHtml}
-        <div class="flypast-list">
-            ${passesHtml}
-        </div>
-    `;
 }
+
 
 function renderFlypastError(aoiId, errorMsg) {
     const container = document.getElementById(`flypasts-content-${aoiId}`);

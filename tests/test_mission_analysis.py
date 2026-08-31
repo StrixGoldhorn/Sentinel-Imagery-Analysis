@@ -208,7 +208,7 @@ def test_predict_area_of_interest_with_analysis() -> None:
     now = datetime.now(timezone.utc)
     aoi = AreaOfInterest("Port Area", BBOX, id=1)
     repo = MockAOIRepository([aoi])
-    predictor = MockPassPredictor([{"time": (now + timedelta(hours=2)).isoformat(), "max_elevation": 60}])
+    predictor = MockPassPredictor([{"time": (now + timedelta(hours=2)).isoformat(), "max_elevation": 60, "source": "N2YO"}])
     analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
 
     use_case = PredictAreaOfInterest(repo, predictor, analyzer)
@@ -216,8 +216,11 @@ def test_predict_area_of_interest_with_analysis() -> None:
 
     assert result["aoi_id"] == 1
     assert len(result["predictions"]) >= 1
+    assert "n2yo_predictions" in result
+    assert "historical_predictions" in result
     assert result["mission_analysis"] is not None
     assert len(repo.updates) == 1
+
 
 
 def test_check_and_schedule_aois_executes_1_minute_cadence_ais_scraping_during_flypast() -> None:

@@ -359,7 +359,41 @@ def test_get_vessel_positions_returns_only_latest_per_unique_mmsi() -> None:
     assert mmsi_map["111222333"]["timestamp"] == "2026-08-30T12:00:00Z"
 
 
+def test_predict_aoi_returns_separate_n2yo_and_historical_extrapolation_lists() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Singapore", BBOX, id=1))
+    
+    class FakeN2YOPredictor:
+        def predict(self, bbox, api_key):
+            return [{"time": "2026-09-01T12:00:00Z", "max_elevation": 65.0, "source": "N2YO"}]
+            
+    class FakeMissionAnalyzer:
+        def analyze_history(self, bbox, limit=50):
+            return {"total_acquisitions": 25, "average_revisit_days": 6.0}, []
+        def predict_from_history(self, bbox, days_ahead=10, limit=20):
+            return [{"time": "2026-09-02T10:30:00Z", "max_elevation": 75.0, "source": "HISTORICAL_MISSION", "relative_orbit": 171}]
+
+    fake_n2yo = FakeN2YOPredictor()
+    fake_analyzer = FakeMissionAnalyzer()
+    
+    use_case = PredictAreaOfInterest(
+        repository,
+        predictor=fake_n2yo,
+        mission_analyzer=fake_analyzer,
+        n2yo_predictor=fake_n2yo,
+    )
+    
+    res = use_case.execute_with_analysis(1, "test_key")
+    
+    assert res["aoi_id"] == 1
+    assert len(res["n2yo_predictions"]) == 1
+    assert res["n2yo_predictions"][0]["source"] == "N2YO"
+    assert len(res["historical_predictions"]) == 1
+    assert res["historical_predictions"][0]["relative_orbit"] == 171
+    assert res["mission_analysis"]["total_acquisitions"] == 25
+
+
 def load_tests(loader, standard_tests, pattern):
+
 
     import inspect
     suite = unittest.TestSuite()

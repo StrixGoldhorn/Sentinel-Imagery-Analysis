@@ -34,10 +34,13 @@ class PredictAreaOfInterest:
         repository: AreaOfInterestRepository,
         predictor: PassPredictor,
         mission_analyzer: Optional[MissionPassAnalyzer] = None,
+        n2yo_predictor: Optional[PassPredictor] = None,
     ) -> None:
         self._repository = repository
+        self._predictor = predictor
         self._predict_passes = PredictPasses(predictor)
         self._mission_analyzer = mission_analyzer
+        self._n2yo_predictor = n2yo_predictor
 
     def execute(self, aoi_id: int, api_key: str) -> list[PassPrediction]:
         if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
@@ -60,6 +63,16 @@ class PredictAreaOfInterest:
 
         predictions = self.execute(aoi_id, api_key)
 
+        n2yo_predictions: list[PassPrediction] = []
+        if self._n2yo_predictor is not None and isinstance(api_key, str) and api_key.strip():
+            try:
+                n2yo_predictions = PredictPasses(self._n2yo_predictor).execute(aoi.bbox, api_key)
+            except Exception:
+                n2yo_predictions = []
+        else:
+            n2yo_predictions = [p for p in predictions if p.get("source") in ("N2YO", "COMBINED")]
+
+        historical_predictions: list[PassPrediction] = []
         mission_summary = None
         if self._mission_analyzer is not None:
             try:
@@ -67,10 +80,29 @@ class PredictAreaOfInterest:
             except Exception:
                 mission_summary = None
 
+            try:
+                raw_hist = self._mission_analyzer.predict_from_history(aoi.bbox, days_ahead=10, limit=20)
+                historical_predictions = raw_hist
+            except Exception:
+                historical_predictions = []
+        else:
+            historical_predictions = [p for p in predictions if p.get("source") in ("HISTORICAL_MISSION", "COMBINED")]
+
+        next_scan_val = None
+        if predictions:
+            next_scan_val = predictions[0]["time"]
+        elif historical_predictions:
+            next_scan_val = historical_predictions[0]["time"]
+        elif n2yo_predictions:
+            next_scan_val = n2yo_predictions[0]["time"]
+
         return {
             "aoi_id": aoi.id,
             "name": aoi.name,
             "predictions": predictions,
-            "next_scan": predictions[0]["time"] if predictions else None,
+            "n2yo_predictions": n2yo_predictions,
+            "historical_predictions": historical_predictions,
+            "next_scan": next_scan_val,
             "mission_analysis": mission_summary,
         }
+
