@@ -53,4 +53,22 @@ class AISRepository(Protocol):
     def get_scraper_stats(self) -> dict[str, dict]:
         ...
 
+    def update_scraper_settings(self, plugin_name: str, config: dict) -> None:
+        ...
+
+    def record_scraper_failure(
+        self,
+        plugin_name: str,
+        reason: str,
+        cooldown_until: datetime | None,
+        consecutive_failures: int,
+    ) -> None:
+        ...
+
+    def record_scraper_success(self, plugin_name: str) -> None:
+        ...
+
+    def reset_scraper_cooldown(self, plugin_name: str) -> None:
+        ...
+
 

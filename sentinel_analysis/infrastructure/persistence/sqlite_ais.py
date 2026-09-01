@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from datetime import datetime
+import json
 from pathlib import Path
 import sqlite3
 
@@ -204,16 +205,29 @@ class SQLiteAISRepository:
     def get_scraper_config(self, plugin_name: str) -> dict | None:
         with self._database.connection() as connection:
             cursor = connection.execute(
-                "SELECT plugin_name, enabled, description, updated_at FROM scraper_config WHERE plugin_name = ?",
+                """
+                SELECT plugin_name, enabled, description, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
+                FROM scraper_config WHERE plugin_name = ?
+                """,
                 (plugin_name,),
             )
             row = cursor.fetchone()
             if row:
+                config_data = {}
+                if row[3]:
+                    try:
+                        config_data = json.loads(row[3])
+                    except Exception:
+                        config_data = {}
                 return {
                     "plugin_name": row[0],
                     "enabled": bool(row[1]),
                     "description": row[2],
-                    "updated_at": row[3],
+                    "config": config_data,
+                    "cooldown_until": row[4],
+                    "consecutive_failures": int(row[5] or 0),
+                    "last_failure_reason": row[6],
+                    "updated_at": row[7],
                 }
         return None
 
@@ -224,6 +238,34 @@ class SQLiteAISRepository:
             for row in cursor.fetchall():
                 configs[row[0]] = bool(row[1])
         return configs
+
+    def get_all_scraper_details(self) -> dict[str, dict]:
+        details: dict[str, dict] = {}
+        with self._database.connection() as connection:
+            cursor = connection.execute(
+                """
+                SELECT plugin_name, enabled, description, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
+                FROM scraper_config
+                """
+            )
+            for row in cursor.fetchall():
+                config_data = {}
+                if row[3]:
+                    try:
+                        config_data = json.loads(row[3])
+                    except Exception:
+                        config_data = {}
+                details[row[0]] = {
+                    "plugin_name": row[0],
+                    "enabled": bool(row[1]),
+                    "description": row[2],
+                    "config": config_data,
+                    "cooldown_until": row[4],
+                    "consecutive_failures": int(row[5] or 0),
+                    "last_failure_reason": row[6],
+                    "updated_at": row[7],
+                }
+        return details
 
     def set_scraper_config(self, plugin_name: str, enabled: bool) -> None:
         with self._database.connection() as connection:
@@ -237,6 +279,69 @@ class SQLiteAISRepository:
                 """,
                 (plugin_name, 1 if enabled else 0),
             )
+
+    def update_scraper_settings(self, plugin_name: str, config: dict) -> None:
+        config_str = json.dumps(config)
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO scraper_config (plugin_name, enabled, config_json, updated_at)
+                VALUES (?, 1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(plugin_name) DO UPDATE SET
+                    config_json = excluded.config_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (plugin_name, config_str),
+            )
+
+    def record_scraper_failure(
+        self,
+        plugin_name: str,
+        reason: str,
+        cooldown_until: datetime | None,
+        consecutive_failures: int,
+    ) -> None:
+        cooldown_str = cooldown_until.isoformat() if cooldown_until else None
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO scraper_config (plugin_name, enabled, cooldown_until, consecutive_failures, last_failure_reason, updated_at)
+                VALUES (?, 1, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(plugin_name) DO UPDATE SET
+                    cooldown_until = excluded.cooldown_until,
+                    consecutive_failures = excluded.consecutive_failures,
+                    last_failure_reason = excluded.last_failure_reason,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (plugin_name, cooldown_str, consecutive_failures, reason),
+            )
+
+    def record_scraper_success(self, plugin_name: str) -> None:
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO scraper_config (plugin_name, enabled, cooldown_until, consecutive_failures, last_failure_reason, updated_at)
+                VALUES (?, 1, NULL, 0, NULL, CURRENT_TIMESTAMP)
+                ON CONFLICT(plugin_name) DO UPDATE SET
+                    cooldown_until = NULL,
+                    consecutive_failures = 0,
+                    last_failure_reason = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (plugin_name,),
+            )
+
+    def reset_scraper_cooldown(self, plugin_name: str) -> None:
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                UPDATE scraper_config
+                SET cooldown_until = NULL, consecutive_failures = 0, last_failure_reason = NULL, updated_at = CURRENT_TIMESTAMP
+                WHERE plugin_name = ?
+                """,
+                (plugin_name,),
+            )
+
 
     def get_scraper_logs(
         self,

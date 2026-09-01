@@ -93,6 +93,53 @@ def test_scraper_api(name: str):
         }), 500
 
 
+@blueprint.route("/api/scrapers/<name>/config", methods=["POST"])
+def update_scraper_config_api(name: str):
+    """Update custom proxy/credential configuration for a specific scraper."""
+    app_container = container()
+    data = request.get_json(silent=True) or {}
+    try:
+        result = app_container.update_scraper_config.execute(name, data)
+        return jsonify({
+            "status": "success",
+            "plugin_name": result["plugin_name"],
+            "config": result["config"],
+        }), 200
+    except ValueError as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 500
+
+
+@blueprint.route("/api/scrapers/<name>/reset_cooldown", methods=["POST"])
+def reset_scraper_cooldown_api(name: str):
+    """Manually clear active rate limit backoff cooldown for a scraper."""
+    app_container = container()
+    try:
+        result = app_container.reset_scraper_cooldown.execute(name)
+        return jsonify({
+            "status": "success",
+            "plugin_name": result["plugin_name"],
+            "status_text": result["status"],
+        }), 200
+    except ValueError as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 500
+
+
 @blueprint.route("/logs", methods=["GET"])
 def logs_dashboard() -> str:
     """Render the dedicated Scraper Logs audit UI."""

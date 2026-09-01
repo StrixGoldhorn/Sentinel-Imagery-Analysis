@@ -32,9 +32,38 @@ class AISFriendsPlugin:
         "Tanker": list(range(80, 90)),
     }
 
-    def __init__(self, session: requests.Session | None = None, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        timeout: float = 30.0,
+        proxy_url: str | None = None,
+        user_agent: str | None = None,
+    ) -> None:
         self._session = session or requests.Session()
         self._timeout = timeout
+        self.proxy_url = proxy_url
+        self.user_agent = user_agent
+        if proxy_url:
+            self._session.proxies = {"http": proxy_url, "https": proxy_url}
+
+    def configure(self, config: dict) -> None:
+        """Dynamically apply user-configured proxy, timeout, and header settings."""
+        if not config:
+            return
+        if "proxy_url" in config:
+            proxy = str(config.get("proxy_url") or "").strip() or None
+            self.proxy_url = proxy
+            if proxy:
+                self._session.proxies = {"http": proxy, "https": proxy}
+            else:
+                self._session.proxies = {}
+        if "timeout" in config and config.get("timeout") is not None:
+            try:
+                self._timeout = float(config["timeout"])
+            except (ValueError, TypeError):
+                pass
+        if "user_agent" in config:
+            self.user_agent = str(config.get("user_agent") or "").strip() or None
 
     @classmethod
     def get_ship_type(cls, ship_type_id: int | None) -> str | None:
@@ -55,13 +84,14 @@ class AISFriendsPlugin:
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
         zones = split_into_zones(bbox, zone_size_nm=10.0)
+        ua = self.user_agent or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/119.36 (KHTML, like Gecko) "
+            "Chrome/59.0.3071.115 Safari/537.36"
+        )
         headers = {
             "Referer": "https://www.aisfriends.com/",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/119.36 (KHTML, like Gecko) "
-                "Chrome/59.0.3071.115 Safari/537.36"
-            ),
+            "User-Agent": ua,
         }
 
         all_records: list[AISRecord] = []

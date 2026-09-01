@@ -19,7 +19,9 @@ from sentinel_analysis.application.use_cases.manage_scans import (
 from sentinel_analysis.application.use_cases.manage_scrapers import (
     GetScraperLogsUseCase,
     ListScrapers,
+    ResetScraperCooldown,
     ToggleScraper,
+    UpdateScraperConfig,
 )
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
@@ -48,8 +50,10 @@ __all__ = [
     "PredictAreaOfInterest",
     "PredictPasses",
     "RenameScan",
+    "ResetScraperCooldown",
     "ScrapeAreaOfInterestAIS",
     "ToggleScraper",
+    "UpdateScraperConfig",
     "calculate_pass_window",
 ]
 

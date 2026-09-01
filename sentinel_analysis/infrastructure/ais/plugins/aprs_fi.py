@@ -20,9 +20,11 @@ logger = logging.getLogger(__name__)
 class PlaywrightAprsSession:
     """Manages an automated, stealth Chromium browser session to access aprs.fi XML2 API."""
 
-    def __init__(self, headless: bool = True) -> None:
+    def __init__(self, headless: bool = True, proxy_url: str | None = None, timeout: float = 30.0) -> None:
         self.temp_profile = tempfile.mkdtemp(prefix="sentinel_aprs_")
         self.headless = headless
+        self.proxy_url = proxy_url
+        self.timeout = timeout
         self.pw: Any = None
         self.context: Any = None
         self.page: Any = None
@@ -41,19 +43,24 @@ class PlaywrightAprsSession:
             "--disable-setuid-sandbox",
         ]
 
+        launch_kwargs: dict[str, Any] = {
+            "user_data_dir": self.temp_profile,
+            "headless": self.headless,
+            "args": launch_args,
+        }
+        if self.proxy_url:
+            launch_kwargs["proxy"] = {"server": self.proxy_url}
+
         try:
             self.context = self.pw.chromium.launch_persistent_context(
-                user_data_dir=self.temp_profile,
-                headless=self.headless,
                 channel="chrome",
-                args=launch_args,
+                **launch_kwargs,
             )
         except Exception:
             self.context = self.pw.chromium.launch_persistent_context(
-                user_data_dir=self.temp_profile,
-                headless=self.headless,
-                args=launch_args,
+                **launch_kwargs,
             )
+
 
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
 
@@ -136,8 +143,32 @@ class AprsFiPlugin:
     def __init__(
         self,
         session_factory: Callable[[], PlaywrightAprsSession] | None = None,
+        proxy_url: str | None = None,
+        api_key: str | None = None,
+        headless: bool = True,
+        timeout: float = 30.0,
     ) -> None:
         self._session_factory = session_factory
+        self.proxy_url = proxy_url
+        self.api_key = api_key
+        self.headless = headless
+        self.timeout = timeout
+
+    def configure(self, config: dict) -> None:
+        """Dynamically apply user-configured proxy, API key, and network settings."""
+        if not config:
+            return
+        if "proxy_url" in config:
+            self.proxy_url = str(config.get("proxy_url") or "").strip() or None
+        if "api_key" in config:
+            self.api_key = str(config.get("api_key") or "").strip() or None
+        if "headless" in config:
+            self.headless = bool(config.get("headless"))
+        if "timeout" in config and config.get("timeout") is not None:
+            try:
+                self.timeout = float(config["timeout"])
+            except (ValueError, TypeError):
+                pass
 
     def authenticate(self) -> None:
         """Browser handles sessions and cookies upon startup."""
@@ -149,7 +180,16 @@ class AprsFiPlugin:
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
         zones = split_into_zones(bbox, zone_size_nm=10.0)
-        session = self._session_factory() if self._session_factory else PlaywrightAprsSession()
+        session = (
+            self._session_factory()
+            if self._session_factory
+            else PlaywrightAprsSession(
+                headless=self.headless,
+                proxy_url=self.proxy_url,
+                timeout=self.timeout,
+            )
+        )
+
         try:
             session.start()
             all_records: list[AISRecord] = []

@@ -119,6 +119,18 @@ class CompleteAdapter:
     def get_scraper_stats(self):
         return {}
 
+    def update_scraper_settings(self, plugin_name, config):
+        return None
+
+    def record_scraper_failure(self, plugin_name, reason, cooldown_until, consecutive_failures):
+        return None
+
+    def record_scraper_success(self, plugin_name):
+        return None
+
+    def reset_scraper_cooldown(self, plugin_name):
+        return None
+
     def list_tiles(self, tile_folder):
         return []
 

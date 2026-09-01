@@ -17,8 +17,10 @@ from sentinel_analysis.application.use_cases import (
     ListScrapers,
     PredictAreaOfInterest,
     RenameScan,
+    ResetScraperCooldown,
     ScrapeAreaOfInterestAIS,
     ToggleScraper,
+    UpdateScraperConfig,
 )
 
 from sentinel_analysis.bootstrap.config import Settings
@@ -85,6 +87,8 @@ class ApplicationContainer:
         self.ingest_ais = IngestAIS(self.ais_plugin_registry, self.ais_repository)
         self.list_scrapers = ListScrapers(self.ais_plugin_registry, self.ais_repository)
         self.toggle_scraper = ToggleScraper(self.ais_plugin_registry, self.ais_repository)
+        self.update_scraper_config = UpdateScraperConfig(self.ais_plugin_registry, self.ais_repository)
+        self.reset_scraper_cooldown = ResetScraperCooldown(self.ais_plugin_registry, self.ais_repository)
         self.get_scraper_logs_use_case = GetScraperLogsUseCase(self.ais_repository)
         self.get_vessels = GetVesselPositions(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)

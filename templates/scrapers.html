@@ -123,6 +123,68 @@
         </div>
     </div>
 
+    <!-- Scraper Settings Modal -->
+    <div id="scraperConfigModal" class="modal-backdrop" style="display: none;">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <div class="modal-header-text">
+                    <h3 id="modalScraperTitle">Configure Scraper</h3>
+                    <p id="modalScraperSubtitle" class="modal-subtitle">Update proxy, API keys, and connection parameters</p>
+                </div>
+                <button type="button" class="btn-icon" onclick="closeConfigModal()" title="Close dialog">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="scraperConfigForm" onsubmit="saveScraperConfig(event)">
+                <input type="hidden" id="configPluginName" value="">
+                
+                <div class="modal-body">
+                    <div class="form-group" id="groupProxy">
+                        <label for="cfgProxyUrl">Proxy Server (HTTP / HTTPS / SOCKS5)</label>
+                        <input type="text" id="cfgProxyUrl" class="form-control" placeholder="e.g. http://127.0.0.1:8080 or socks5://user:pass@host:1080">
+                        <span class="form-help">Routes requests through a residential/datacenter proxy to avoid rate limits and Cloudflare bans.</span>
+                    </div>
+
+                    <div class="form-group" id="groupApiKey">
+                        <label for="cfgApiKey">API Key / Token</label>
+                        <input type="password" id="cfgApiKey" class="form-control" placeholder="Enter API authentication key">
+                        <span class="form-help">Used for authenticated API provider endpoints.</span>
+                    </div>
+
+                    <div class="form-row" id="groupUdp">
+                        <div class="form-group flex-1">
+                            <label for="cfgHost">Listen Host / IP</label>
+                            <input type="text" id="cfgHost" class="form-control" placeholder="0.0.0.0">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="cfgPort">UDP Port</label>
+                            <input type="number" id="cfgPort" class="form-control" placeholder="10110">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="groupUserAgent">
+                        <label for="cfgUserAgent">Custom User-Agent</label>
+                        <input type="text" id="cfgUserAgent" class="form-control" placeholder="Leave blank for stealth Chrome UA">
+                    </div>
+
+                    <div class="form-group" id="groupTimeout">
+                        <label for="cfgTimeout">Request Timeout (seconds)</label>
+                        <input type="number" id="cfgTimeout" class="form-control" placeholder="30" min="5" max="300">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeConfigModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveConfig">Save Configuration</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Toast Notification Container -->
     <div id="toastNotification" class="toast-notification"></div>
 </div>

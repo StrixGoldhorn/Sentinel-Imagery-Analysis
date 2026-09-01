@@ -4,9 +4,11 @@
 
 let allScrapers = [];
 let activeCategory = 'ALL';
+let countdownInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadScrapersData();
+    startCountdownTimer();
 });
 
 /**
@@ -14,12 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 async function loadScrapersData() {
     const grid = document.getElementById('scrapersGrid');
-    grid.innerHTML = `
-        <div class="loading-state">
-            <div class="spinner"></div>
-            <p>Loading AIS scraper configurations...</p>
-        </div>
-    `;
+    if (!grid) return;
 
     try {
         const response = await fetch('/api/scrapers');
@@ -48,7 +45,8 @@ function updateMetrics(metrics) {
     const rateEl = document.getElementById('metricSuccessRate');
 
     if (activeEl) {
-        activeEl.textContent = `${metrics.active_scrapers || 0} / ${metrics.total_scrapers || 0} Active`;
+        const cooling = metrics.cooling_scrapers ? ` (${metrics.cooling_scrapers} in cooldown)` : '';
+        activeEl.textContent = `${metrics.active_scrapers || 0} / ${metrics.total_scrapers || 0} Active${cooling}`;
     }
     if (runsEl) {
         runsEl.textContent = (metrics.total_runs || 0).toLocaleString();
@@ -69,11 +67,9 @@ function renderScrapers() {
     const query = (document.getElementById('scraperSearchInput')?.value || '').toLowerCase().trim();
 
     const filtered = allScrapers.filter(s => {
-        // Category filter
         if (activeCategory !== 'ALL' && s.category !== activeCategory) {
             return false;
         }
-        // Text search
         if (query) {
             const matchName = s.name.toLowerCase().includes(query);
             const matchDisplay = (s.display_name || '').toLowerCase().includes(query);
@@ -104,12 +100,29 @@ function renderScrapers() {
         const catClass = getCategoryClass(s.category);
         const lastRunFormatted = s.last_run_at ? formatDateTime(s.last_run_at) : 'Never executed';
         const cardClass = s.enabled ? 'scraper-card' : 'scraper-card disabled';
+        const hasProxy = Boolean(s.config && s.config.proxy_url);
 
         return `
             <div class="${cardClass}" id="card-${s.name}">
                 <div>
                     <div class="card-top">
-                        <span class="category-tag ${catClass}">${escapeHtml(s.category)}</span>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="category-tag ${catClass}">${escapeHtml(s.category)}</span>
+                            ${s.is_cooling_down ? `
+                                <span class="cooldown-badge">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                    </svg>
+                                    COOLING DOWN
+                                </span>
+                            ` : ''}
+                            ${hasProxy ? `
+                                <span class="category-tag" style="background: #e0f2fe; color: #0369a1;" title="Configured with custom proxy">
+                                    PROXY
+                                </span>
+                            ` : ''}
+                        </div>
                         <div class="switch-container">
                             <span class="switch-label ${s.enabled ? 'on' : 'off'}" id="label-${s.name}">
                                 ${s.enabled ? 'Active' : 'Disabled'}
@@ -124,6 +137,16 @@ function renderScrapers() {
                     <h3 class="scraper-title">${escapeHtml(s.display_name)}</h3>
                     <span class="scraper-code-name">${escapeHtml(s.name)}</span>
                     <p class="scraper-desc">${escapeHtml(s.description)}</p>
+
+                    ${s.is_cooling_down ? `
+                        <div class="cooldown-alert-box">
+                            <div class="cooldown-text">
+                                <div>Bot protection/rate limit detected. Resumes in <strong class="cooldown-timer" data-seconds="${s.cooldown_remaining_seconds}">${formatDuration(s.cooldown_remaining_seconds)}</strong></div>
+                                ${s.last_failure_reason ? `<div class="cooldown-reason">${escapeHtml(s.last_failure_reason)}</div>` : ''}
+                            </div>
+                            <button type="button" class="btn-reset-cooldown" onclick="resetCooldown('${s.name}')">Reset</button>
+                        </div>
+                    ` : ''}
 
                     <div class="scraper-stats-grid">
                         <div class="s-stat-item">
@@ -150,24 +173,61 @@ function renderScrapers() {
                 </div>
 
                 <div class="card-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="openConfigModal('${s.name}')" title="Configure proxy, API keys, and network settings">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3"></circle>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                        </svg>
+                        Config
+                    </button>
                     <button class="btn btn-outline-primary btn-sm" id="testBtn-${s.name}" onclick="testScraper('${s.name}', this)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                         </svg>
-                        Test Scraper
+                        Test
                     </button>
                     <a href="/logs?plugin=${encodeURIComponent(s.name)}" class="btn btn-secondary btn-sm" style="text-decoration: none;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="8" y1="6" x2="21" y2="6"></line>
-                            <line x1="8" y1="12" x2="21" y2="12"></line>
-                            <line x1="8" y1="18" x2="21" y2="18"></line>
-                        </svg>
-                        View Logs
+                        Logs
                     </a>
                 </div>
             </div>
         `;
     }).join('');
+}
+
+/**
+ * Live cooldown countdown timer loop
+ */
+function startCountdownTimer() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = setInterval(() => {
+        const timerEls = document.querySelectorAll('.cooldown-timer');
+        timerEls.forEach(el => {
+            let secs = parseInt(el.getAttribute('data-seconds') || '0', 10);
+            if (secs > 0) {
+                secs -= 1;
+                el.setAttribute('data-seconds', secs);
+                el.textContent = formatDuration(secs);
+            } else if (secs === 0) {
+                el.textContent = 'Expired (re-checking...)';
+                // Trigger refresh once cooldown reaches zero
+                loadScrapersData();
+            }
+        });
+    }, 1000);
+}
+
+function formatDuration(seconds) {
+    if (seconds <= 0) return '0s';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const parts = [];
+    if (hrs > 0) parts.push(`${hrs}h`);
+    if (mins > 0 || hrs > 0) parts.push(`${mins}m`);
+    parts.push(`${secs}s`);
+    return parts.join(' ');
 }
 
 /**
@@ -178,7 +238,6 @@ async function toggleScraper(pluginName, checkbox) {
     const labelEl = document.getElementById(`label-${pluginName}`);
     const cardEl = document.getElementById(`card-${pluginName}`);
 
-    // Optimistic UI update
     if (labelEl) {
         labelEl.textContent = enabled ? 'Active' : 'Disabled';
         labelEl.className = `switch-label ${enabled ? 'on' : 'off'}`;
@@ -197,10 +256,8 @@ async function toggleScraper(pluginName, checkbox) {
 
         if (data.status === 'success') {
             showToast(`Scraper "${pluginName}" is now ${enabled ? 'ENABLED' : 'DISABLED'}.`, 'success');
-            // Update local state
             const target = allScrapers.find(s => s.name === pluginName);
             if (target) target.enabled = enabled;
-            // Update metrics
             const activeCount = allScrapers.filter(s => s.enabled).length;
             const activeEl = document.getElementById('metricActiveScrapers');
             if (activeEl) {
@@ -210,7 +267,6 @@ async function toggleScraper(pluginName, checkbox) {
             throw new Error(data.error || 'Server rejected toggle');
         }
     } catch (err) {
-        // Revert on error
         checkbox.checked = !enabled;
         if (labelEl) {
             labelEl.textContent = !enabled ? 'Active' : 'Disabled';
@@ -220,6 +276,122 @@ async function toggleScraper(pluginName, checkbox) {
             cardEl.className = !enabled ? 'scraper-card' : 'scraper-card disabled';
         }
         showToast(`Failed to update scraper: ${err.message}`, 'error');
+    }
+}
+
+/**
+ * Open configuration modal
+ */
+function openConfigModal(pluginName) {
+    const scraper = allScrapers.find(s => s.name === pluginName);
+    if (!scraper) return;
+
+    const modal = document.getElementById('scraperConfigModal');
+    const title = document.getElementById('modalScraperTitle');
+    const hiddenName = document.getElementById('configPluginName');
+    const proxyInput = document.getElementById('cfgProxyUrl');
+    const apiKeyInput = document.getElementById('cfgApiKey');
+    const hostInput = document.getElementById('cfgHost');
+    const portInput = document.getElementById('cfgPort');
+    const uaInput = document.getElementById('cfgUserAgent');
+    const timeoutInput = document.getElementById('cfgTimeout');
+
+    const groupUdp = document.getElementById('groupUdp');
+    const groupApiKey = document.getElementById('groupApiKey');
+    const groupProxy = document.getElementById('groupProxy');
+
+    title.textContent = `Configure ${scraper.display_name}`;
+    hiddenName.value = pluginName;
+
+    const cfg = scraper.config || {};
+    proxyInput.value = cfg.proxy_url || '';
+    apiKeyInput.value = cfg.api_key || '';
+    hostInput.value = cfg.host || '0.0.0.0';
+    portInput.value = cfg.port || 10110;
+    uaInput.value = cfg.user_agent || '';
+    timeoutInput.value = cfg.timeout || 30;
+
+    // Show/hide relevant fields based on scraper type
+    if (pluginName === 'UDPListenerPlugin') {
+        if (groupUdp) groupUdp.style.display = 'flex';
+        if (groupProxy) groupProxy.style.display = 'none';
+        if (groupApiKey) groupApiKey.style.display = 'none';
+    } else {
+        if (groupUdp) groupUdp.style.display = 'none';
+        if (groupProxy) groupProxy.style.display = 'flex';
+        if (groupApiKey) groupApiKey.style.display = (pluginName === 'AprsFiPlugin') ? 'flex' : 'none';
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeConfigModal() {
+    const modal = document.getElementById('scraperConfigModal');
+    if (modal) modal.style.display = 'none';
+}
+
+/**
+ * Save configuration via API
+ */
+async function saveScraperConfig(event) {
+    event.preventDefault();
+    const pluginName = document.getElementById('configPluginName').value;
+    const btnSave = document.getElementById('btnSaveConfig');
+
+    const configData = {
+        proxy_url: document.getElementById('cfgProxyUrl').value.trim(),
+        api_key: document.getElementById('cfgApiKey').value.trim(),
+        host: document.getElementById('cfgHost').value.trim(),
+        port: parseInt(document.getElementById('cfgPort').value, 10) || 10110,
+        user_agent: document.getElementById('cfgUserAgent').value.trim(),
+        timeout: parseInt(document.getElementById('cfgTimeout').value, 10) || 30,
+    };
+
+    btnSave.disabled = true;
+    btnSave.textContent = 'Saving...';
+
+    try {
+        const response = await fetch(`/api/scrapers/${encodeURIComponent(pluginName)}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(configData),
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            showToast(`Configuration for "${pluginName}" saved successfully.`, 'success');
+            closeConfigModal();
+            loadScrapersData();
+        } else {
+            showToast(`Error saving configuration: ${data.error || 'Unknown error'}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Network error saving configuration: ${err.message}`, 'error');
+    } finally {
+        btnSave.disabled = false;
+        btnSave.textContent = 'Save Configuration';
+    }
+}
+
+/**
+ * Reset active cooldown for a scraper
+ */
+async function resetCooldown(pluginName) {
+    try {
+        const response = await fetch(`/api/scrapers/${encodeURIComponent(pluginName)}/reset_cooldown`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            showToast(`Cooldown reset for "${pluginName}". Automated scraping will resume.`, 'success');
+            loadScrapersData();
+        } else {
+            showToast(`Failed to reset cooldown: ${data.error || 'Unknown error'}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Error: ${err.message}`, 'error');
     }
 }
 
@@ -250,7 +422,7 @@ async function testScraper(pluginName, btn) {
             } else {
                 showToast(`Test Succeeded: ${count} vessel position(s) captured by ${pluginName}`, 'success');
             }
-            loadScrapersData(); // refresh counts
+            loadScrapersData();
         } else {
             showToast(`Test Failed for ${pluginName}: ${data.error || 'Unknown error'}`, 'error');
         }
@@ -350,3 +522,4 @@ function showError(msg) {
         `;
     }
 }
+

@@ -36,16 +36,52 @@ class DummyPlugin:
 class MemoryAISRepository:
     def __init__(self):
         self._configs = {}
+        self._custom_configs = {}
+        self._failures = {}
         self._logs = []
         self._inserted_records = []
 
     def get_scraper_config(self, plugin_name: str):
         if plugin_name not in self._configs:
             return None
-        return {"plugin_name": plugin_name, "enabled": self._configs[plugin_name]}
+        f_info = self._failures.get(plugin_name, {})
+        return {
+            "plugin_name": plugin_name,
+            "enabled": self._configs[plugin_name],
+            "config": self._custom_configs.get(plugin_name, {}),
+            "cooldown_until": f_info.get("cooldown_until"),
+            "consecutive_failures": f_info.get("consecutive_failures", 0),
+            "last_failure_reason": f_info.get("reason"),
+        }
 
     def set_scraper_config(self, plugin_name: str, enabled: bool):
         self._configs[plugin_name] = enabled
+
+    def update_scraper_settings(self, plugin_name: str, config: dict):
+        self._custom_configs[plugin_name] = config
+        if plugin_name not in self._configs:
+            self._configs[plugin_name] = True
+
+    def record_scraper_failure(self, plugin_name: str, reason: str, cooldown_until: datetime | None, consecutive_failures: int):
+        self._failures[plugin_name] = {
+            "reason": reason,
+            "cooldown_until": cooldown_until,
+            "consecutive_failures": consecutive_failures,
+        }
+
+    def record_scraper_success(self, plugin_name: str):
+        if plugin_name in self._failures:
+            self._failures[plugin_name] = {
+                "reason": None,
+                "cooldown_until": None,
+                "consecutive_failures": 0,
+            }
+
+    def reset_scraper_cooldown(self, plugin_name: str):
+        if plugin_name in self._failures:
+            self._failures[plugin_name]["cooldown_until"] = None
+            self._failures[plugin_name]["consecutive_failures"] = 0
+            self._failures[plugin_name]["reason"] = None
 
     def get_all_scraper_configs(self):
         return dict(self._configs)
@@ -177,6 +213,103 @@ def test_toggle_scraper_use_case() -> None:
     assert repo.get_scraper_config("TogglePlugin")["enabled"] is True
 
 
+def test_update_scraper_config_use_case() -> None:
+    from sentinel_analysis.application.use_cases.manage_scrapers import UpdateScraperConfig
+    repo = MemoryAISRepository()
+    plugin = DummyPlugin("ConfigPlugin")
+    registry = DynamicAISPluginRegistry([plugin])
+
+    use_case = UpdateScraperConfig(registry, repo)
+    res = use_case.execute("ConfigPlugin", {"proxy_url": "http://127.0.0.1:8080", "timeout": 45})
+
+    assert res["status"] == "updated"
+    assert res["config"]["proxy_url"] == "http://127.0.0.1:8080"
+    assert res["config"]["timeout"] == 45
+
+    loaded = repo.get_scraper_config("ConfigPlugin")
+    assert loaded["config"]["proxy_url"] == "http://127.0.0.1:8080"
+
+
+def test_reset_scraper_cooldown_use_case() -> None:
+    from sentinel_analysis.application.use_cases.manage_scrapers import ResetScraperCooldown
+    repo = MemoryAISRepository()
+    plugin = DummyPlugin("CooldownPlugin")
+    registry = DynamicAISPluginRegistry([plugin])
+
+    repo.set_scraper_config("CooldownPlugin", True)
+    future_time = datetime(2026, 9, 1, 12, 0, 0, tzinfo=timezone.utc)
+    repo.record_scraper_failure("CooldownPlugin", "429 Rate Limit", future_time, 2)
+
+    cfg = repo.get_scraper_config("CooldownPlugin")
+    assert cfg["cooldown_until"] == future_time
+    assert cfg["consecutive_failures"] == 2
+
+    use_case = ResetScraperCooldown(registry, repo)
+    res = use_case.execute("CooldownPlugin")
+    assert res["status"] == "reset"
+
+    cfg_reset = repo.get_scraper_config("CooldownPlugin")
+    assert cfg_reset["cooldown_until"] is None
+    assert cfg_reset["consecutive_failures"] == 0
+
+
+def test_anti_scraping_exponential_backoff_and_cooldown() -> None:
+    repo = MemoryAISRepository()
+    plugin_bot = DummyPlugin("BotPlugin")
+    # Simulate a Cloudflare 403 Bot protection failure
+    def failing_fetch(bbox, time_range):
+        raise RuntimeError("HTTP 403 Forbidden: Cloudflare Turnstile bot detection triggered")
+    plugin_bot.fetch = failing_fetch
+
+    registry = DynamicAISPluginRegistry([plugin_bot])
+    repo.set_scraper_config("BotPlugin", True)
+
+    ingest = IngestAIS(registry, repo)
+    bbox = BoundingBox(103.0, 1.0, 104.0, 2.0)
+
+    # First bot failure -> 15 min cooldown
+    res1 = ingest.execute(bbox, (None, None))
+    cfg1 = repo.get_scraper_config("BotPlugin")
+    assert cfg1["consecutive_failures"] == 1
+    assert cfg1["cooldown_until"] is not None
+    assert "Cloudflare Turnstile bot detection" in cfg1["last_failure_reason"]
+
+    # In automated run, it should be skipped with COOLDOWN_SKIPPED status
+    res2 = ingest.execute(bbox, (None, None))
+    assert res2["total_inserted"] == 0
+    assert len(res2["logs"]) == 1
+    assert res2["logs"][0]["status"] == "COOLDOWN_SKIPPED"
+
+
+def test_cooldown_skips_scraper_in_automated_ingest_but_runs_other_scrapers() -> None:
+    repo = MemoryAISRepository()
+    vessel = Vessel(imo="1234567", mmsi="123456789", name="TEST VESSEL")
+    pos = VesselPosition(mmsi="123456789", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc))
+    rec = AISRecord(vessel, pos)
+
+    plugin_healthy = DummyPlugin("HealthyPlugin", [rec])
+    plugin_cooling = DummyPlugin("CoolingPlugin", [rec])
+
+    registry = DynamicAISPluginRegistry([plugin_healthy, plugin_cooling])
+    repo.set_scraper_config("HealthyPlugin", True)
+    repo.set_scraper_config("CoolingPlugin", True)
+
+    # Set CoolingPlugin to active cooldown
+    future_time = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    repo.record_scraper_failure("CoolingPlugin", "HTTP 429 Too Many Requests", future_time, 1)
+
+    ingest = IngestAIS(registry, repo)
+    res = ingest.execute(BoundingBox(103.0, 1.0, 104.0, 2.0), (None, None))
+
+    assert res["total_inserted"] == 1
+    assert plugin_healthy.fetch_called is True
+    assert plugin_cooling.fetch_called is False
+
+    logs = res["logs"]
+    cooling_log = next(l for l in logs if l["plugin"] == "CoolingPlugin")
+    assert cooling_log["status"] == "COOLDOWN_SKIPPED"
+
+
 def test_ingest_ais_skips_disabled_scrapers() -> None:
     repo = MemoryAISRepository()
     vessel = Vessel(imo="1234567", mmsi="123456789", name="TEST VESSEL")
@@ -211,6 +344,59 @@ def test_get_scraper_logs_use_case() -> None:
     failed_logs = use_case.execute(status="FAILED")
     assert failed_logs["count"] == 1
     assert failed_logs["logs"][0]["plugin_name"] == "PluginY"
+
+
+def test_sqlite_ais_repository_settings_and_cooldown_lifecycle() -> None:
+    from pathlib import Path
+    import os
+    from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+
+    runtime_dir = Path(__file__).resolve().parent / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_dir / "test_ais_lifecycle.db"
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+    repo = SQLiteAISRepository(db_path)
+
+    # 1. Update settings
+    repo.update_scraper_settings("VesselFinderPlugin", {"proxy_url": "socks5://127.0.0.1:9050", "timeout": 30})
+    details = repo.get_all_scraper_details()
+    assert "VesselFinderPlugin" in details
+    vf_detail = details["VesselFinderPlugin"]
+    assert vf_detail["config"]["proxy_url"] == "socks5://127.0.0.1:9050"
+    assert vf_detail["config"]["timeout"] == 30
+
+    # 2. Record rate limit failure -> Cooldown
+    cool_time = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    repo.record_scraper_failure("VesselFinderPlugin", "429 Too Many Requests", cool_time, 1)
+
+    cfg = repo.get_scraper_config("VesselFinderPlugin")
+    assert cfg["consecutive_failures"] == 1
+    assert "429 Too Many Requests" in cfg["last_failure_reason"]
+    assert cfg["cooldown_until"] is not None
+
+    # 3. Reset cooldown
+    repo.reset_scraper_cooldown("VesselFinderPlugin")
+    cfg_reset = repo.get_scraper_config("VesselFinderPlugin")
+    assert cfg_reset["cooldown_until"] is None
+    assert cfg_reset["consecutive_failures"] == 0
+
+    # 4. Record success
+    repo.record_scraper_failure("VesselFinderPlugin", "temporary error", cool_time, 2)
+    repo.record_scraper_success("VesselFinderPlugin")
+    cfg_succ = repo.get_scraper_config("VesselFinderPlugin")
+    assert cfg_succ["cooldown_until"] is None
+    assert cfg_succ["consecutive_failures"] == 0
+
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
 
 
 def load_tests(loader, standard_tests, pattern):

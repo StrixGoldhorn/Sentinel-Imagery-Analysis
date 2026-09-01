@@ -66,6 +66,28 @@ class UDPListenerPlugin:
         if auto_start:
             self.start_listener()
 
+    def configure(self, config: dict) -> None:
+        """Dynamically apply user-configured host and port settings."""
+        if not config:
+            return
+        restart_needed = False
+        if "host" in config and config.get("host"):
+            new_host = str(config["host"]).strip()
+            if new_host != self.host:
+                self.host = new_host
+                restart_needed = True
+        if "port" in config and config.get("port") is not None:
+            try:
+                new_port = int(config["port"])
+                if new_port != self.port:
+                    self.port = new_port
+                    restart_needed = True
+            except (ValueError, TypeError):
+                pass
+        if restart_needed and self._listener_thread is not None and self._listener_thread.is_alive():
+            self.stop_listener()
+            self.start_listener()
+
     def start_listener(self) -> None:
         if self._listener_thread is not None and self._listener_thread.is_alive():
             return

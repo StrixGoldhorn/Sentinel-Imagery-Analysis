@@ -1,5 +1,6 @@
 """Use cases for managing AIS scraper plugin activation, configurations, and logs."""
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sentinel_analysis.application.exceptions import PluginNotFoundError
@@ -7,8 +8,26 @@ from sentinel_analysis.application.ports.ais import AISPluginRegistry
 from sentinel_analysis.application.ports.ais_repository import AISRepository
 
 
+def _parse_cooldown_datetime(cooldown_val: Any) -> datetime | None:
+    if not cooldown_val:
+        return None
+    if isinstance(cooldown_val, datetime):
+        if cooldown_val.utcoffset() is None:
+            return cooldown_val.replace(tzinfo=timezone.utc)
+        return cooldown_val.astimezone(timezone.utc)
+    if isinstance(cooldown_val, str):
+        try:
+            dt = datetime.fromisoformat(cooldown_val.replace("Z", "+00:00"))
+            if dt.utcoffset() is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            return None
+    return None
+
+
 class ListScrapers:
-    """Lists all configured AIS scraper plugins with active state, metadata, and performance stats."""
+    """Lists all configured AIS scraper plugins with active state, metadata, configuration, and performance stats."""
 
     def __init__(
         self,
@@ -33,14 +52,25 @@ class ListScrapers:
                     "default_enabled": True,
                 })
 
-        configs = {}
-        if hasattr(self._repository, "get_all_scraper_configs"):
-            configs = self._repository.get_all_scraper_configs()
+        details = {}
+        if hasattr(self._repository, "get_all_scraper_details"):
+            try:
+                details = self._repository.get_all_scraper_details()
+            except Exception:
+                details = {}
+        elif hasattr(self._repository, "get_all_scraper_configs"):
+            try:
+                simple_configs = self._repository.get_all_scraper_configs()
+                for name, enabled in simple_configs.items():
+                    details[name] = {"enabled": enabled}
+            except Exception:
+                details = {}
 
         stats = {}
         if hasattr(self._repository, "get_scraper_stats"):
             stats = self._repository.get_scraper_stats()
 
+        now = datetime.now(timezone.utc)
         scrapers = []
         total_runs_all = 0
         total_records_all = 0
@@ -48,8 +78,20 @@ class ListScrapers:
 
         for meta in all_meta:
             name = meta["name"]
+            p_detail = details.get(name, {})
             default_enabled = meta.get("default_enabled", True)
-            enabled = configs.get(name, default_enabled)
+            enabled = p_detail.get("enabled", default_enabled) if "enabled" in p_detail else default_enabled
+            config = p_detail.get("config", {})
+            cooldown_raw = p_detail.get("cooldown_until")
+            cooldown_dt = _parse_cooldown_datetime(cooldown_raw)
+            consecutive_failures = p_detail.get("consecutive_failures", 0)
+            last_failure_reason = p_detail.get("last_failure_reason")
+
+            is_cooling_down = False
+            remaining_seconds = 0
+            if cooldown_dt and cooldown_dt > now:
+                is_cooling_down = True
+                remaining_seconds = max(0, int((cooldown_dt - now).total_seconds()))
 
             p_stats = stats.get(name, {})
             total_runs = p_stats.get("total_runs", 0)
@@ -71,6 +113,12 @@ class ListScrapers:
                 "description": meta.get("description", ""),
                 "requires_network": meta.get("requires_network", True),
                 "enabled": enabled,
+                "config": config,
+                "cooldown_until": cooldown_dt.isoformat() if cooldown_dt else None,
+                "is_cooling_down": is_cooling_down,
+                "cooldown_remaining_seconds": remaining_seconds,
+                "consecutive_failures": consecutive_failures,
+                "last_failure_reason": last_failure_reason,
                 "total_runs": total_runs,
                 "total_records": total_records,
                 "success_runs": success_runs,
@@ -80,6 +128,7 @@ class ListScrapers:
             })
 
         active_count = sum(1 for s in scrapers if s["enabled"])
+        cooling_count = sum(1 for s in scrapers if s["is_cooling_down"])
         overall_success_rate = (
             round(total_success_all / total_runs_all * 100.0, 1) if total_runs_all > 0 else 100.0
         )
@@ -89,6 +138,7 @@ class ListScrapers:
             "metrics": {
                 "total_scrapers": len(scrapers),
                 "active_scrapers": active_count,
+                "cooling_scrapers": cooling_count,
                 "total_records_ingested": total_records_all,
                 "overall_success_rate": overall_success_rate,
                 "total_runs": total_runs_all,
@@ -120,6 +170,71 @@ class ToggleScraper:
         return {
             "plugin_name": plugin_name,
             "enabled": bool(enabled),
+        }
+
+
+class UpdateScraperConfig:
+    """Updates custom network and authentication settings for an AIS scraper plugin."""
+
+    def __init__(
+        self,
+        registry: AISPluginRegistry,
+        repository: AISRepository,
+    ) -> None:
+        self._registry = registry
+        self._repository = repository
+
+    def execute(self, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("Scraper plugin name must be a non-empty string")
+        plugin_name = plugin_name.strip()
+
+        plugins = self._registry.get_plugins(plugin_name)
+        if not plugins:
+            raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
+
+        if not isinstance(config, dict):
+            raise ValueError("Config must be a dictionary")
+
+        self._repository.update_scraper_settings(plugin_name, config)
+        for p in plugins:
+            if hasattr(p, "configure"):
+                try:
+                    p.configure(config)
+                except Exception:
+                    pass
+
+        return {
+            "plugin_name": plugin_name,
+            "status": "updated",
+            "config": config,
+        }
+
+
+class ResetScraperCooldown:
+    """Resets the rate-limiting cooldown and failure counter for a scraper plugin."""
+
+    def __init__(
+        self,
+        registry: AISPluginRegistry,
+        repository: AISRepository,
+    ) -> None:
+        self._registry = registry
+        self._repository = repository
+
+    def execute(self, plugin_name: str) -> dict[str, Any]:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("Scraper plugin name must be a non-empty string")
+        plugin_name = plugin_name.strip()
+
+        plugins = self._registry.get_plugins(plugin_name)
+        if not plugins:
+            raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
+
+        self._repository.reset_scraper_cooldown(plugin_name)
+        return {
+            "plugin_name": plugin_name,
+            "status": "reset",
         }
 
 
@@ -162,3 +277,4 @@ class GetScraperLogsUseCase:
                 "overall_success_rate": overall_rate,
             },
         }
+

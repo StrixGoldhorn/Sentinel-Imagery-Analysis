@@ -3,7 +3,7 @@
 from typing import Literal, TypedDict
 
 
-IngestionStatus = Literal["SUCCESS", "FAILED"]
+IngestionStatus = Literal["SUCCESS", "FAILED", "COOLDOWN_SKIPPED"]
 
 
 class IngestionLog(TypedDict):

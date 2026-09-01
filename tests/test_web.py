@@ -152,6 +152,8 @@ class StubContainer:
             },
         })
         self.toggle_scraper = StubUseCase({"plugin_name": "VesselFinderPlugin", "enabled": False})
+        self.update_scraper_config = StubUseCase({"plugin_name": "VesselFinderPlugin", "config": {"proxy_url": "http://127.0.0.1:8080"}})
+        self.reset_scraper_cooldown = StubUseCase({"plugin_name": "VesselFinderPlugin", "status": "reset"})
         self.get_scraper_logs_use_case = StubUseCase({
             "logs": [
                 {
@@ -523,6 +525,25 @@ def test_logs_api_route() -> None:
     assert response.json["status"] == "success"
     assert len(response.json["logs"]) == 1
     assert response.json["logs"][0]["plugin_name"] == "VesselFinderPlugin"
+
+
+def test_update_scraper_config_api_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.post(
+        "/api/scrapers/VesselFinderPlugin/config",
+        json={"proxy_url": "http://127.0.0.1:8080", "timeout": 45},
+    )
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["plugin_name"] == "VesselFinderPlugin"
+
+
+def test_reset_scraper_cooldown_api_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.post("/api/scrapers/VesselFinderPlugin/reset_cooldown")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["plugin_name"] == "VesselFinderPlugin"
 
 
 def load_tests(loader, standard_tests, pattern):
