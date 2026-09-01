@@ -1,5 +1,4 @@
-"""Unit and integration tests for scraper management, plugin toggles, and execution logs."""
-
+from datetime import datetime, timezone
 from pathlib import Path
 import unittest
 
@@ -126,7 +125,7 @@ class TestScrapersManagement(unittest.TestCase):
 
     def test_ingest_ais_skips_disabled_scrapers(self):
         vessel = Vessel(imo="1234567", mmsi="123456789", name="TEST VESSEL")
-        pos = VesselPosition(mmsi="123456789", latitude=1.25, longitude=103.85, timestamp="2026-09-01T10:00:00Z")
+        pos = VesselPosition(mmsi="123456789", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc))
         rec = AISRecord(vessel, pos)
 
         plugin_active = DummyPlugin("ActivePlugin", [rec])
