@@ -175,6 +175,19 @@
                         <label for="cfgTimeout">Request Timeout (seconds)</label>
                         <input type="number" id="cfgTimeout" class="form-control" placeholder="30" min="5" max="300">
                     </div>
+
+                    <div class="form-row" id="groupZonePacing">
+                        <div class="form-group flex-1">
+                            <label for="cfgZoneDelay">AOI Piece Delay (seconds)</label>
+                            <input type="number" id="cfgZoneDelay" class="form-control" placeholder="0.0" min="0" max="60" step="0.5">
+                            <span class="form-help">Pause between scanning sub-zones when an AOI is subdivided into smaller pieces.</span>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="cfgZoneSize">Sub-zone Size (Nautical Miles)</label>
+                            <input type="number" id="cfgZoneSize" class="form-control" placeholder="10.0" min="1.0" max="100.0" step="0.5">
+                            <span class="form-help">Grid chunking size for large AOIs.</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-footer">

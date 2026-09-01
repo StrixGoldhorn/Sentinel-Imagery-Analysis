@@ -11,6 +11,11 @@ from sentinel_analysis.application.use_cases.manage_scrapers import (
 )
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
+from sentinel_analysis.infrastructure.ais.plugins import (
+    AISFriendsPlugin,
+    AprsFiPlugin,
+    VesselFinderPlugin,
+)
 
 
 class DummyPlugin:
@@ -397,6 +402,51 @@ def test_sqlite_ais_repository_settings_and_cooldown_lifecycle() -> None:
             os.remove(db_path)
         except OSError:
             pass
+
+
+def test_plugins_zone_delay_and_size_configuration() -> None:
+    vf = VesselFinderPlugin()
+    assert vf.zone_delay == 0.0
+    assert vf.zone_size_nm == 10.0
+    vf.configure({"zone_delay_seconds": 2.5, "zone_size_nm": 15.0})
+    assert vf.zone_delay == 2.5
+    assert vf.zone_size_nm == 15.0
+
+    aprs = AprsFiPlugin()
+    assert aprs.zone_delay == 0.0
+    assert aprs.zone_size_nm == 10.0
+    aprs.configure({"zone_delay": 1.75, "zone_size_nm": 8.0})
+    assert aprs.zone_delay == 1.75
+    assert aprs.zone_size_nm == 8.0
+
+    af = AISFriendsPlugin()
+    assert af.zone_delay == 0.0
+    assert af.zone_size_nm == 10.0
+    af.configure({"zone_delay_seconds": 3.0, "zone_size_nm": 20.0})
+    assert af.zone_delay == 3.0
+    assert af.zone_size_nm == 20.0
+
+
+def test_zone_scan_delay_pacing_during_multi_zone_fetch() -> None:
+    from unittest.mock import MagicMock, patch
+
+    # Create a large bounding box that splits into multiple zones
+    large_bbox = BoundingBox(103.50, 1.00, 104.10, 1.60)
+    mock_session = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = []
+    mock_resp.raise_for_status = MagicMock()
+    mock_session.get.return_value = mock_resp
+
+    plugin = AISFriendsPlugin(session=mock_session, zone_delay=1.5, zone_size_nm=10.0)
+
+    with patch("time.sleep") as mock_sleep:
+        records = plugin.fetch(large_bbox)
+        # Should have split into > 1 zones
+        assert mock_session.get.call_count > 1
+        # Should have slept with 1.5s between pieces (call_count == total_zones - 1)
+        assert mock_sleep.call_count == mock_session.get.call_count - 1
+        mock_sleep.assert_called_with(1.5)
 
 
 def load_tests(loader, standard_tests, pattern):

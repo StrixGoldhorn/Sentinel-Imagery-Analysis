@@ -295,10 +295,13 @@ function openConfigModal(pluginName) {
     const portInput = document.getElementById('cfgPort');
     const uaInput = document.getElementById('cfgUserAgent');
     const timeoutInput = document.getElementById('cfgTimeout');
+    const zoneDelayInput = document.getElementById('cfgZoneDelay');
+    const zoneSizeInput = document.getElementById('cfgZoneSize');
 
     const groupUdp = document.getElementById('groupUdp');
     const groupApiKey = document.getElementById('groupApiKey');
     const groupProxy = document.getElementById('groupProxy');
+    const groupZonePacing = document.getElementById('groupZonePacing');
 
     title.textContent = `Configure ${scraper.display_name}`;
     hiddenName.value = pluginName;
@@ -310,16 +313,20 @@ function openConfigModal(pluginName) {
     portInput.value = cfg.port || 10110;
     uaInput.value = cfg.user_agent || '';
     timeoutInput.value = cfg.timeout || 30;
+    if (zoneDelayInput) zoneDelayInput.value = (cfg.zone_delay_seconds !== undefined ? cfg.zone_delay_seconds : (cfg.zone_delay !== undefined ? cfg.zone_delay : 0));
+    if (zoneSizeInput) zoneSizeInput.value = (cfg.zone_size_nm !== undefined ? cfg.zone_size_nm : 10.0);
 
     // Show/hide relevant fields based on scraper type
     if (pluginName === 'UDPListenerPlugin') {
         if (groupUdp) groupUdp.style.display = 'flex';
         if (groupProxy) groupProxy.style.display = 'none';
         if (groupApiKey) groupApiKey.style.display = 'none';
+        if (groupZonePacing) groupZonePacing.style.display = 'none';
     } else {
         if (groupUdp) groupUdp.style.display = 'none';
         if (groupProxy) groupProxy.style.display = 'flex';
         if (groupApiKey) groupApiKey.style.display = (pluginName === 'AprsFiPlugin') ? 'flex' : 'none';
+        if (groupZonePacing) groupZonePacing.style.display = 'flex';
     }
 
     modal.style.display = 'flex';
@@ -345,6 +352,8 @@ async function saveScraperConfig(event) {
         port: parseInt(document.getElementById('cfgPort').value, 10) || 10110,
         user_agent: document.getElementById('cfgUserAgent').value.trim(),
         timeout: parseInt(document.getElementById('cfgTimeout').value, 10) || 30,
+        zone_delay_seconds: parseFloat(document.getElementById('cfgZoneDelay').value) || 0,
+        zone_size_nm: parseFloat(document.getElementById('cfgZoneSize').value) || 10.0,
     };
 
     btnSave.disabled = true;

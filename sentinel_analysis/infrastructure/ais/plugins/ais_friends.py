@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -38,16 +39,20 @@ class AISFriendsPlugin:
         timeout: float = 30.0,
         proxy_url: str | None = None,
         user_agent: str | None = None,
+        zone_delay: float = 0.0,
+        zone_size_nm: float = 10.0,
     ) -> None:
         self._session = session or requests.Session()
         self._timeout = timeout
         self.proxy_url = proxy_url
         self.user_agent = user_agent
+        self.zone_delay = max(0.0, float(zone_delay))
+        self.zone_size_nm = max(0.1, float(zone_size_nm))
         if proxy_url:
             self._session.proxies = {"http": proxy_url, "https": proxy_url}
 
     def configure(self, config: dict) -> None:
-        """Dynamically apply user-configured proxy, timeout, and header settings."""
+        """Dynamically apply user-configured proxy, timeout, headers, and zone scan pacing."""
         if not config:
             return
         if "proxy_url" in config:
@@ -64,6 +69,21 @@ class AISFriendsPlugin:
                 pass
         if "user_agent" in config:
             self.user_agent = str(config.get("user_agent") or "").strip() or None
+        if "zone_delay_seconds" in config and config.get("zone_delay_seconds") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay_seconds"]))
+            except (ValueError, TypeError):
+                pass
+        elif "zone_delay" in config and config.get("zone_delay") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay"]))
+            except (ValueError, TypeError):
+                pass
+        if "zone_size_nm" in config and config.get("zone_size_nm") is not None:
+            try:
+                self.zone_size_nm = max(0.1, float(config["zone_size_nm"]))
+            except (ValueError, TypeError):
+                pass
 
     @classmethod
     def get_ship_type(cls, ship_type_id: int | None) -> str | None:
@@ -83,7 +103,7 @@ class AISFriendsPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
-        zones = split_into_zones(bbox, zone_size_nm=10.0)
+        zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
         ua = self.user_agent or (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/119.36 (KHTML, like Gecko) "
@@ -95,7 +115,9 @@ class AISFriendsPlugin:
         }
 
         all_records: list[AISRecord] = []
-        for zone in zones:
+        for idx, zone in enumerate(zones):
+            if idx > 0 and self.zone_delay > 0:
+                time.sleep(self.zone_delay)
             params = {
                 "lon_min": zone.min_longitude,
                 "lat_min": zone.min_latitude,

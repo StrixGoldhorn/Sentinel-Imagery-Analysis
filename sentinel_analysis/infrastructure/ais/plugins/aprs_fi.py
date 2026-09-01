@@ -5,6 +5,7 @@ import logging
 import re
 import shutil
 import tempfile
+import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -147,15 +148,19 @@ class AprsFiPlugin:
         api_key: str | None = None,
         headless: bool = True,
         timeout: float = 30.0,
+        zone_delay: float = 0.0,
+        zone_size_nm: float = 10.0,
     ) -> None:
         self._session_factory = session_factory
         self.proxy_url = proxy_url
         self.api_key = api_key
         self.headless = headless
         self.timeout = timeout
+        self.zone_delay = max(0.0, float(zone_delay))
+        self.zone_size_nm = max(0.1, float(zone_size_nm))
 
     def configure(self, config: dict) -> None:
-        """Dynamically apply user-configured proxy, API key, and network settings."""
+        """Dynamically apply user-configured proxy, API key, timeouts, and zone scan pacing."""
         if not config:
             return
         if "proxy_url" in config:
@@ -169,6 +174,21 @@ class AprsFiPlugin:
                 self.timeout = float(config["timeout"])
             except (ValueError, TypeError):
                 pass
+        if "zone_delay_seconds" in config and config.get("zone_delay_seconds") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay_seconds"]))
+            except (ValueError, TypeError):
+                pass
+        elif "zone_delay" in config and config.get("zone_delay") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay"]))
+            except (ValueError, TypeError):
+                pass
+        if "zone_size_nm" in config and config.get("zone_size_nm") is not None:
+            try:
+                self.zone_size_nm = max(0.1, float(config["zone_size_nm"]))
+            except (ValueError, TypeError):
+                pass
 
     def authenticate(self) -> None:
         """Browser handles sessions and cookies upon startup."""
@@ -179,7 +199,7 @@ class AprsFiPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
-        zones = split_into_zones(bbox, zone_size_nm=10.0)
+        zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
         session = (
             self._session_factory()
             if self._session_factory
@@ -193,7 +213,9 @@ class AprsFiPlugin:
         try:
             session.start()
             all_records: list[AISRecord] = []
-            for zone in zones:
+            for idx, zone in enumerate(zones):
+                if idx > 0 and self.zone_delay > 0:
+                    time.sleep(self.zone_delay)
                 coords = {
                     "lat_min": zone.min_latitude,
                     "lat_max": zone.max_latitude,

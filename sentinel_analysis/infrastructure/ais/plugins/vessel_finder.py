@@ -159,14 +159,18 @@ class VesselFinderPlugin:
         proxy_url: str | None = None,
         headless: bool = True,
         timeout: float = 30.0,
+        zone_delay: float = 0.0,
+        zone_size_nm: float = 10.0,
     ) -> None:
         self._session_factory = session_factory
         self.proxy_url = proxy_url
         self.headless = headless
         self.timeout = timeout
+        self.zone_delay = max(0.0, float(zone_delay))
+        self.zone_size_nm = max(0.1, float(zone_size_nm))
 
     def configure(self, config: dict) -> None:
-        """Dynamically apply user-configured proxy and network settings."""
+        """Dynamically apply user-configured proxy, timeouts, and zone scan pacing."""
         if not config:
             return
         if "proxy_url" in config:
@@ -176,6 +180,21 @@ class VesselFinderPlugin:
         if "timeout" in config and config.get("timeout") is not None:
             try:
                 self.timeout = float(config["timeout"])
+            except (ValueError, TypeError):
+                pass
+        if "zone_delay_seconds" in config and config.get("zone_delay_seconds") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay_seconds"]))
+            except (ValueError, TypeError):
+                pass
+        elif "zone_delay" in config and config.get("zone_delay") is not None:
+            try:
+                self.zone_delay = max(0.0, float(config["zone_delay"]))
+            except (ValueError, TypeError):
+                pass
+        if "zone_size_nm" in config and config.get("zone_size_nm") is not None:
+            try:
+                self.zone_size_nm = max(0.1, float(config["zone_size_nm"]))
             except (ValueError, TypeError):
                 pass
 
@@ -204,10 +223,12 @@ class VesselFinderPlugin:
         )
         try:
             session.start()
-            zones = split_into_zones(bbox, zone_size_nm=10.0)
+            zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
 
             all_chunks: list[bytes] = []
-            for zone in zones:
+            for idx, zone in enumerate(zones):
+                if idx > 0 and self.zone_delay > 0:
+                    time.sleep(self.zone_delay)
                 chunk_coords = {
                     "lat_min": zone.min_latitude,
                     "lat_max": zone.max_latitude,
