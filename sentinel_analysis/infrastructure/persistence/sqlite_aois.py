@@ -68,3 +68,123 @@ class SQLiteAreaOfInterestRepository:
             )
             if cursor.rowcount == 0:
                 raise LookupError(f"Area of interest not found: {aoi_id}")
+
+    def get_cached_forecast(self, aoi_id: int) -> dict | None:
+        from datetime import timedelta
+        with self._database.connection(rows=True) as connection:
+            row = connection.execute("SELECT * FROM aoi_forecasts WHERE aoi_id = ?", (aoi_id,)).fetchone()
+        if not row:
+            return None
+
+        now = datetime.now(timezone.utc)
+        try:
+            expires_at = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
+            fetched_at = datetime.fromisoformat(str(row["fetched_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
+        except Exception:
+            return None
+
+        if now > expires_at:
+            return None
+
+        n2yo_preds = json.loads(row["n2yo_predictions_json"]) if row["n2yo_predictions_json"] else []
+        hist_preds = json.loads(row["historical_predictions_json"]) if row["historical_predictions_json"] else []
+        comb_preds = json.loads(row["combined_predictions_json"]) if row["combined_predictions_json"] else []
+        mission_summary = json.loads(row["mission_analysis_json"]) if row["mission_analysis_json"] else None
+
+        cutoff = now - timedelta(minutes=5)
+        def _filter_upcoming(passes):
+            filtered = []
+            for p in passes:
+                t_val = p.get("time")
+                if t_val:
+                    try:
+                        p_dt = datetime.fromisoformat(str(t_val).replace("Z", "+00:00")).astimezone(timezone.utc)
+                        if p_dt >= cutoff:
+                            filtered.append(p)
+                    except Exception:
+                        filtered.append(p)
+                else:
+                    filtered.append(p)
+            return filtered
+
+        n2yo_filtered = _filter_upcoming(n2yo_preds)
+        hist_filtered = _filter_upcoming(hist_preds)
+        comb_filtered = _filter_upcoming(comb_preds)
+
+        if not n2yo_filtered and not hist_filtered and not comb_filtered:
+            return None
+
+        next_scan_val = None
+        if comb_filtered:
+            next_scan_val = comb_filtered[0]["time"]
+        elif n2yo_filtered:
+            next_scan_val = n2yo_filtered[0]["time"]
+        elif hist_filtered:
+            next_scan_val = hist_filtered[0]["time"]
+
+        return {
+            "aoi_id": aoi_id,
+            "predictions": comb_filtered,
+            "n2yo_predictions": n2yo_filtered,
+            "historical_predictions": hist_filtered,
+            "mission_analysis": mission_summary,
+            "next_scan": next_scan_val,
+            "fetched_at": fetched_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "cached": True,
+        }
+
+    def save_cached_forecast(
+        self,
+        aoi_id: int,
+        forecast_data: dict,
+        ttl_seconds: int = 3600,
+    ) -> None:
+        from datetime import timedelta
+        fetched_at = datetime.now(timezone.utc)
+        expires_at = fetched_at + timedelta(seconds=ttl_seconds)
+
+        n2yo_json = json.dumps(forecast_data.get("n2yo_predictions", []))
+        hist_json = json.dumps(forecast_data.get("historical_predictions", []))
+        comb_json = json.dumps(forecast_data.get("predictions", []))
+        mission_json = json.dumps(forecast_data.get("mission_analysis")) if forecast_data.get("mission_analysis") else None
+        next_scan = forecast_data.get("next_scan")
+
+        with self._database.connection(rows=True) as connection:
+            connection.execute(
+                """
+                INSERT INTO aoi_forecasts (
+                    aoi_id,
+                    n2yo_predictions_json,
+                    historical_predictions_json,
+                    combined_predictions_json,
+                    mission_analysis_json,
+                    next_scan,
+                    fetched_at,
+                    expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(aoi_id) DO UPDATE SET
+                    n2yo_predictions_json = excluded.n2yo_predictions_json,
+                    historical_predictions_json = excluded.historical_predictions_json,
+                    combined_predictions_json = excluded.combined_predictions_json,
+                    mission_analysis_json = excluded.mission_analysis_json,
+                    next_scan = excluded.next_scan,
+                    fetched_at = excluded.fetched_at,
+                    expires_at = excluded.expires_at
+                """,
+                (
+                    aoi_id,
+                    n2yo_json,
+                    hist_json,
+                    comb_json,
+                    mission_json,
+                    next_scan,
+                    fetched_at.isoformat(),
+                    expires_at.isoformat(),
+                ),
+            )
+
+    def clear_cached_forecast(self, aoi_id: int) -> None:
+        with self._database.connection(rows=True) as connection:
+            connection.execute("DELETE FROM aoi_forecasts WHERE aoi_id = ?", (aoi_id,))
+

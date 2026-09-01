@@ -11,7 +11,7 @@ from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDe
 
 def test_obb_calculates_heading_and_dimensions() -> None:
     import tempfile
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         image_path = Path(temp_dir) / "synthetic_ship.png"
 
         # Create 100x100 synthetic SAR image with a bright oriented rectangle

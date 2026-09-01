@@ -28,6 +28,9 @@ class AddAreaOfInterest:
         return self._repository.add(AreaOfInterest(name, bbox))
 
 
+from datetime import datetime, timedelta, timezone
+
+
 class PredictAreaOfInterest:
     def __init__(
         self,
@@ -35,12 +38,14 @@ class PredictAreaOfInterest:
         predictor: PassPredictor,
         mission_analyzer: Optional[MissionPassAnalyzer] = None,
         n2yo_predictor: Optional[PassPredictor] = None,
+        cache_ttl_seconds: int = 3600,
     ) -> None:
         self._repository = repository
         self._predictor = predictor
         self._predict_passes = PredictPasses(predictor)
         self._mission_analyzer = mission_analyzer
         self._n2yo_predictor = n2yo_predictor
+        self._cache_ttl_seconds = cache_ttl_seconds
 
     def execute(self, aoi_id: int, api_key: str) -> list[PassPrediction]:
         if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
@@ -54,12 +59,24 @@ class PredictAreaOfInterest:
             self._repository.update_prediction(aoi_id, next_scan, datetime.now(timezone.utc))
         return predictions
 
-    def execute_with_analysis(self, aoi_id: int, api_key: str) -> dict[str, Any]:
+    def execute_with_analysis(
+        self,
+        aoi_id: int,
+        api_key: str,
+        force_refresh: bool = False,
+    ) -> dict[str, Any]:
         if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
             raise ValueError("Area-of-interest ID must be a positive integer")
         aoi = self._repository.get(aoi_id)
         if aoi is None:
             raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
+
+        if not force_refresh and hasattr(self._repository, "get_cached_forecast"):
+            cached = self._repository.get_cached_forecast(aoi_id)
+            if cached is not None:
+                cached["cached"] = True
+                cached["name"] = aoi.name
+                return cached
 
         predictions = self.execute(aoi_id, api_key)
 
@@ -96,7 +113,11 @@ class PredictAreaOfInterest:
         elif n2yo_predictions:
             next_scan_val = n2yo_predictions[0]["time"]
 
-        return {
+        now = datetime.now(timezone.utc)
+        fetched_at = now
+        expires_at = now + timedelta(seconds=self._cache_ttl_seconds)
+
+        forecast_result: dict[str, Any] = {
             "aoi_id": aoi.id,
             "name": aoi.name,
             "predictions": predictions,
@@ -104,5 +125,20 @@ class PredictAreaOfInterest:
             "historical_predictions": historical_predictions,
             "next_scan": next_scan_val,
             "mission_analysis": mission_summary,
+            "fetched_at": fetched_at.isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "cached": False,
         }
+
+        if hasattr(self._repository, "save_cached_forecast"):
+            try:
+                self._repository.save_cached_forecast(
+                    aoi_id=aoi.id,
+                    forecast_data=forecast_result,
+                    ttl_seconds=self._cache_ttl_seconds,
+                )
+            except Exception:
+                pass
+
+        return forecast_result
 

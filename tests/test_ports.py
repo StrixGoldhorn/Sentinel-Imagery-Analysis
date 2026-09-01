@@ -82,6 +82,16 @@ class CompleteAdapter:
     def update_prediction(self, aoi_id, next_scan, last_checked):
         return None
 
+    def get_cached_forecast(self, aoi_id):
+        return None
+
+    def save_cached_forecast(self, aoi_id, forecast_data, ttl_seconds=3600):
+        return None
+
+    def clear_cached_forecast(self, aoi_id):
+        return None
+
+
     def save_records(self, records, source_plugin):
         return 0
 

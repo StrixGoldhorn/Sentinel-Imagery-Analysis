@@ -96,6 +96,8 @@ class MemoryAOIRepository:
     def __init__(self, aoi=None):
         self.aoi = aoi
         self.updated = None
+        self.cached_forecast = None
+        self.saved_forecasts = []
 
     def list(self):
         return [self.aoi] if self.aoi else []
@@ -108,6 +110,17 @@ class MemoryAOIRepository:
 
     def update_prediction(self, aoi_id, next_scan, last_checked):
         self.updated = (aoi_id, next_scan, last_checked)
+
+    def get_cached_forecast(self, aoi_id):
+        return self.cached_forecast
+
+    def save_cached_forecast(self, aoi_id, forecast_data, ttl_seconds=3600):
+        self.saved_forecasts.append((aoi_id, forecast_data, ttl_seconds))
+        self.cached_forecast = forecast_data
+
+    def clear_cached_forecast(self, aoi_id):
+        self.cached_forecast = None
+
 
 
 class StaticRegistry:
@@ -390,6 +403,68 @@ def test_predict_aoi_returns_separate_n2yo_and_historical_extrapolation_lists() 
     assert len(res["historical_predictions"]) == 1
     assert res["historical_predictions"][0]["relative_orbit"] == 171
     assert res["mission_analysis"]["total_acquisitions"] == 25
+
+
+def test_predict_aoi_uses_cached_forecast_when_available_and_not_expired() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Singapore", BBOX, id=1))
+    repository.cached_forecast = {
+        "aoi_id": 1,
+        "name": "Singapore",
+        "predictions": [{"time": "2026-09-01T15:00:00Z", "source": "COMBINED"}],
+        "n2yo_predictions": [{"time": "2026-09-01T15:00:00Z", "source": "N2YO"}],
+        "historical_predictions": [],
+        "next_scan": "2026-09-01T15:00:00Z",
+        "mission_analysis": None,
+        "fetched_at": "2026-09-01T14:00:00Z",
+        "expires_at": "2026-09-01T15:00:00Z",
+    }
+
+    call_count = 0
+
+    class TrackingPredictor:
+        def predict(self, bbox, api_key):
+            nonlocal call_count
+            call_count += 1
+            return []
+
+    predictor = TrackingPredictor()
+    use_case = PredictAreaOfInterest(repository, predictor=predictor)
+
+    result = use_case.execute_with_analysis(1, "test_key", force_refresh=False)
+
+    assert result["cached"] is True
+    assert result["next_scan"] == "2026-09-01T15:00:00Z"
+    assert call_count == 0  # Predictor was not called
+
+
+def test_predict_aoi_force_refresh_bypasses_cache_and_updates_db() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Singapore", BBOX, id=1))
+    repository.cached_forecast = {
+        "aoi_id": 1,
+        "name": "Singapore",
+        "predictions": [{"time": "2026-09-01T15:00:00Z", "source": "OLD"}],
+        "n2yo_predictions": [],
+        "historical_predictions": [],
+        "next_scan": "2026-09-01T15:00:00Z",
+        "mission_analysis": None,
+    }
+
+    class FreshPredictor:
+        def predict(self, bbox, api_key):
+            return [{"time": "2026-09-01T18:00:00Z", "max_elevation": 80.0, "source": "N2YO"}]
+
+    predictor = FreshPredictor()
+    use_case = PredictAreaOfInterest(repository, predictor=predictor, n2yo_predictor=predictor)
+
+    result = use_case.execute_with_analysis(1, "test_key", force_refresh=True)
+
+    assert result["cached"] is False
+    assert result["next_scan"] == "2026-09-01T18:00:00+00:00"
+    assert len(repository.saved_forecasts) == 1
+    assert repository.saved_forecasts[0][0] == 1
+    assert repository.cached_forecast["next_scan"] == "2026-09-01T18:00:00+00:00"
+
+
 
 
 def load_tests(loader, standard_tests, pattern):

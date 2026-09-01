@@ -36,21 +36,39 @@ def add_aoi():
 
 @blueprint.post("/api/aoi/<int:aoi_id>/predict")
 def predict_aoi(aoi_id: int):
+    force_refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
+    if not force_refresh and request.is_json:
+        try:
+            body = request.get_json(silent=True) or {}
+            if body.get("refresh") or body.get("force_refresh"):
+                force_refresh = True
+        except Exception:
+            pass
+
     api_key = container().settings.n2yo_api_key or "default_key"
     use_case = container().predict_aoi
     if hasattr(use_case, "execute_with_analysis"):
-        result = use_case.execute_with_analysis(aoi_id, api_key)
+        try:
+            result = use_case.execute_with_analysis(aoi_id, api_key, force_refresh=force_refresh)
+        except TypeError:
+            result = use_case.execute_with_analysis(aoi_id, api_key)
         predictions = result.get("predictions", [])
         n2yo_predictions = result.get("n2yo_predictions", [])
         historical_predictions = result.get("historical_predictions", [])
         next_scan = result.get("next_scan")
         mission_analysis = result.get("mission_analysis")
+        cached = result.get("cached", False)
+        fetched_at = result.get("fetched_at")
+        expires_at = result.get("expires_at")
     else:
         predictions = use_case.execute(aoi_id, api_key)
         n2yo_predictions = [p for p in predictions if p.get("source") in ("N2YO", "COMBINED")]
         historical_predictions = [p for p in predictions if p.get("source") in ("HISTORICAL_MISSION", "COMBINED")]
         next_scan = predictions[0]["time"] if predictions else None
         mission_analysis = None
+        cached = False
+        fetched_at = None
+        expires_at = None
 
     if not predictions and not n2yo_predictions and not historical_predictions:
         return jsonify(error="No upcoming scans found"), 404
@@ -61,7 +79,11 @@ def predict_aoi(aoi_id: int):
         n2yo_predictions=n2yo_predictions,
         historical_predictions=historical_predictions,
         mission_analysis=mission_analysis,
+        cached=cached,
+        fetched_at=fetched_at,
+        expires_at=expires_at,
     )
+
 
 
 

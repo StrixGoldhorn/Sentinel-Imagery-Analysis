@@ -265,10 +265,13 @@ def test_expected_failures_are_mapped_to_stable_http_statuses() -> None:
 
 
 def test_unexpected_errors_are_logged_but_not_exposed() -> None:
+    from unittest.mock import patch
+
     client, container, _, _ = make_client()
     container.create_scan.error = RuntimeError("sensitive implementation detail")
 
-    response = client.post("/scan", json={"bbox": BBOX.as_list()})
+    with patch("logging.Logger.exception"):
+        response = client.post("/scan", json={"bbox": BBOX.as_list()})
 
     assert response.status_code == 500
     assert response.json == {"error": "Internal server error"}
@@ -412,6 +415,34 @@ def test_predict_aoi_route_returns_n2yo_and_historical_lists() -> None:
     assert len(response.json["historical_predictions"]) == 1
     assert response.json["n2yo_predictions"][0]["source"] == "N2YO"
     assert response.json["historical_predictions"][0]["source"] == "HISTORICAL_MISSION"
+
+
+def test_predict_aoi_route_supports_refresh_flag_and_cache_metadata() -> None:
+    client, container, _, _ = make_client()
+    container.predict_aoi = StubUseCase(
+        analysis_result={
+            "predictions": [{"time": "2026-09-01T12:00:00Z", "source": "COMBINED"}],
+            "n2yo_predictions": [{"time": "2026-09-01T12:00:00Z", "source": "N2YO"}],
+            "historical_predictions": [],
+            "next_scan": "2026-09-01T12:00:00Z",
+            "cached": True,
+            "fetched_at": "2026-09-01T11:00:00Z",
+            "expires_at": "2026-09-01T12:00:00Z",
+        }
+    )
+
+    # Normal fetch returning cached data
+    res = client.post("/api/aoi/1/predict")
+    assert res.status_code == 200
+    assert res.json["cached"] is True
+    assert res.json["fetched_at"] == "2026-09-01T11:00:00Z"
+    assert container.predict_aoi.keyword_calls[-1].get("force_refresh") is False
+
+    # Refresh query parameter
+    res_refresh = client.post("/api/aoi/1/predict?refresh=true")
+    assert res_refresh.status_code == 200
+    assert container.predict_aoi.keyword_calls[-1].get("force_refresh") is True
+
 
 
 def test_schedule_page_route() -> None:

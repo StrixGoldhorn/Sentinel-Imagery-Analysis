@@ -19,7 +19,6 @@ from sentinel_analysis.infrastructure.ais.plugins import (
     UDPListenerPlugin,
     VesselFinderPlugin,
 )
-from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 
 
 BBOX = BoundingBox(103.80, 1.20, 103.90, 1.30)

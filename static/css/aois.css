@@ -295,6 +295,60 @@ body {
     padding-top: 12px;
 }
 
+.flypast-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.flypast-cache-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 12px;
+    background: #eef2f7;
+    color: #495057;
+}
+
+.flypast-cache-pill.cached {
+    background: #e6f4ea;
+    color: #137333;
+    border: 1px solid #ceead6;
+}
+
+.flypast-cache-pill.live {
+    background: #e8f0fe;
+    color: #1a73e8;
+    border: 1px solid #d2e3fc;
+}
+
+.flypast-refresh-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: 1px solid #ced4da;
+    color: #495057;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.flypast-refresh-btn:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+    color: #212529;
+}
+
 .flypast-tabs {
     display: flex;
     gap: 6px;
@@ -303,6 +357,7 @@ body {
     border-radius: 8px;
     margin-bottom: 12px;
 }
+
 
 .flypast-tab-btn {
     flex: 1;

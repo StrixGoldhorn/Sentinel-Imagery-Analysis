@@ -29,18 +29,21 @@ def test_task_execution_lifecycle() -> None:
 
 
 def test_task_failure_handling() -> None:
+    from unittest.mock import patch
+
     queue = ThreadedTaskQueue(max_workers=2)
     try:
         def failing_worker():
             raise ValueError("Computation failed")
 
-        task = queue.submit("scan", None, failing_worker)
-        time.sleep(0.2)
+        with patch("sentinel_analysis.infrastructure.tasks.queue.logger.exception"):
+            task = queue.submit("scan", None, failing_worker)
+            time.sleep(0.2)
 
-        retrieved = queue.get_task(task.task_id)
-        assert retrieved is not None
-        assert retrieved.status == "FAILED"
-        assert "Computation failed" in str(retrieved.error)
+            retrieved = queue.get_task(task.task_id)
+            assert retrieved is not None
+            assert retrieved.status == "FAILED"
+            assert "Computation failed" in str(retrieved.error)
     finally:
         queue.shutdown()
 

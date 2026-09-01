@@ -148,25 +148,44 @@ async function toggleFlypasts(aoiId) {
         Hide Flypasts ▴
     `;
 
-    // Fetch predictions if not cached
+    // Fetch predictions if not in memory
     if (!aoiPredictionsCache[aoiId]) {
-        try {
-            const response = await fetch(`/api/aoi/${aoiId}/predict`, { method: 'POST' });
-            const data = await response.json();
-
-            if (response.ok && data.status === 'success') {
-                aoiPredictionsCache[aoiId] = data;
-                renderFlypasts(aoiId, data);
-            } else {
-                renderFlypastError(aoiId, data.error || 'No upcoming flypasts found.');
-            }
-        } catch (err) {
-            console.error('Error fetching flypasts:', err);
-            renderFlypastError(aoiId, 'Failed to fetch flypast predictions.');
-        }
+        await loadFlypastsData(aoiId, false);
     } else {
         renderFlypasts(aoiId, aoiPredictionsCache[aoiId]);
     }
+}
+
+async function loadFlypastsData(aoiId, forceRefresh = false) {
+    const contentDiv = document.getElementById(`flypasts-content-${aoiId}`);
+    if (contentDiv) {
+        contentDiv.innerHTML = `
+            <div style="text-align: center; padding: 16px; color: #6c757d;">
+                <span class="loading-spinner"></span> ${forceRefresh ? 'Refreshing satellite orbital forecasts...' : 'Loading flypast predictions...'}
+            </div>
+        `;
+    }
+
+    try {
+        const url = forceRefresh ? `/api/aoi/${aoiId}/predict?refresh=true` : `/api/aoi/${aoiId}/predict`;
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok && data.status === 'success') {
+            aoiPredictionsCache[aoiId] = data;
+            renderFlypasts(aoiId, data);
+        } else {
+            renderFlypastError(aoiId, data.error || 'No upcoming flypasts found.');
+        }
+    } catch (err) {
+        console.error('Error fetching flypasts:', err);
+        renderFlypastError(aoiId, 'Failed to fetch flypast predictions.');
+    }
+}
+
+async function refreshFlypasts(aoiId) {
+    delete aoiPredictionsCache[aoiId];
+    await loadFlypastsData(aoiId, true);
 }
 
 function renderFlypasts(aoiId, data) {
@@ -179,7 +198,12 @@ function renderFlypasts(aoiId, data) {
     const missionAnalysis = data.mission_analysis;
 
     if (n2yoPredictions.length === 0 && histPredictions.length === 0 && combinedPredictions.length === 0) {
-        container.innerHTML = `<div style="text-align: center; color: #6c757d; font-size: 0.85rem; padding: 8px;">No upcoming satellite passes predicted.</div>`;
+        container.innerHTML = `
+            <div style="text-align: center; color: #6c757d; font-size: 0.85rem; padding: 8px;">
+                No upcoming satellite passes predicted.
+                <button class="flypast-refresh-btn" onclick="refreshFlypasts(${aoiId})" style="margin-left: 8px;">🔄 Refresh</button>
+            </div>
+        `;
         return;
     }
 
@@ -192,9 +216,28 @@ function renderFlypasts(aoiId, data) {
         `;
     }
 
+    let cacheBadge = '';
+    if (data.cached && data.expires_at) {
+        const expDate = new Date(data.expires_at);
+        cacheBadge = `<span class="flypast-cache-pill cached" title="Cache valid until ${expDate.toISOString()}">💾 DB Cached (Expires ${expDate.toLocaleTimeString()})</span>`;
+    } else {
+        cacheBadge = `<span class="flypast-cache-pill live" title="Freshly generated and updated in local database">⚡ Live Forecast</span>`;
+    }
+
     const defaultTab = n2yoPredictions.length > 0 ? 'n2yo' : (histPredictions.length > 0 ? 'hist' : 'combined');
 
     container.innerHTML = `
+        <div class="flypast-header-bar">
+            <div>${cacheBadge}</div>
+            <button class="flypast-refresh-btn" onclick="refreshFlypasts(${aoiId})" title="Force recalculation and update local database cache">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Refresh Forecast
+            </button>
+        </div>
         ${statsHtml}
         <div class="flypast-tabs" id="flypast-tabs-${aoiId}">
             <button class="flypast-tab-btn ${defaultTab === 'n2yo' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'n2yo')">
@@ -207,6 +250,7 @@ function renderFlypasts(aoiId, data) {
                 ✨ Combined <span class="tab-count">${combinedPredictions.length}</span>
             </button>
         </div>
+
 
         <div id="flypast-tab-n2yo-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'n2yo' ? 'block' : 'none'};">
             <div class="flypast-section-desc">Astronomical satellite tracking passes from N2YO orbital pass predictions.</div>
