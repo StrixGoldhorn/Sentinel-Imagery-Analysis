@@ -1,5 +1,4 @@
-"""Unit and integration tests for scraper management, plugin toggles, and execution logs."""
-
+from datetime import datetime, timezone
 from pathlib import Path
 import unittest
 
@@ -12,7 +11,6 @@ from sentinel_analysis.application.use_cases.manage_scrapers import (
 )
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
-from sentinel_analysis.infrastructure.persistence.database import SQLiteDatabase
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 
 
@@ -42,9 +40,8 @@ class TestScrapersManagement(unittest.TestCase):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if self.db_path.exists():
             self.db_path.unlink()
-        self.db = SQLiteDatabase(self.db_path)
-        self.db.initialize()
         self.repo = SQLiteAISRepository(self.db_path)
+
 
     def tearDown(self):
         if self.db_path.exists():
@@ -128,7 +125,7 @@ class TestScrapersManagement(unittest.TestCase):
 
     def test_ingest_ais_skips_disabled_scrapers(self):
         vessel = Vessel(imo="1234567", mmsi="123456789", name="TEST VESSEL")
-        pos = VesselPosition(mmsi="123456789", latitude=1.25, longitude=103.85, timestamp="2026-09-01T10:00:00Z")
+        pos = VesselPosition(mmsi="123456789", latitude=1.25, longitude=103.85, timestamp=datetime(2026, 9, 1, 10, 0, 0, tzinfo=timezone.utc))
         rec = AISRecord(vessel, pos)
 
         plugin_active = DummyPlugin("ActivePlugin", [rec])

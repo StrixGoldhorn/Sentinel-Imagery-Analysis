@@ -94,6 +94,20 @@ class CompleteAdapter:
     def get_timeline_bounds(self):
         return {"min_timestamp": None, "max_timestamp": None, "total_records": 0, "count": 0}
 
+    def get_scraper_config(self, plugin_name):
+        return None
+
+    def get_all_scraper_configs(self):
+        return {}
+
+    def set_scraper_config(self, plugin_name, enabled):
+        return None
+
+    def get_scraper_logs(self, plugin_name=None, status=None, limit=50, offset=0):
+        return []
+
+    def get_scraper_stats(self):
+        return {}
 
     def list_tiles(self, tile_folder):
         return []
