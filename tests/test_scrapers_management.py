@@ -12,7 +12,6 @@ from sentinel_analysis.application.use_cases.manage_scrapers import (
 )
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
-from sentinel_analysis.infrastructure.persistence.database import SQLiteDatabase
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 
 
@@ -42,9 +41,8 @@ class TestScrapersManagement(unittest.TestCase):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if self.db_path.exists():
             self.db_path.unlink()
-        self.db = SQLiteDatabase(self.db_path)
-        self.db.initialize()
         self.repo = SQLiteAISRepository(self.db_path)
+
 
     def tearDown(self):
         if self.db_path.exists():

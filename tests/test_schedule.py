@@ -7,7 +7,6 @@ import unittest
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 from sentinel_analysis.domain.entities import AreaOfInterest, BoundingBox
-from sentinel_analysis.infrastructure.persistence.database import SQLiteDatabase
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedulerWorker
@@ -121,10 +120,9 @@ class TestSchedulerWorkerAndLogs(unittest.TestCase):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if self.db_path.exists():
             self.db_path.unlink()
-        self.db = SQLiteDatabase(self.db_path)
-        self.db.initialize()
         self.ais_repo = SQLiteAISRepository(self.db_path)
         self.aoi_repo = SQLiteAreaOfInterestRepository(self.db_path)
+
 
     def tearDown(self):
         if self.db_path.exists():
