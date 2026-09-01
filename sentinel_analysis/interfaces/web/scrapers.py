@@ -1,8 +1,9 @@
 """Web routes and API endpoints for managing AIS scrapers and viewing execution logs."""
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
 from sentinel_analysis.domain.entities import BoundingBox
+from sentinel_analysis.interfaces.web.dependencies import container
 
 blueprint = Blueprint("scrapers", __name__)
 
@@ -16,9 +17,10 @@ def scrapers_dashboard() -> str:
 @blueprint.route("/api/scrapers", methods=["GET"])
 def list_scrapers_api():
     """Returns all registered scrapers, their enablement status, descriptions, and performance stats."""
-    container = current_app.config["CONTAINER"]
+    app_container = container()
     try:
-        result = container.list_scrapers.execute()
+        result = app_container.list_scrapers.execute()
+
         return jsonify({
             "status": "success",
             "scrapers": result["scrapers"],
@@ -34,12 +36,12 @@ def list_scrapers_api():
 @blueprint.route("/api/scrapers/<name>/toggle", methods=["POST"])
 def toggle_scraper_api(name: str):
     """Toggle the enabled status of an AIS scraper."""
-    container = current_app.config["CONTAINER"]
+    app_container = container()
     data = request.get_json(silent=True) or {}
     enabled = data.get("enabled", True)
 
     try:
-        result = container.toggle_scraper.execute(name, enabled)
+        result = app_container.toggle_scraper.execute(name, enabled)
         return jsonify({
             "status": "success",
             "plugin_name": result["plugin_name"],
@@ -60,7 +62,7 @@ def toggle_scraper_api(name: str):
 @blueprint.route("/api/scrapers/<name>/test", methods=["POST"])
 def test_scraper_api(name: str):
     """Execute an on-demand test scrape using a single scraper."""
-    container = current_app.config["CONTAINER"]
+    app_container = container()
     data = request.get_json(silent=True) or {}
     bbox_raw = data.get("bbox", [103.8, 1.2, 103.9, 1.3])
 
@@ -70,16 +72,19 @@ def test_scraper_api(name: str):
         else:
             bbox = BoundingBox(103.8, 1.2, 103.9, 1.3)
 
-        result = container.ingest_ais.execute(
+        result = app_container.ingest_ais.execute(
             bbox=bbox,
             time_range=(None, None),
             plugin_name=name,
         )
+        total_inserted = result.get("total_inserted", 0) if isinstance(result, dict) else getattr(result, "total_inserted", 0)
+        logs = result.get("logs", []) if isinstance(result, dict) else getattr(result, "logs", [])
+
         return jsonify({
             "status": "success",
             "plugin_name": name,
-            "total_inserted": result.total_inserted,
-            "logs": result.logs,
+            "total_inserted": total_inserted,
+            "logs": logs,
         }), 200
     except Exception as exc:
         return jsonify({
@@ -97,14 +102,14 @@ def logs_dashboard() -> str:
 @blueprint.route("/api/logs", methods=["GET"])
 def scraper_logs_api():
     """Query paginated scraper execution logs with plugin and status filtering."""
-    container = current_app.config["CONTAINER"]
+    app_container = container()
     plugin_name = request.args.get("plugin")
     status = request.args.get("status")
     limit = int(request.args.get("limit", 50))
     offset = int(request.args.get("offset", 0))
 
     try:
-        result = container.get_scraper_logs_use_case.execute(
+        result = app_container.get_scraper_logs_use_case.execute(
             plugin_name=plugin_name,
             status=status,
             limit=limit,
@@ -122,3 +127,4 @@ def scraper_logs_api():
             "status": "error",
             "error": str(exc),
         }), 500
+

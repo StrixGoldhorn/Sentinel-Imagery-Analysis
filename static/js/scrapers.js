@@ -244,7 +244,12 @@ async function testScraper(pluginName, btn) {
 
         if (data.status === 'success') {
             const count = data.total_inserted || 0;
-            showToast(`Test Succeeded: ${count} vessel position(s) captured by ${pluginName}`, 'success');
+            const logEntry = (data.logs && data.logs[0]) || {};
+            if (logEntry.status === 'FAILED') {
+                showToast(`Test Failed for ${pluginName}: ${logEntry.error || 'Provider execution failed'}`, 'error');
+            } else {
+                showToast(`Test Succeeded: ${count} vessel position(s) captured by ${pluginName}`, 'success');
+            }
             loadScrapersData(); // refresh counts
         } else {
             showToast(`Test Failed for ${pluginName}: ${data.error || 'Unknown error'}`, 'error');

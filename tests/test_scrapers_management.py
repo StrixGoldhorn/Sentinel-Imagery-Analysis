@@ -141,7 +141,7 @@ class TestScrapersManagement(unittest.TestCase):
         ingest = IngestAIS(registry, self.repo)
         result = ingest.execute(BoundingBox(103.0, 1.0, 104.0, 2.0), (None, None))
 
-        self.assertEqual(result.total_inserted, 1)
+        self.assertEqual(result["total_inserted"], 1)
         self.assertTrue(plugin_active.fetch_called)
         self.assertFalse(plugin_disabled.fetch_called)
 
