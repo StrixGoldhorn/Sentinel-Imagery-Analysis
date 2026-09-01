@@ -93,9 +93,44 @@ class StubContainer:
         ])
         self.scrape_aoi_ais = StubUseCase({"total_inserted": 8, "logs": []})
         self.analyze_mission_passes = StubUseCase({"total_acquisitions": 0, "passes": []})
+        self.get_upcoming_scrapes = StubUseCase({
+            "events": [
+                {
+                    "aoi_id": 1,
+                    "aoi_name": "Singapore Strait",
+                    "bbox": [103.0, 1.0, 104.0, 2.0],
+                    "auto_capture_enabled": True,
+                    "pass_time": "2026-09-02T10:00:00+00:00",
+                    "window_start": "2026-09-02T09:55:00+00:00",
+                    "window_end": "2026-09-02T10:05:00+00:00",
+                    "satellite": "Sentinel-1A",
+                    "orbit_direction": "ASCENDING",
+                    "relative_orbit": 171,
+                    "confidence_score": 0.95,
+                    "max_elevation": 65.0,
+                    "source": "COMBINED",
+                    "historical_match": "Orbit #171",
+                    "status": "SCHEDULED",
+                    "is_active": False,
+                    "seconds_until_pass": 3600,
+                }
+            ],
+            "metrics": {
+                "total_aois": 1,
+                "auto_capture_count": 1,
+                "total_upcoming_scrapes": 1,
+                "upcoming_24h_count": 1,
+                "upcoming_7d_count": 1,
+                "active_flypasts_count": 0,
+            },
+            "generated_at": "2026-09-01T12:00:00+00:00",
+        })
+        self.schedule_aois = StubUseCase([{"aoi_id": 1, "status": "SCHEDULED"}])
         self.task_queue = StubTaskQueue()
         self.aoi_repository = None
+        self.ais_repository = None
         self.pass_scheduler = None
+
 
 
 
@@ -337,7 +372,50 @@ def test_predict_aoi_route_returns_n2yo_and_historical_lists() -> None:
     assert response.json["historical_predictions"][0]["source"] == "HISTORICAL_MISSION"
 
 
+def test_schedule_page_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/schedule")
+    assert response.status_code == 200
+    assert b"Planned Satellite Scrapes" in response.data
+
+
+def test_upcoming_scrapes_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.get("/api/schedule/upcoming?days_ahead=7&auto_capture_only=true")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert len(response.json["events"]) == 1
+    assert response.json["events"][0]["aoi_name"] == "Singapore Strait"
+    assert response.json["metrics"]["upcoming_24h_count"] == 1
+
+
+def test_scheduler_status_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/schedule/status")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert "scheduler" in response.json
+    assert "is_running" in response.json["scheduler"]
+
+
+def test_scraper_logs_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/schedule/logs?limit=10")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert "logs" in response.json
+
+
+def test_trigger_schedule_poll_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/schedule/trigger_poll")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert len(response.json["results"]) == 1
+
+
 def load_tests(loader, standard_tests, pattern):
+
 
     import inspect
     suite = unittest.TestSuite()

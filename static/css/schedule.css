@@ -1,0 +1,542 @@
+/* Planned Scrapes (schedule.html) Stylesheet */
+
+body {
+    background-color: #f8f9fa;
+    color: #333;
+    padding-top: 80px;
+}
+
+.schedule-dashboard-container {
+    max-width: 1400px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 20px 24px 60px 24px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.page-header p {
+    margin: 5px 0 0 0;
+    color: #6c757d;
+    font-size: 0.95rem;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* KPI Summary Stat Cards */
+.metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.metric-card {
+    background: #ffffff;
+    border-radius: 10px;
+    border: 1px solid #e1e4e8;
+    padding: 16px 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.07);
+}
+
+.metric-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.icon-blue { background: #e7f1ff; color: #007bff; }
+.icon-green { background: #e6f9ed; color: #28a745; }
+.icon-amber { background: #fff8e6; color: #f39c12; }
+.icon-purple { background: #f3ebfc; color: #6f42c1; }
+.icon-pulse {
+    background: #fde8e8;
+    color: #dc3545;
+    animation: pulse-border 1.5s infinite;
+}
+
+@keyframes pulse-border {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #2c3e50;
+    line-height: 1.2;
+}
+
+.metric-label {
+    font-size: 0.82rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* Scheduler Daemon Status Bar */
+.scheduler-status-banner {
+    background: #ffffff;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.scheduler-status-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 0.88rem;
+}
+
+.scheduler-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.scheduler-running {
+    background: #e6f9ed;
+    color: #28a745;
+}
+
+.scheduler-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+    display: inline-block;
+}
+
+.scheduler-running .scheduler-dot {
+    animation: blink 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes blink {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+}
+
+.scheduler-stopped {
+    background: #f8d7da;
+    color: #dc3545;
+}
+
+/* Filter and Controls Toolbar */
+.controls-toolbar {
+    background: #ffffff;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+
+.controls-group {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.control-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: #495057;
+}
+
+.select-control {
+    padding: 6px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    background-color: #fff;
+    color: #495057;
+    cursor: pointer;
+}
+
+.select-control:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.search-input {
+    padding: 6px 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 0.88rem;
+    width: 200px;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+/* Schedule Event Cards */
+.schedule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+}
+
+.schedule-card {
+    background: #ffffff;
+    border-radius: 10px;
+    border: 1px solid #e1e4e8;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    border-left: 4px solid #ced4da;
+}
+
+.schedule-card.status-active {
+    border-left-color: #dc3545;
+    background: #fffafa;
+}
+
+.schedule-card.status-scheduled {
+    border-left-color: #28a745;
+}
+
+.schedule-card.status-predicted {
+    border-left-color: #007bff;
+}
+
+.schedule-card:hover {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.card-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.event-timing-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.event-countdown {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.event-countdown.countdown-live {
+    color: #dc3545;
+    animation: pulse-text 1.5s infinite;
+}
+
+@keyframes pulse-text {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.event-timestamps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 0.82rem;
+    color: #6c757d;
+}
+
+.event-badges {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.card-details-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f3f5;
+}
+
+.aoi-info-block {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.aoi-name-tag {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.scrape-window-tag {
+    background: #f1f3f5;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 0.8rem;
+    color: #495057;
+    font-family: 'Courier New', Courier, monospace;
+}
+
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.76rem;
+    font-weight: 600;
+}
+
+.badge-live {
+    background-color: #dc3545;
+    color: #ffffff;
+}
+
+.badge-scheduled {
+    background-color: #28a745;
+    color: #ffffff;
+}
+
+.badge-predicted {
+    background-color: #007bff;
+    color: #ffffff;
+}
+
+.badge-ascending {
+    background-color: #007bff;
+    color: #ffffff;
+}
+
+.badge-descending {
+    background-color: #6f42c1;
+    color: #ffffff;
+}
+
+.badge-track {
+    background-color: #17a2b8;
+    color: #ffffff;
+}
+
+.badge-conf {
+    background-color: #f39c12;
+    color: #ffffff;
+}
+
+.badge-elevation {
+    background-color: #6c757d;
+    color: #ffffff;
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid transparent;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.btn-primary { background-color: #007bff; color: #fff; }
+.btn-primary:hover { background-color: #0069d9; }
+
+.btn-outline-primary {
+    background-color: transparent;
+    border-color: #007bff;
+    color: #007bff;
+}
+.btn-outline-primary:hover {
+    background-color: #007bff;
+    color: #fff;
+}
+
+.btn-outline-secondary {
+    background-color: transparent;
+    border-color: #6c757d;
+    color: #6c757d;
+}
+.btn-outline-secondary:hover {
+    background-color: #6c757d;
+    color: #fff;
+}
+
+.btn-success { background-color: #28a745; color: #fff; }
+.btn-success:hover { background-color: #218838; }
+
+.btn-warning { background-color: #f39c12; color: #fff; }
+.btn-warning:hover { background-color: #d68910; }
+
+.btn-sm {
+    padding: 4px 8px;
+    font-size: 0.78rem;
+}
+
+/* Execution Audit Logs Section */
+.logs-section {
+    margin-top: 36px;
+    background: #ffffff;
+    border: 1px solid #e1e4e8;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.logs-header {
+    padding: 14px 20px;
+    background: #fdfdfd;
+    border-bottom: 1px solid #e1e4e8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.logs-header h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #2c3e50;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logs-table-container {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.logs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.logs-table th {
+    background: #f8f9fa;
+    padding: 10px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.logs-table td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f3f5;
+    color: #212529;
+}
+
+.logs-table tr:hover {
+    background-color: #fcfcfd;
+}
+
+/* Empty and Loading States */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: #ffffff;
+    border-radius: 12px;
+    border: 1px dashed #ced4da;
+    color: #6c757d;
+}
+
+.empty-state svg {
+    margin-bottom: 15px;
+    color: #adb5bd;
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: #007bff;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

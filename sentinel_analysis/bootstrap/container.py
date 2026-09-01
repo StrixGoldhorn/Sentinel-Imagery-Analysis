@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases import (
     DeleteScan,
     DetectShips,
     GetScan,
+    GetUpcomingScrapes,
     GetVesselPositions,
     IngestAIS,
     ListAreasOfInterest,
@@ -86,8 +87,13 @@ class ApplicationContainer:
             self.create_scan,
             self.ingest_ais,
         )
+        self.get_upcoming_scrapes = GetUpcomingScrapes(
+            self.aoi_repository,
+            self.hybrid_predictor,
+        )
         self.pass_scheduler = PassSchedulerWorker(
             self.schedule_aois,
             settings.n2yo_api_key or "default_key",
             poll_interval_seconds=60.0,
         )
+

@@ -201,3 +201,25 @@ class SQLiteAISRepository:
                 })
         return results
 
+    def get_scraper_logs(self, limit: int = 50) -> list[dict]:
+        limit = max(1, min(int(limit), 200))
+        query = """
+            SELECT id, plugin_name, status, records_inserted, timestamp, error_message
+            FROM scraper_logs
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?
+        """
+        results: list[dict] = []
+        with self._database.connection() as connection:
+            cursor = connection.execute(query, (limit,))
+            for row in cursor.fetchall():
+                results.append({
+                    "id": row[0],
+                    "plugin_name": row[1],
+                    "status": row[2],
+                    "records_inserted": row[3],
+                    "timestamp": row[4],
+                    "error_message": row[5],
+                })
+        return results
+

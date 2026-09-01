@@ -1,8 +1,9 @@
 """Background daemon worker for periodic satellite pass checks."""
 
+from datetime import datetime, timezone
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 
@@ -21,6 +22,9 @@ class PassSchedulerWorker:
         self._poll_interval = poll_interval_seconds
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._last_run_at: Optional[datetime] = None
+        self._last_results: list[dict[str, Any]] = []
+        self._last_error: Optional[str] = None
 
     def start(self) -> None:
         if not self._api_key:
@@ -35,16 +39,44 @@ class PassSchedulerWorker:
         while self._running:
             try:
                 if self._api_key:
-                    self._schedule_use_case.execute(self._api_key)
-            except Exception:
-                pass  # Suppress background errors to keep daemon running
+                    self.trigger_check()
+            except Exception as exc:
+                self._last_error = str(exc)
             # Sleep in 1s increments so we can exit cleanly on stop
             for _ in range(int(self._poll_interval)):
                 if not self._running:
                     break
                 time.sleep(1)
 
+    def trigger_check(self) -> list[dict[str, Any]]:
+        """Run an immediate check cycle across active AOIs."""
+        if not self._api_key:
+            raise ValueError("Satellite prediction API key is not configured")
+        now = datetime.now(timezone.utc)
+        try:
+            results = self._schedule_use_case.execute(self._api_key)
+            self._last_run_at = now
+            self._last_results = results
+            self._last_error = None
+            return results
+        except Exception as exc:
+            self._last_error = str(exc)
+            raise
+
+    def get_status(self) -> dict[str, Any]:
+        """Return the current daemon status, interval, and last execution details."""
+        return {
+            "is_running": self._running,
+            "api_key_configured": bool(self._api_key),
+            "poll_interval_seconds": self._poll_interval,
+            "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
+            "last_error": self._last_error,
+            "last_results_count": len(self._last_results),
+            "thread_alive": bool(self._thread and self._thread.is_alive()),
+        }
+
     def stop(self) -> None:
         self._running = False
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
+
