@@ -201,17 +201,75 @@ class SQLiteAISRepository:
                 })
         return results
 
-    def get_scraper_logs(self, limit: int = 50) -> list[dict]:
-        limit = max(1, min(int(limit), 200))
-        query = """
+    def get_scraper_config(self, plugin_name: str) -> dict | None:
+        with self._database.connection() as connection:
+            cursor = connection.execute(
+                "SELECT plugin_name, enabled, description, updated_at FROM scraper_config WHERE plugin_name = ?",
+                (plugin_name,),
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "plugin_name": row[0],
+                    "enabled": bool(row[1]),
+                    "description": row[2],
+                    "updated_at": row[3],
+                }
+        return None
+
+    def get_all_scraper_configs(self) -> dict[str, bool]:
+        configs: dict[str, bool] = {}
+        with self._database.connection() as connection:
+            cursor = connection.execute("SELECT plugin_name, enabled FROM scraper_config")
+            for row in cursor.fetchall():
+                configs[row[0]] = bool(row[1])
+        return configs
+
+    def set_scraper_config(self, plugin_name: str, enabled: bool) -> None:
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO scraper_config (plugin_name, enabled, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(plugin_name) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (plugin_name, 1 if enabled else 0),
+            )
+
+    def get_scraper_logs(
+        self,
+        plugin_name: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        where_clauses = []
+        params: list[object] = []
+
+        if plugin_name:
+            where_clauses.append("plugin_name = ?")
+            params.append(plugin_name)
+        if status:
+            where_clauses.append("status = ?")
+            params.append(status.upper())
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        query = f"""
             SELECT id, plugin_name, status, records_inserted, timestamp, error_message
             FROM scraper_logs
+            {where_sql}
             ORDER BY timestamp DESC, id DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
         """
+        params.extend([limit, offset])
+
         results: list[dict] = []
         with self._database.connection() as connection:
-            cursor = connection.execute(query, (limit,))
+            cursor = connection.execute(query, tuple(params))
             for row in cursor.fetchall():
                 results.append({
                     "id": row[0],
@@ -222,4 +280,29 @@ class SQLiteAISRepository:
                     "error_message": row[5],
                 })
         return results
+
+    def get_scraper_stats(self) -> dict[str, dict]:
+        stats: dict[str, dict] = {}
+        with self._database.connection() as connection:
+            cursor = connection.execute("""
+                SELECT 
+                    plugin_name,
+                    COUNT(*) as total_runs,
+                    SUM(records_inserted) as total_records,
+                    SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success_runs,
+                    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_runs,
+                    MAX(timestamp) as last_run_at
+                FROM scraper_logs
+                GROUP BY plugin_name
+            """)
+            for row in cursor.fetchall():
+                stats[row[0]] = {
+                    "total_runs": row[1] or 0,
+                    "total_records": row[2] or 0,
+                    "success_runs": row[3] or 0,
+                    "failed_runs": row[4] or 0,
+                    "last_run_at": row[5],
+                }
+        return stats
+
 

@@ -8,14 +8,17 @@ from sentinel_analysis.application.use_cases import (
     DeleteScan,
     DetectShips,
     GetScan,
+    GetScraperLogsUseCase,
     GetUpcomingScrapes,
     GetVesselPositions,
     IngestAIS,
     ListAreasOfInterest,
     ListScans,
+    ListScrapers,
     PredictAreaOfInterest,
     RenameScan,
     ScrapeAreaOfInterestAIS,
+    ToggleScraper,
 )
 
 from sentinel_analysis.bootstrap.config import Settings
@@ -78,7 +81,11 @@ class ApplicationContainer:
             self.aoi_repository,
             self.mission_analyzer,
         )
-        self.ingest_ais = IngestAIS(DynamicAISPluginRegistry(), self.ais_repository)
+        self.ais_plugin_registry = DynamicAISPluginRegistry()
+        self.ingest_ais = IngestAIS(self.ais_plugin_registry, self.ais_repository)
+        self.list_scrapers = ListScrapers(self.ais_plugin_registry, self.ais_repository)
+        self.toggle_scraper = ToggleScraper(self.ais_plugin_registry, self.ais_repository)
+        self.get_scraper_logs_use_case = GetScraperLogsUseCase(self.ais_repository)
         self.get_vessels = GetVesselPositions(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
         self.schedule_aois = CheckAndScheduleAOIs(
@@ -96,4 +103,5 @@ class ApplicationContainer:
             settings.n2yo_api_key or "default_key",
             poll_interval_seconds=60.0,
         )
+
 

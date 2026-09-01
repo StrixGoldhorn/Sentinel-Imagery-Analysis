@@ -32,3 +32,25 @@ class AISRepository(Protocol):
     def get_timeline_bounds(self) -> dict[str, object]:
         ...
 
+    def get_scraper_config(self, plugin_name: str) -> dict | None:
+        ...
+
+    def get_all_scraper_configs(self) -> dict[str, bool]:
+        ...
+
+    def set_scraper_config(self, plugin_name: str, enabled: bool) -> None:
+        ...
+
+    def get_scraper_logs(
+        self,
+        plugin_name: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        ...
+
+    def get_scraper_stats(self) -> dict[str, dict]:
+        ...
+
+

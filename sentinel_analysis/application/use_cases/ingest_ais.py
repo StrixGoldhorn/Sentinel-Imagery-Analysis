@@ -51,7 +51,18 @@ class IngestAIS:
         if plugin_name is not None and not plugins:
             raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
 
+        configs = {}
+        if hasattr(self._repository, "get_all_scraper_configs"):
+            try:
+                configs = self._repository.get_all_scraper_configs()
+            except Exception:
+                configs = {}
+
         for plugin in plugins:
+            # If multi-provider ingestion and plugin is explicitly disabled in config, skip
+            if plugin_name is None and configs.get(plugin.name) is False:
+                continue
+
             inserted = 0
             try:
                 plugin.authenticate()
@@ -60,6 +71,7 @@ class IngestAIS:
                 status: IngestionStatus = "SUCCESS"
                 error = None
             except Exception as exc:
+
                 # A provider failure is isolated so the remaining configured
                 # providers still get a chance to run.
                 status = "FAILED"

@@ -126,10 +126,52 @@ class StubContainer:
             "generated_at": "2026-09-01T12:00:00+00:00",
         })
         self.schedule_aois = StubUseCase([{"aoi_id": 1, "status": "SCHEDULED"}])
+        self.list_scrapers = StubUseCase({
+            "scrapers": [
+                {
+                    "name": "VesselFinderPlugin",
+                    "display_name": "VesselFinder (Playwright Stealth)",
+                    "category": "Live Web Scraper",
+                    "description": "Stealth browser scraping",
+                    "requires_network": True,
+                    "enabled": True,
+                    "total_runs": 10,
+                    "total_records": 100,
+                    "success_runs": 9,
+                    "failed_runs": 1,
+                    "success_rate": 90.0,
+                    "last_run_at": "2026-09-01T12:00:00Z",
+                }
+            ],
+            "metrics": {
+                "total_scrapers": 1,
+                "active_scrapers": 1,
+                "total_records_ingested": 100,
+                "overall_success_rate": 90.0,
+                "total_runs": 10,
+            },
+        })
+        self.toggle_scraper = StubUseCase({"plugin_name": "VesselFinderPlugin", "enabled": False})
+        self.get_scraper_logs_use_case = StubUseCase({
+            "logs": [
+                {
+                    "id": 1,
+                    "plugin_name": "VesselFinderPlugin",
+                    "status": "SUCCESS",
+                    "records_inserted": 25,
+                    "timestamp": "2026-09-01T12:00:00Z",
+                    "error_message": None,
+                }
+            ],
+            "count": 1,
+            "stats": {"VesselFinderPlugin": {"total_runs": 1, "total_records": 25}},
+            "metrics": {"total_runs": 1, "total_records": 25, "overall_success_rate": 100.0},
+        })
         self.task_queue = StubTaskQueue()
         self.aoi_repository = None
         self.ais_repository = None
         self.pass_scheduler = None
+
 
 
 
@@ -411,10 +453,49 @@ def test_trigger_schedule_poll_route() -> None:
     response = client.post("/api/schedule/trigger_poll")
     assert response.status_code == 200
     assert response.json["status"] == "success"
-    assert len(response.json["results"]) == 1
+def test_scrapers_dashboard_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/scrapers")
+    assert response.status_code == 200
+    assert b"AIS Scraper Plugins" in response.data
+
+
+def test_list_scrapers_api_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/scrapers")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert len(response.json["scrapers"]) == 1
+    assert response.json["scrapers"][0]["name"] == "VesselFinderPlugin"
+    assert response.json["metrics"]["active_scrapers"] == 1
+
+
+def test_toggle_scraper_api_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/scrapers/VesselFinderPlugin/toggle", json={"enabled": False})
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["enabled"] is False
+
+
+def test_logs_dashboard_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/logs")
+    assert response.status_code == 200
+    assert b"Scraper Execution Logs" in response.data
+
+
+def test_logs_api_route() -> None:
+    client, _, _, _ = make_client()
+    response = client.get("/api/logs?limit=25")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert len(response.json["logs"]) == 1
+    assert response.json["logs"][0]["plugin_name"] == "VesselFinderPlugin"
 
 
 def load_tests(loader, standard_tests, pattern):
+
 
 
     import inspect

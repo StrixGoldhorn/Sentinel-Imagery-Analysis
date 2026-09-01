@@ -16,6 +16,11 @@ from sentinel_analysis.application.use_cases.manage_scans import (
     ListScans,
     RenameScan,
 )
+from sentinel_analysis.application.use_cases.manage_scrapers import (
+    GetScraperLogsUseCase,
+    ListScrapers,
+    ToggleScraper,
+)
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
@@ -33,15 +38,19 @@ __all__ = [
     "DeleteScan",
     "DetectShips",
     "GetScan",
+    "GetScraperLogsUseCase",
     "GetUpcomingScrapes",
     "GetVesselPositions",
     "IngestAIS",
     "ListAreasOfInterest",
     "ListScans",
+    "ListScrapers",
     "PredictAreaOfInterest",
     "PredictPasses",
     "RenameScan",
     "ScrapeAreaOfInterestAIS",
+    "ToggleScraper",
     "calculate_pass_window",
 ]
+
 

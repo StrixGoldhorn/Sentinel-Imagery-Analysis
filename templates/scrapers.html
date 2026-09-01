@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}AIS Scrapers Management - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/scrapers.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="scrapers-dashboard-container">
+    <!-- Header Section -->
+    <div class="scrapers-header">
+        <div class="header-titles">
+            <div class="header-badge">AIS PROVIDER CONFIGURATION</div>
+            <h1>AIS Scraper Plugins</h1>
+            <p class="header-subtitle">
+                Enable or disable automated satellite flypast scrapers, monitor lifetime ingestion reliability, and run on-demand test captures.
+            </p>
+        </div>
+        <div class="header-actions">
+            <a href="/logs" class="btn btn-secondary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"></line>
+                    <line x1="8" y1="12" x2="21" y2="12"></line>
+                    <line x1="8" y1="18" x2="21" y2="18"></line>
+                    <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                    <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                    <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                </svg>
+                View Scraper Logs
+            </a>
+            <button class="btn btn-primary" onclick="loadScrapersData()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary KPI Metrics Bar -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-icon icon-cyan">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+            </div>
+            <div class="metric-content">
+                <div class="metric-value" id="metricActiveScrapers">-</div>
+                <div class="metric-label">Active Scrapers</div>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon icon-blue">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <div class="metric-content">
+                <div class="metric-value" id="metricTotalRuns">-</div>
+                <div class="metric-label">Total Execution Runs</div>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon icon-purple">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                </svg>
+            </div>
+            <div class="metric-content">
+                <div class="metric-value" id="metricTotalRecords">-</div>
+                <div class="metric-label">Vessels Harvested</div>
+            </div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-icon icon-green">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+            </div>
+            <div class="metric-content">
+                <div class="metric-value" id="metricSuccessRate">-</div>
+                <div class="metric-label">Ingestion Success Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toolbar Filters -->
+    <div class="scrapers-toolbar">
+        <div class="search-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="scraperSearchInput" placeholder="Search scrapers by name, source, or description..." oninput="filterScraperCards()">
+        </div>
+
+        <div class="category-pills" id="categoryPills">
+            <button class="pill active" data-category="ALL" onclick="selectCategory('ALL')">All Categories</button>
+            <button class="pill" data-category="Live Web Scraper" onclick="selectCategory('Live Web Scraper')">Live Web Scrapers</button>
+            <button class="pill" data-category="Community API" onclick="selectCategory('Community API')">Community APIs</button>
+            <button class="pill" data-category="Radio Gateway" onclick="selectCategory('Radio Gateway')">Radio / APRS</button>
+            <button class="pill" data-category="Hardware / NMEA" onclick="selectCategory('Hardware / NMEA')">Hardware / NMEA</button>
+            <button class="pill" data-category="Simulator" onclick="selectCategory('Simulator')">Simulators</button>
+        </div>
+    </div>
+
+    <!-- Scrapers Grid Container -->
+    <div id="scrapersGrid" class="scrapers-grid">
+        <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading AIS scraper configurations...</p>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toastNotification" class="toast-notification"></div>
+</div>
+
+<script src="{{ url_for('static', filename='js/scrapers.js') }}"></script>
+{% endblock %}

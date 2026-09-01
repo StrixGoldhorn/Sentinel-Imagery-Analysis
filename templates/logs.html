@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Scraper Execution Logs - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/logs.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="logs-dashboard-container">
+    <!-- Header Section -->
+    <div class="logs-header">
+        <div class="header-titles">
+            <div class="header-badge">AIS INGESTION AUDIT TRAIL</div>
+            <h1>Scraper Execution Logs</h1>
+            <p class="header-subtitle">
+                Real-time audit log of automated satellite flypast captures, manual scans, and background provider executions.
+            </p>
+        </div>
+        <div class="header-actions">
+            <div class="auto-refresh-control">
+                <label for="autoRefreshSelect">Auto-refresh:</label>
+                <select id="autoRefreshSelect" class="select-sm" onchange="changeAutoRefresh(this.value)">
+                    <option value="0">Off</option>
+                    <option value="10" selected>10s</option>
+                    <option value="30">30s</option>
+                    <option value="60">60s</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary btn-sm" onclick="exportLogsJson()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export JSON
+            </button>
+            <a href="/scrapers" class="btn btn-outline-primary btn-sm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                Manage Scrapers
+            </a>
+            <button class="btn btn-primary btn-sm" onclick="loadLogsData()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Refresh Now
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary Metrics -->
+    <div class="logs-summary-bar">
+        <div class="summary-pill">
+            <span class="s-label">Total Recorded Runs:</span>
+            <span class="s-val" id="summaryTotalRuns">-</span>
+        </div>
+        <div class="summary-pill">
+            <span class="s-label">Lifetime Success Rate:</span>
+            <span class="s-val text-green" id="summarySuccessRate">-</span>
+        </div>
+        <div class="summary-pill">
+            <span class="s-label">Total Vessels Ingested:</span>
+            <span class="s-val text-blue" id="summaryTotalRecords">-</span>
+        </div>
+    </div>
+
+    <!-- Filters Toolbar -->
+    <div class="logs-filter-toolbar">
+        <div class="filter-group">
+            <label for="filterPlugin">Plugin:</label>
+            <select id="filterPlugin" class="select-filter" onchange="applyFilters()">
+                <option value="">All Plugins</option>
+                <option value="VesselFinderPlugin">VesselFinderPlugin</option>
+                <option value="AISFriendsPlugin">AISFriendsPlugin</option>
+                <option value="AprsFiPlugin">AprsFiPlugin</option>
+                <option value="UDPListenerPlugin">UDPListenerPlugin</option>
+                <option value="MockAISPlugin">MockAISPlugin</option>
+                <option value="MockPublicAISPlugin">MockPublicAISPlugin</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="filterStatus">Status:</label>
+            <select id="filterStatus" class="select-filter" onchange="applyFilters()">
+                <option value="">All Statuses</option>
+                <option value="SUCCESS">Success Only</option>
+                <option value="FAILED">Failed Only</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label for="filterLimit">Rows:</label>
+            <select id="filterLimit" class="select-filter" onchange="applyFilters()">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+            </select>
+        </div>
+
+        <div class="filter-group search-group">
+            <input type="text" id="filterSearch" placeholder="Filter logs in view..." oninput="filterLocalRows()">
+        </div>
+    </div>
+
+    <!-- Logs Table Container -->
+    <div class="logs-table-wrapper">
+        <table class="logs-table">
+            <thead>
+                <tr>
+                    <th style="width: 110px;">Status</th>
+                    <th style="width: 190px;">Execution Time (UTC)</th>
+                    <th style="width: 200px;">Scraper Plugin</th>
+                    <th style="width: 140px;">Records Ingested</th>
+                    <th>Result Details / Error Logs</th>
+                </tr>
+            </thead>
+            <tbody id="logsTableBody">
+                <tr>
+                    <td colspan="5" class="table-loading">
+                        <div class="spinner-sm"></div>
+                        <span>Loading execution logs...</span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Footer -->
+    <div class="logs-pagination-footer">
+        <div class="pagination-info" id="paginationInfo">Showing 0 logs</div>
+        <div class="pagination-buttons">
+            <button class="btn btn-secondary btn-sm" id="btnPrevPage" onclick="prevPage()" disabled>&larr; Previous</button>
+            <button class="btn btn-secondary btn-sm" id="btnNextPage" onclick="nextPage()" disabled>Next &rarr;</button>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/logs.js') }}"></script>
+{% endblock %}
