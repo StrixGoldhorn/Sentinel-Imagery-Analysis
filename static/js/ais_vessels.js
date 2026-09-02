@@ -485,23 +485,49 @@ async function loadAISVessels(mapInstance, bbox = null) {
     if (!mapInstance) return;
 
     try {
-        let url = CONFIG.API_AIS_VESSELS + '?latest_only=true&limit=1000';
-        if (bbox) {
-            url += `&bbox=${bbox.join(',')}`;
+        let activeBbox = bbox;
+        if (!activeBbox && typeof mapInstance.getBounds === 'function') {
+            const bounds = mapInstance.getBounds();
+            if (bounds && typeof bounds.getSouth === 'function') {
+                const south = Math.max(-90, Math.min(90, bounds.getSouth()));
+                const north = Math.max(-90, Math.min(90, bounds.getNorth()));
+                const west = Math.max(-180, Math.min(180, bounds.getWest()));
+                const east = Math.max(-180, Math.min(180, bounds.getEast()));
+                if (west < east && south < north) {
+                    activeBbox = [west, south, east, north];
+                }
+            }
+        }
+
+        const requestBody = {
+            latest_only: true,
+            limit: 1000
+        };
+
+        if (activeBbox) {
+            requestBody.bbox = activeBbox;
         }
 
         if (!aisTimelineState.isLive) {
             if (aisTimelineState.preset === 'custom' && aisTimelineState.customStart && aisTimelineState.customEnd) {
-                url += `&start=${encodeURIComponent(aisTimelineState.customStart)}&end=${encodeURIComponent(aisTimelineState.customEnd)}`;
+                requestBody.start = aisTimelineState.customStart;
+                requestBody.end = aisTimelineState.customEnd;
             } else {
                 // Window of windowHours up to selectedTime
                 const end = new Date(aisTimelineState.selectedTime).toISOString();
                 const start = new Date(aisTimelineState.selectedTime - aisTimelineState.windowHours * 3600 * 1000).toISOString();
-                url += `&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+                requestBody.start = start;
+                requestBody.end = end;
             }
         }
 
-        const res = await fetch(url);
+        const res = await fetch(CONFIG.API_AIS_VESSELS, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
         const data = await res.json();
 
         if (res.ok && data.status === 'success') {

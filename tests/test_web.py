@@ -392,6 +392,59 @@ def test_list_vessels_route() -> None:
     assert response.json["vessels"][0]["name"] == "PACIFIC TRADER"
     assert response.json["vessels"][0]["type"] == "Cargo"
     assert container.get_vessels.keyword_calls[-1].get("latest_only") is True
+    passed_bbox = container.get_vessels.keyword_calls[-1].get("bbox")
+    assert passed_bbox == BoundingBox(103.8, 1.2, 103.9, 1.3)
+
+
+def test_list_vessels_post_route_success() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/ais/vessels",
+        json={"bbox": [103.8, 1.2, 103.9, 1.3], "latest_only": True, "limit": 50},
+    )
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert response.json["count"] == 1
+    assert response.json["vessels"][0]["name"] == "PACIFIC TRADER"
+    assert response.json["vessels"][0]["type"] == "Cargo"
+    assert container.get_vessels.keyword_calls[-1].get("latest_only") is True
+    assert container.get_vessels.keyword_calls[-1].get("limit") == 50
+    passed_bbox = container.get_vessels.keyword_calls[-1].get("bbox")
+    assert passed_bbox == BoundingBox(103.8, 1.2, 103.9, 1.3)
+
+
+def test_list_vessels_post_route_with_timestamps() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/ais/vessels",
+        json={
+            "bbox": [103.8, 1.2, 103.9, 1.3],
+            "start": "2026-08-30T00:00:00Z",
+            "end": "2026-08-30T12:00:00Z",
+            "latest_only": False,
+        },
+    )
+    assert response.status_code == 200
+    time_range = container.get_vessels.keyword_calls[-1].get("time_range")
+    assert time_range is not None
+    assert time_range[0] == datetime(2026, 8, 30, 0, 0, tzinfo=timezone.utc)
+    assert time_range[1] == datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+    assert container.get_vessels.keyword_calls[-1].get("latest_only") is False
+
+
+def test_list_vessels_post_route_invalid_bbox() -> None:
+    client, _, _, _ = make_client()
+    # Incomplete coordinates array
+    res1 = client.post("/api/ais/vessels", json={"bbox": [103.8, 1.2]})
+    assert res1.status_code == 400
+
+    # Inverted min/max coordinates
+    res2 = client.post("/api/ais/vessels", json={"bbox": [104.0, 2.0, 103.0, 1.0]})
+    assert res2.status_code == 400
+
+    # Non-numeric coordinate
+    res3 = client.post("/api/ais/vessels", json={"bbox": [103.8, "abc", 103.9, 1.3]})
+    assert res3.status_code == 400
 
 
 
