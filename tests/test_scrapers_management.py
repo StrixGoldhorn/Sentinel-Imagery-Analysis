@@ -54,6 +54,7 @@ class MemoryAISRepository:
             "plugin_name": plugin_name,
             "enabled": self._configs[plugin_name],
             "description": getattr(self, "_descriptions", {}).get(plugin_name),
+            "tag": getattr(self, "_tags", {}).get(plugin_name),
             "config": self._custom_configs.get(plugin_name, {}),
             "cooldown_until": f_info.get("cooldown_until"),
             "consecutive_failures": f_info.get("consecutive_failures", 0),
@@ -68,16 +69,21 @@ class MemoryAISRepository:
         plugin_name: str,
         enabled: bool | None = None,
         description: str | None = None,
+        tag: str | None = None,
         config: dict | None = None,
     ):
         if not hasattr(self, "_descriptions"):
             self._descriptions = {}
+        if not hasattr(self, "_tags"):
+            self._tags = {}
         if enabled is not None:
             self._configs[plugin_name] = enabled
         elif plugin_name not in self._configs:
             self._configs[plugin_name] = True
         if description is not None:
             self._descriptions[plugin_name] = description
+        if tag is not None:
+            self._tags[plugin_name] = tag
         if config is not None:
             self._custom_configs[plugin_name] = config
         return self.get_scraper_config(plugin_name)
@@ -239,6 +245,25 @@ def test_toggle_scraper_use_case() -> None:
     res_on = use_case.execute("TogglePlugin", True)
     assert res_on["enabled"] is True
     assert repo.get_scraper_config("TogglePlugin")["enabled"] is True
+
+
+def test_update_scraper_tag_use_case() -> None:
+    from sentinel_analysis.application.use_cases.manage_scrapers import GetScraperDetail, UpdateScraper
+    repo = MemoryAISRepository()
+    plugin = DummyPlugin("TagPlugin")
+    registry = DynamicAISPluginRegistry([plugin])
+
+    update_case = UpdateScraper(registry, repo)
+    updated = update_case.execute("TagPlugin", tag="High-Priority Satellite", description="Custom satellite tag")
+
+    assert updated["tag"] == "High-Priority Satellite"
+    assert updated["category"] == "High-Priority Satellite"
+    assert updated["description"] == "Custom satellite tag"
+
+    get_case = GetScraperDetail(registry, repo)
+    detail = get_case.execute("TagPlugin")
+    assert detail["tag"] == "High-Priority Satellite"
+    assert detail["category"] == "High-Priority Satellite"
 
 
 def test_update_scraper_config_use_case() -> None:

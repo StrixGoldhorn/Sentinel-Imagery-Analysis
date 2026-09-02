@@ -131,7 +131,7 @@ class CompleteAdapter:
     def update_scraper_settings(self, plugin_name, config):
         return None
 
-    def update_scraper(self, plugin_name, enabled=None, description=None, config=None):
+    def update_scraper(self, plugin_name, enabled=None, description=None, tag=None, config=None):
         return None
 
     def record_scraper_failure(self, plugin_name, reason, cooldown_until, consecutive_failures):

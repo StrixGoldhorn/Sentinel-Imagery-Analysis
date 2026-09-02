@@ -77,6 +77,7 @@ class AISRepository(Protocol):
         plugin_name: str,
         enabled: bool | None = None,
         description: str | None = None,
+        tag: str | None = None,
         config: dict | None = None,
     ) -> dict | None:
         ...

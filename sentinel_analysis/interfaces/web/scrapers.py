@@ -57,11 +57,12 @@ def get_scraper_api(name: str):
 
 @blueprint.route("/api/scrapers/<name>", methods=["PUT", "PATCH"])
 def update_scraper_api(name: str):
-    """Update custom settings, description, and enablement status for an individual scraper."""
+    """Update custom settings, tag, description, and enablement status for an individual scraper."""
     app_container = container()
     data = request.get_json(silent=True) or {}
     enabled = data.get("enabled") if "enabled" in data else None
     description = data.get("description") if "description" in data else None
+    tag = data.get("tag") if "tag" in data else (data.get("category") if "category" in data else None)
     config = data.get("config") if "config" in data else None
 
     try:
@@ -69,6 +70,7 @@ def update_scraper_api(name: str):
             plugin_name=name,
             enabled=enabled,
             description=description,
+            tag=tag,
             config=config,
         )
         return jsonify({

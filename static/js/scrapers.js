@@ -67,7 +67,9 @@ function renderScrapers() {
     const query = (document.getElementById('scraperSearchInput')?.value || '').toLowerCase().trim();
 
     const filtered = allScrapers.filter(s => {
-        if (activeCategory !== 'ALL' && s.category !== activeCategory) {
+        const currentTag = s.tag || s.category || '';
+        const defaultCat = s.default_category || s.category || '';
+        if (activeCategory !== 'ALL' && s.category !== activeCategory && currentTag !== activeCategory && defaultCat !== activeCategory) {
             return false;
         }
         if (query) {
@@ -75,7 +77,8 @@ function renderScrapers() {
             const matchDisplay = (s.display_name || '').toLowerCase().includes(query);
             const matchDesc = (s.description || '').toLowerCase().includes(query);
             const matchCat = (s.category || '').toLowerCase().includes(query);
-            if (!matchName && !matchDisplay && !matchDesc && !matchCat) {
+            const matchTag = currentTag.toLowerCase().includes(query);
+            if (!matchName && !matchDisplay && !matchDesc && !matchCat && !matchTag) {
                 return false;
             }
         }
@@ -97,7 +100,8 @@ function renderScrapers() {
     }
 
     grid.innerHTML = filtered.map(s => {
-        const catClass = getCategoryClass(s.category);
+        const displayTag = s.tag || s.category || 'General';
+        const catClass = getCategoryClass(displayTag) || getCategoryClass(s.default_category);
         const lastRunFormatted = s.last_run_at ? formatDateTime(s.last_run_at) : 'Never executed';
         const cardClass = s.enabled ? 'scraper-card' : 'scraper-card disabled';
         const hasProxy = Boolean(s.config && s.config.proxy_url);
@@ -107,7 +111,7 @@ function renderScrapers() {
                 <div>
                     <div class="card-top">
                         <div style="display: flex; align-items: center; gap: 8px;">
-                            <span class="category-tag ${catClass}">${escapeHtml(s.category)}</span>
+                            <span class="category-tag ${catClass}" title="Scraper Tag">${escapeHtml(displayTag)}</span>
                             ${s.is_cooling_down ? `
                                 <span class="cooldown-badge">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -290,6 +294,7 @@ async function openConfigModal(pluginName) {
     const title = document.getElementById('modalScraperTitle');
     const hiddenName = document.getElementById('configPluginName');
     const enabledCheckbox = document.getElementById('cfgEnabled');
+    const tagInput = document.getElementById('cfgTag');
     const descInput = document.getElementById('cfgDescription');
     const proxyInput = document.getElementById('cfgProxyUrl');
     const apiKeyInput = document.getElementById('cfgApiKey');
@@ -309,6 +314,7 @@ async function openConfigModal(pluginName) {
     hiddenName.value = pluginName;
 
     if (enabledCheckbox) enabledCheckbox.checked = Boolean(scraper.enabled);
+    if (tagInput) tagInput.value = scraper.tag || scraper.category || '';
     if (descInput) descInput.value = scraper.description || '';
 
     const cfg = scraper.config || {};
@@ -344,6 +350,7 @@ async function openConfigModal(pluginName) {
             if (data.status === 'success' && data.scraper) {
                 const fresh = data.scraper;
                 if (enabledCheckbox) enabledCheckbox.checked = Boolean(fresh.enabled);
+                if (tagInput) tagInput.value = fresh.tag || fresh.category || '';
                 if (descInput) descInput.value = fresh.description || '';
                 const freshCfg = fresh.config || {};
                 proxyInput.value = freshCfg.proxy_url || '';
@@ -374,6 +381,7 @@ async function saveScraperConfig(event) {
     const pluginName = document.getElementById('configPluginName').value;
     const btnSave = document.getElementById('btnSaveConfig');
     const enabledCheckbox = document.getElementById('cfgEnabled');
+    const tagInput = document.getElementById('cfgTag');
     const descInput = document.getElementById('cfgDescription');
 
     const configData = {
@@ -389,6 +397,7 @@ async function saveScraperConfig(event) {
 
     const payload = {
         enabled: enabledCheckbox ? enabledCheckbox.checked : true,
+        tag: tagInput ? tagInput.value.trim() : null,
         description: descInput ? descInput.value.trim() : null,
         config: configData,
     };

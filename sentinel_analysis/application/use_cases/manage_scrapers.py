@@ -106,11 +106,17 @@ class ListScrapers:
             total_records_all += total_records
             total_success_all += success_runs
 
+            tag = p_detail.get("tag") or meta.get("category", "General")
+            category = tag
+
             scrapers.append({
                 "name": name,
                 "display_name": meta.get("display_name", name),
-                "category": meta.get("category", "General"),
-                "description": meta.get("description", ""),
+                "category": category,
+                "tag": tag,
+                "default_category": meta.get("category", "General"),
+                "description": p_detail.get("description") or meta.get("description", ""),
+                "default_description": meta.get("description", ""),
                 "requires_network": meta.get("requires_network", True),
                 "enabled": enabled,
                 "config": config,
@@ -304,10 +310,15 @@ class GetScraperDetail:
         failed_runs = p_stats.get("failed_runs", 0)
         success_rate = (success_runs / total_runs * 100.0) if total_runs > 0 else 100.0
 
+        tag = p_detail.get("tag") or meta.get("category", "General")
+        category = tag
+
         return {
             "name": plugin_name,
             "display_name": meta.get("display_name", plugin_name),
-            "category": meta.get("category", "General"),
+            "category": category,
+            "tag": tag,
+            "default_category": meta.get("category", "General"),
             "description": description,
             "default_description": meta.get("description", ""),
             "requires_network": meta.get("requires_network", True),
@@ -329,7 +340,7 @@ class GetScraperDetail:
 
 
 class UpdateScraper:
-    """Updates custom metadata, description, enabled state, and network configuration for an AIS scraper plugin."""
+    """Updates custom metadata, description, enabled state, tag, and network configuration for an AIS scraper plugin."""
 
     def __init__(
         self,
@@ -344,6 +355,7 @@ class UpdateScraper:
         plugin_name: str,
         enabled: bool | None = None,
         description: str | None = None,
+        tag: str | None = None,
         config: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if not isinstance(plugin_name, str) or not plugin_name.strip():
@@ -362,6 +374,7 @@ class UpdateScraper:
                 plugin_name=plugin_name,
                 enabled=enabled,
                 description=description,
+                tag=tag,
                 config=config,
             )
         else:

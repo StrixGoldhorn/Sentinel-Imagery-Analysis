@@ -283,7 +283,7 @@ class SQLiteAISRepository:
         with self._database.connection() as connection:
             cursor = connection.execute(
                 """
-                SELECT plugin_name, enabled, description, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
+                SELECT plugin_name, enabled, description, tag, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
                 FROM scraper_config WHERE plugin_name = ?
                 """,
                 (plugin_name,),
@@ -291,20 +291,21 @@ class SQLiteAISRepository:
             row = cursor.fetchone()
             if row:
                 config_data = {}
-                if row[3]:
+                if row[4]:
                     try:
-                        config_data = json.loads(row[3])
+                        config_data = json.loads(row[4])
                     except Exception:
                         config_data = {}
                 return {
                     "plugin_name": row[0],
                     "enabled": bool(row[1]),
                     "description": row[2],
+                    "tag": row[3],
                     "config": config_data,
-                    "cooldown_until": row[4],
-                    "consecutive_failures": int(row[5] or 0),
-                    "last_failure_reason": row[6],
-                    "updated_at": row[7],
+                    "cooldown_until": row[5],
+                    "consecutive_failures": int(row[6] or 0),
+                    "last_failure_reason": row[7],
+                    "updated_at": row[8],
                 }
         return None
 
@@ -316,6 +317,7 @@ class SQLiteAISRepository:
             "plugin_name": plugin_name,
             "enabled": True,
             "description": None,
+            "tag": None,
             "config": {},
             "cooldown_until": None,
             "consecutive_failures": 0,
@@ -336,26 +338,27 @@ class SQLiteAISRepository:
         with self._database.connection() as connection:
             cursor = connection.execute(
                 """
-                SELECT plugin_name, enabled, description, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
+                SELECT plugin_name, enabled, description, tag, config_json, cooldown_until, consecutive_failures, last_failure_reason, updated_at
                 FROM scraper_config
                 """
             )
             for row in cursor.fetchall():
                 config_data = {}
-                if row[3]:
+                if row[4]:
                     try:
-                        config_data = json.loads(row[3])
+                        config_data = json.loads(row[4])
                     except Exception:
                         config_data = {}
                 details[row[0]] = {
                     "plugin_name": row[0],
                     "enabled": bool(row[1]),
                     "description": row[2],
+                    "tag": row[3],
                     "config": config_data,
-                    "cooldown_until": row[4],
-                    "consecutive_failures": int(row[5] or 0),
-                    "last_failure_reason": row[6],
-                    "updated_at": row[7],
+                    "cooldown_until": row[5],
+                    "consecutive_failures": int(row[6] or 0),
+                    "last_failure_reason": row[7],
+                    "updated_at": row[8],
                 }
         return details
 
@@ -391,28 +394,32 @@ class SQLiteAISRepository:
         plugin_name: str,
         enabled: bool | None = None,
         description: str | None = None,
+        tag: str | None = None,
         config: dict | None = None,
     ) -> dict | None:
         with self._database.connection() as connection:
             row = connection.execute(
-                "SELECT enabled, description, config_json FROM scraper_config WHERE plugin_name = ?",
+                "SELECT enabled, description, tag, config_json FROM scraper_config WHERE plugin_name = ?",
                 (plugin_name,),
             ).fetchone()
 
             current_enabled = bool(row[0]) if row else True
             current_description = row[1] if row else None
-            current_config = json.loads(row[2]) if (row and row[2]) else {}
+            current_tag = row[2] if row else None
+            current_config = json.loads(row[3]) if (row and row[3]) else {}
 
             new_enabled = enabled if enabled is not None else current_enabled
             new_description = description if description is not None else current_description
+            new_tag = tag if tag is not None else current_tag
             new_config = config if config is not None else current_config
             connection.execute(
                 """
-                INSERT INTO scraper_config (plugin_name, enabled, description, config_json, updated_at)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO scraper_config (plugin_name, enabled, description, tag, config_json, updated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(plugin_name) DO UPDATE SET
                     enabled = excluded.enabled,
                     description = excluded.description,
+                    tag = excluded.tag,
                     config_json = excluded.config_json,
                     updated_at = CURRENT_TIMESTAMP
                 """,
@@ -420,6 +427,7 @@ class SQLiteAISRepository:
                     plugin_name,
                     1 if new_enabled else 0,
                     new_description,
+                    new_tag,
                     json.dumps(new_config),
                 ),
             )
