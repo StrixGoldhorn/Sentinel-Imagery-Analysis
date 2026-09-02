@@ -188,13 +188,83 @@ def test_get_upcoming_scrapes_caching_and_source_contributions() -> None:
     events = res["events"]
     metrics = res["metrics"]
 
-    assert len(events) == 3
+    # N2YO-only pass is excluded from planned scrapes; only both & historical remain
+    assert len(events) == 2
     assert metrics["cross_validated_count"] == 1
-    assert metrics["n2yo_only_count"] == 1
+    assert metrics["n2yo_only_count"] == 0
     assert metrics["historical_only_count"] == 1
     assert events[0]["contribution"] == "both"
-    assert events[1]["contribution"] == "n2yo"
-    assert events[2]["contribution"] == "historical"
+    assert events[1]["contribution"] == "historical"
+
+
+def test_n2yo_only_predictions_are_excluded_from_planned_scrapes() -> None:
+    now = datetime.now(timezone.utc)
+    aoi = AreaOfInterest(
+        id=1,
+        name="Singapore Strait",
+        bbox=BoundingBox(103.8, 1.2, 103.9, 1.3),
+        auto_capture_enabled=True,
+    )
+    predictions = [
+        {
+            "time": (now + timedelta(hours=2)).isoformat(),
+            "satellite": "Sentinel-1A",
+            "source": "N2YO",
+            "contribution": "n2yo",
+        },
+        {
+            "time": (now + timedelta(hours=4)).isoformat(),
+            "satellite": "Sentinel-1A",
+            "source": "COMBINED",
+            "contribution": "both",
+        },
+    ]
+    predictor = StubPredictor(predictions)
+    repo = StubAOIRepo([aoi])
+    use_case = GetUpcomingScrapes(repo, predictor)
+    result = use_case.execute("dummy_key")
+
+    assert len(result["events"]) == 1
+    assert result["events"][0]["contribution"] == "both"
+    assert result["metrics"]["total_upcoming_scrapes"] == 1
+
+
+def test_check_and_schedule_aois_ignores_n2yo_only_predictions() -> None:
+    now = datetime.now(timezone.utc)
+    aoi = AreaOfInterest(
+        id=1,
+        name="Active AOI",
+        bbox=BoundingBox(103.8, 1.2, 103.9, 1.3),
+        auto_capture_enabled=True,
+    )
+
+    class TrackingAOIRepo(StubAOIRepo):
+        def __init__(self, aois):
+            super().__init__(aois)
+            self.predictions_updated = []
+
+        def update_prediction(self, aoi_id, next_scan, last_checked):
+            self.predictions_updated.append((aoi_id, next_scan))
+
+    repo = TrackingAOIRepo([aoi])
+    n2yo_pass = (now + timedelta(hours=1)).isoformat()
+    hist_pass = (now + timedelta(hours=5)).isoformat()
+
+    # Provide an N2YO pass first, and a historical pass second
+    predictions = [
+        {"time": n2yo_pass, "source": "N2YO", "contribution": "n2yo"},
+        {"time": hist_pass, "source": "HISTORICAL_MISSION", "contribution": "historical"},
+    ]
+    predictor = StubPredictor(predictions)
+    scheduler = CheckAndScheduleAOIs(repo, predictor)
+    results = scheduler.execute("dummy_key")
+
+    assert len(results) == 1
+    # Next pass should be the historical pass, not the n2yo pass
+    assert results[0]["next_pass"] is not None
+    assert "05:00:00" in results[0]["next_pass"] or (
+        datetime.fromisoformat(results[0]["next_pass"]) - now
+    ).total_seconds() > 14000
 
 
 def test_missing_api_key_raises_error() -> None:

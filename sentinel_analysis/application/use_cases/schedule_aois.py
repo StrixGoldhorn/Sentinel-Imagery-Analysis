@@ -46,6 +46,24 @@ class CheckAndScheduleAOIs:
                 raw_predictions = self._predictor.predict(aoi.bbox, api_key)
                 parsed_passes: list[dict[str, Any]] = []
                 for pred in raw_predictions:
+                    src = pred.get("source")
+                    contrib = pred.get("contribution")
+                    if contrib:
+                        contrib_norm = str(contrib).strip().lower()
+                    elif src == "COMBINED":
+                        contrib_norm = "both"
+                    elif src == "HISTORICAL_MISSION":
+                        contrib_norm = "historical"
+                    elif src == "N2YO":
+                        contrib_norm = "n2yo"
+                    else:
+                        contrib_norm = "both"
+
+                    # For planned scrapes and automated post-pass ingestion, only plan for those which are either historical, or both.
+                    # Do not plan scrape or register automated post-pass ingestion for n2yo-only predictions.
+                    if contrib_norm == "n2yo" or (src == "N2YO" and contrib_norm != "both"):
+                        continue
+
                     pass_time_raw = pred.get("time")
                     if pass_time_raw:
                         try:
@@ -55,6 +73,8 @@ class CheckAndScheduleAOIs:
                                 "time": p_time_utc,
                                 "satellite": pred.get("satellite") or "Sentinel-1",
                                 "orbit_direction": pred.get("orbit_direction"),
+                                "source": src or ("COMBINED" if contrib_norm == "both" else "HISTORICAL_MISSION"),
+                                "contribution": contrib_norm,
                             })
                         except Exception:
                             continue

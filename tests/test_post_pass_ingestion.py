@@ -487,6 +487,49 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
         fetched = self.post_pass_repo.get(job_id)
         self.assertEqual(fetched.status, "POLLING_CATALOG")
 
+    def test_automated_post_pass_ingestion_ignores_n2yo_only_predictions(self):
+        now = datetime.now(timezone.utc)
+        n2yo_pass_time = now - timedelta(minutes=10)
+        hist_pass_time = now - timedelta(minutes=15)
+        both_pass_time = now + timedelta(hours=3)
+
+        self.mock_predictor.predict.return_value = [
+            {
+                "time": n2yo_pass_time.isoformat(),
+                "satellite": "Sentinel-1A",
+                "source": "N2YO",
+                "contribution": "n2yo",
+            },
+            {
+                "time": hist_pass_time.isoformat(),
+                "satellite": "Sentinel-1A",
+                "source": "HISTORICAL_MISSION",
+                "contribution": "historical",
+            },
+            {
+                "time": both_pass_time.isoformat(),
+                "satellite": "Sentinel-1C",
+                "source": "COMBINED",
+                "contribution": "both",
+            },
+        ]
+
+        self.schedule_use_case.execute(api_key="test_key")
+
+        # N2YO-only pass should NOT have been registered
+        n2yo_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, n2yo_pass_time)
+        self.assertIsNone(n2yo_job)
+
+        # Historical pass SHOULD have been registered
+        hist_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, hist_pass_time)
+        self.assertIsNotNone(hist_job)
+        self.assertEqual(hist_job.status, "POLLING_CATALOG")
+
+        # Combined pass SHOULD have been registered
+        both_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, both_pass_time)
+        self.assertIsNotNone(both_job)
+        self.assertEqual(both_job.status, "PENDING_PASS")
+
 
 class TestPostPassWebAPI(unittest.TestCase):
     def setUp(self):

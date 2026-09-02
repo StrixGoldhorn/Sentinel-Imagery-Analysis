@@ -119,23 +119,37 @@ class GetUpcomingScrapes:
                 else:
                     status = "PREDICTED_ONLY"
 
-                src = pred.get("source") or "N2YO"
-                contrib = pred.get("contribution") or (
-                    "both" if src == "COMBINED" else ("historical" if src == "HISTORICAL_MISSION" else "n2yo")
-                )
+                src = pred.get("source")
+                contrib = pred.get("contribution")
+                if contrib:
+                    contrib_norm = str(contrib).strip().lower()
+                elif src == "COMBINED":
+                    contrib_norm = "both"
+                elif src == "HISTORICAL_MISSION":
+                    contrib_norm = "historical"
+                elif src == "N2YO":
+                    contrib_norm = "n2yo"
+                else:
+                    contrib_norm = "both"
+
+                # For planned scrapes, only plan for those which are either historical, or both.
+                # Do not plan scrape for n2yo-only predictions.
+                if contrib_norm == "n2yo" or (src == "N2YO" and contrib_norm != "both"):
+                    continue
+
+                contrib = contrib_norm
+                if not src:
+                    src = "COMBINED" if contrib == "both" else "HISTORICAL_MISSION"
+
                 contrib_label = pred.get("contribution_label") or (
                     "Both (N2YO + Historical)"
                     if contrib == "both"
-                    else ("Historical Repeat Cycle Only" if contrib == "historical" else "N2YO Tracking Only")
+                    else "Historical Repeat Cycle Only"
                 )
                 contrib_detail = pred.get("contribution_detail") or pred.get("historical_match") or (
                     "Cross-validated: N2YO tracking confirmed by Sentinel-1 repeat cycle"
                     if contrib == "both"
-                    else (
-                        "Extrapolated from Sentinel-1 12-day repeat cycle"
-                        if contrib == "historical"
-                        else "Astronomical pass tracking via N2YO"
-                    )
+                    else "Extrapolated from Sentinel-1 12-day repeat cycle"
                 )
 
                 events.append({
