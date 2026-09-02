@@ -9,7 +9,7 @@ from sentinel_analysis.application.ports.imagery import ImageryProvider
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
-from sentinel_analysis.domain.entities import PostPassIngestionJob
+from sentinel_analysis.domain.entities import Acquisition, PostPassIngestionJob
 
 
 def _get_backoff_minutes(attempts: int) -> int:
@@ -27,14 +27,23 @@ def _extract_acq_datetime(acq) -> Optional[datetime]:
     if acq is None:
         return None
     if isinstance(acq, Acquisition) or hasattr(acq, "acquired_at"):
-        return acq.acquired_at
+        dt = getattr(acq, "acquired_at", None)
+        if dt is not None:
+            if isinstance(dt, datetime):
+                return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            try:
+                parsed = datetime.fromisoformat(str(dt).replace("Z", "+00:00"))
+                return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            except Exception:
+                return None
     if isinstance(acq, dict):
         raw = acq.get("properties", {}).get("datetime") or acq.get("datetime")
         if raw is not None:
             if isinstance(raw, datetime):
-                return raw.astimezone(timezone.utc)
+                return raw.astimezone(timezone.utc) if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
             try:
-                return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+                parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
             except Exception:
                 return None
     return None
