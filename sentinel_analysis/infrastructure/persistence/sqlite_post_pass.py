@@ -57,6 +57,7 @@ class SQLitePostPassIngestionRepository:
             created_at=_parse_dt(row["created_at"]),
             completed_at=_parse_dt(row["completed_at"]),
             aoi_name=row["aoi_name"] if "aoi_name" in row.keys() else None,
+            expected_imagery_time=_parse_dt(row["expected_imagery_time"]) if "expected_imagery_time" in row.keys() else None,
         )
 
     def add(self, job: PostPassIngestionJob) -> int:
@@ -67,11 +68,20 @@ class SQLitePostPassIngestionRepository:
                 INSERT INTO post_pass_ingestions (
                     aoi_id, pass_time, satellite, orbit_direction, status,
                     attempts, last_polled_at, next_poll_at, scan_folder,
-                    error_message, completed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    error_message, completed_at, expected_imagery_time
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(aoi_id, pass_time) DO UPDATE SET
                     satellite = excluded.satellite,
-                    orbit_direction = COALESCE(excluded.orbit_direction, post_pass_ingestions.orbit_direction)
+                    orbit_direction = COALESCE(excluded.orbit_direction, post_pass_ingestions.orbit_direction),
+                    expected_imagery_time = COALESCE(excluded.expected_imagery_time, post_pass_ingestions.expected_imagery_time),
+                    status = CASE
+                        WHEN post_pass_ingestions.status = 'PENDING_PASS' AND excluded.status = 'POLLING_CATALOG' THEN 'POLLING_CATALOG'
+                        ELSE post_pass_ingestions.status
+                    END,
+                    next_poll_at = CASE
+                        WHEN post_pass_ingestions.status = 'PENDING_PASS' AND excluded.status = 'POLLING_CATALOG' THEN excluded.next_poll_at
+                        ELSE COALESCE(post_pass_ingestions.next_poll_at, excluded.next_poll_at)
+                    END
                 RETURNING id
                 """,
                 (
@@ -86,6 +96,7 @@ class SQLitePostPassIngestionRepository:
                     job.scan_folder,
                     job.error_message,
                     _format_dt(job.completed_at),
+                    _format_dt(job.expected_imagery_time),
                 ),
             )
             row = cursor.fetchone()
@@ -138,6 +149,16 @@ class SQLitePostPassIngestionRepository:
     def get_jobs_due_for_poll(self, now: datetime) -> list[PostPassIngestionJob]:
         now_str = _format_dt(now)
         with self._database.connection(rows=True) as conn:
+            # Transition any PENDING_PASS jobs whose flypast window has now completed
+            conn.execute(
+                """
+                UPDATE post_pass_ingestions
+                SET status = 'POLLING_CATALOG'
+                WHERE status = 'PENDING_PASS'
+                  AND (next_poll_at IS NULL OR next_poll_at <= ?)
+                """,
+                (now_str,),
+            )
             rows = conn.execute(
                 """
                 SELECT p.*, a.name AS aoi_name
@@ -164,7 +185,8 @@ class SQLitePostPassIngestionRepository:
                     next_poll_at = ?,
                     scan_folder = ?,
                     error_message = ?,
-                    completed_at = ?
+                    completed_at = ?,
+                    expected_imagery_time = ?
                 WHERE id = ?
                 """,
                 (
@@ -175,6 +197,7 @@ class SQLitePostPassIngestionRepository:
                     job.scan_folder,
                     job.error_message,
                     _format_dt(job.completed_at),
+                    _format_dt(job.expected_imagery_time),
                     job.id,
                 ),
             )

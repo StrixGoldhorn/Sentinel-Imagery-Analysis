@@ -352,6 +352,7 @@ class PostPassIngestionJob:
     completed_at: Optional[datetime] = None
     id: Optional[int] = None
     aoi_name: Optional[str] = None
+    expected_imagery_time: Optional[datetime] = None
 
     def __post_init__(self) -> None:
         if isinstance(self.aoi_id, bool) or not isinstance(self.aoi_id, int) or self.aoi_id <= 0:
@@ -382,4 +383,8 @@ class PostPassIngestionJob:
             raise DomainValidationError("Job ID must be a positive integer")
         if self.aoi_name is not None:
             object.__setattr__(self, "aoi_name", _optional_text(self.aoi_name, "AOI name"))
+        if self.expected_imagery_time is not None:
+            object.__setattr__(self, "expected_imagery_time", _utc_datetime(self.expected_imagery_time, "Expected imagery time"))
+        else:
+            object.__setattr__(self, "expected_imagery_time", self.pass_time)
 

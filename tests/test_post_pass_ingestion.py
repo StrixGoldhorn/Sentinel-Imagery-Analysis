@@ -192,7 +192,7 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
             imagery_provider=self.mock_imagery,
             create_scan=self.mock_create_scan,
             detect_ships=self.mock_detect_ships,
-            max_wait_hours=6.0,
+            max_wait_hours=24.0,
         )
 
     def tearDown(self):
@@ -268,7 +268,7 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
 
     def test_job_times_out_after_max_wait_hours(self):
         now = datetime.now(timezone.utc)
-        pass_time = now - timedelta(hours=7)  # Over 6 hour threshold
+        pass_time = now - timedelta(hours=25)  # Over 24 hour threshold
         job = PostPassIngestionJob(
             aoi_id=self.aoi_id,
             pass_time=pass_time,
@@ -285,6 +285,86 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
 
         updated_job = self.post_pass_repo.get(job_id)
         self.assertEqual(updated_job.status, "TIMED_OUT")
+
+    def test_success_when_imagery_is_within_plus_minus_one_hour(self):
+        now = datetime.now(timezone.utc)
+        expected_time = now - timedelta(minutes=45)
+        job = PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=expected_time - timedelta(minutes=10),
+            expected_imagery_time=expected_time,
+            status="POLLING_CATALOG",
+            attempts=1,
+            next_poll_at=now - timedelta(seconds=1),
+        )
+        job_id = self.post_pass_repo.add(job)
+
+        # Mock Copernicus STAC returning acquisition acquired 30 min after expected time (within ±1hr)
+        mock_acq = Acquisition(
+            acquired_at=expected_time + timedelta(minutes=30),
+            satellite="Sentinel-1A",
+            product_type="GRD",
+            product_id="S1A_IW_GRDH_1SDV_MATCH",
+        )
+        self.mock_imagery.search_historical_acquisitions.return_value = [mock_acq]
+        mock_scan = Scan(
+            folder_name="2026-09-01_matched_scan",
+            bbox=BoundingBox(-1.0, 50.0, -0.5, 50.5),
+            acquisition=mock_acq,
+            image_path=str(self.test_dir / "test.png"),
+            metadata={},
+        )
+        self.mock_create_scan.execute.return_value = mock_scan
+
+        results = self.use_case.execute()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "COMPLETED")
+        self.assertEqual(results[0]["scan_folder"], "2026-09-01_matched_scan")
+
+        updated = self.post_pass_repo.get(job_id)
+        self.assertEqual(updated.status, "COMPLETED")
+
+    def test_fails_and_alerts_when_more_recent_imagery_detected(self):
+        now = datetime.now(timezone.utc)
+        expected_time = now - timedelta(hours=3)
+        job = PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=expected_time,
+            expected_imagery_time=expected_time,
+            status="POLLING_CATALOG",
+            attempts=1,
+            next_poll_at=now - timedelta(seconds=1),
+        )
+        job_id = self.post_pass_repo.add(job)
+
+        # In window search: no products.
+        # In recent search (> expected + 1hr): returns an acquisition acquired 2.5 hours after expected time.
+        def mock_search(bbox, start_date=None, end_date=None, limit=5):
+            if start_date and start_date >= expected_time + timedelta(hours=1):
+                return [
+                    Acquisition(
+                        acquired_at=expected_time + timedelta(hours=2, minutes=30),
+                        satellite="Sentinel-1A",
+                        product_type="GRD",
+                        product_id="S1A_IW_GRDH_NEWER_PRODUCT",
+                    )
+                ]
+            return []
+
+        self.mock_imagery.search_historical_acquisitions.side_effect = mock_search
+
+        results = self.use_case.execute()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "FAILED")
+        self.assertIn("Timing mismatch", results[0]["error"])
+
+        updated = self.post_pass_repo.get(job_id)
+        self.assertEqual(updated.status, "FAILED")
+        self.assertIn("Timing mismatch", updated.error_message)
+        self.assertIn("more recent imagery", updated.error_message)
+        self.assertIsNone(updated.next_poll_at)  # Stopped polling
 
 
 class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
@@ -345,8 +425,67 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
         self.assertEqual(existing.status, "POLLING_CATALOG")
         self.assertEqual(existing.satellite, "Sentinel-1A")
 
+        # Verify future pass is queued as PENDING_PASS
+        future_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, future_pass_time)
+        self.assertIsNotNone(future_job)
+        self.assertEqual(future_job.status, "PENDING_PASS")
+        self.assertEqual(future_job.satellite, "Sentinel-1B")
+
         # Verify post pass ingestion execute was called
         self.mock_ingest_post_pass.execute.assert_called_once()
+
+    def test_registers_job_during_active_flypast(self):
+        now = datetime.now(timezone.utc)
+        active_pass_time = now + timedelta(seconds=30)  # Happening right now (inside ±5m window)
+
+        self.mock_predictor.predict.return_value = [
+            {
+                "time": active_pass_time.isoformat(),
+                "satellite": "Sentinel-1C",
+                "orbit_direction": "ASCENDING",
+            }
+        ]
+
+        results = self.schedule_use_case.execute(api_key="test_key")
+
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0]["flypast_active"])
+        self.assertEqual(results[0]["status"], "FLYPAST_ACTIVE")
+
+        # Verify job is already queued in the post-pass repo during active flypast
+        queued_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, active_pass_time)
+        self.assertIsNotNone(queued_job)
+        self.assertEqual(queued_job.status, "PENDING_PASS")
+        self.assertEqual(queued_job.satellite, "Sentinel-1C")
+        self.assertGreaterEqual(queued_job.next_poll_at, active_pass_time + timedelta(minutes=5))
+
+        # Active jobs list should include this pending job
+        active_jobs = self.post_pass_repo.get_active_jobs()
+        self.assertEqual(len(active_jobs), 1)
+        self.assertEqual(active_jobs[0].status, "PENDING_PASS")
+
+    def test_pending_pass_transition_when_pass_ends(self):
+        now = datetime.now(timezone.utc)
+        pass_time = now - timedelta(minutes=6)  # Pass just completed (> 5 mins ago)
+
+        # Insert PENDING_PASS job
+        job = PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=pass_time,
+            status="PENDING_PASS",
+            next_poll_at=pass_time + timedelta(minutes=5),
+        )
+        job_id = self.post_pass_repo.add(job)
+
+        # get_jobs_due_for_poll should transition it to POLLING_CATALOG and return it
+        due_jobs = self.post_pass_repo.get_jobs_due_for_poll(now)
+        self.assertEqual(len(due_jobs), 1)
+        self.assertEqual(due_jobs[0].id, job_id)
+        self.assertEqual(due_jobs[0].status, "POLLING_CATALOG")
+
+        # Check in DB
+        fetched = self.post_pass_repo.get(job_id)
+        self.assertEqual(fetched.status, "POLLING_CATALOG")
 
 
 class TestPostPassWebAPI(unittest.TestCase):
@@ -424,6 +563,47 @@ class TestPostPassWebAPI(unittest.TestCase):
         # Verify deletion
         self.assertIsNone(self.container.post_pass_repository.get(job_id))
 
+    def test_create_custom_post_pass_job(self):
+        now = datetime.now(timezone.utc)
+        pass_time = now + timedelta(hours=2)
+        exp_time = pass_time + timedelta(minutes=15)
+
+        # 1. Validation failure: missing aoi_id
+        res_bad = self.client.post("/api/schedule/post_pass_jobs", json={
+            "pass_time": pass_time.isoformat(),
+        })
+        self.assertEqual(res_bad.status_code, 400)
+
+        # 2. Successful creation
+        res = self.client.post("/api/schedule/post_pass_jobs", json={
+            "aoi_id": self.aoi_id,
+            "pass_time": pass_time.isoformat(),
+            "expected_imagery_time": exp_time.isoformat(),
+            "satellite": "Sentinel-1B",
+            "orbit_direction": "ASCENDING",
+            "poll_immediately": False,
+        })
+        self.assertEqual(res.status_code, 201)
+        data = res.get_json()
+        self.assertEqual(data["status"], "success")
+        job_id = data["job_id"]
+
+        # Verify job in repo
+        job = self.container.post_pass_repository.get(job_id)
+        self.assertIsNotNone(job)
+        self.assertEqual(job.aoi_id, self.aoi_id)
+        self.assertEqual(job.satellite, "Sentinel-1B")
+        self.assertEqual(job.orbit_direction, "ASCENDING")
+        self.assertEqual(job.status, "PENDING_PASS")
+        self.assertEqual(job.expected_imagery_time.isoformat(), exp_time.isoformat())
+
+        # Verify job appears in GET list
+        res_list = self.client.get("/api/schedule/post_pass_jobs")
+        self.assertEqual(res_list.status_code, 200)
+        jobs_data = res_list.get_json()["jobs"]
+        matched_job = next((j for j in jobs_data if j["id"] == job_id), None)
+        self.assertIsNotNone(matched_job)
+        self.assertEqual(matched_job["expected_imagery_time"], exp_time.isoformat())
 
 
 if __name__ == "__main__":

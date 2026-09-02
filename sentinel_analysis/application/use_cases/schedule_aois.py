@@ -80,26 +80,50 @@ class CheckAndScheduleAOIs:
                             ingest_res = self._ingest_ais.execute(aoi.bbox, (start_time, end_time))
                             ais_records_scraped = ingest_res["total_inserted"]
 
-                # Register post-pass ingestion jobs for recently completed passes (within the last 6 hours)
+                # Register post-pass ingestion jobs for active, upcoming, and recently completed passes (last 24h to next 24h)
                 if self._post_pass_repo is not None and aoi.id is not None:
-                    cutoff_recent = now - timedelta(hours=6)
+                    cutoff_recent = now - timedelta(hours=24)
+                    cutoff_future = now + timedelta(hours=24)
                     for pass_info in parsed_passes:
                         p_dt = pass_info["time"]
-                        # Pass has completed (pass_time + 5 min <= now) and is within recent window
-                        if cutoff_recent <= p_dt and (p_dt + timedelta(minutes=5)) <= now:
+                        if cutoff_recent <= p_dt <= cutoff_future:
                             existing = self._post_pass_repo.find_by_aoi_and_pass(aoi.id, p_dt)
+                            is_completed = (p_dt + timedelta(minutes=5)) <= now
+                            target_status = "POLLING_CATALOG" if is_completed else "PENDING_PASS"
+                            next_poll = now if is_completed else (p_dt + timedelta(minutes=5))
+
                             if existing is None:
                                 new_job = PostPassIngestionJob(
                                     aoi_id=aoi.id,
                                     pass_time=p_dt,
                                     satellite=pass_info.get("satellite") or "Sentinel-1",
                                     orbit_direction=pass_info.get("orbit_direction"),
-                                    status="POLLING_CATALOG",
+                                    status=target_status,
                                     attempts=0,
+                                    next_poll_at=next_poll,
                                     created_at=now,
                                     aoi_name=aoi.name,
                                 )
                                 self._post_pass_repo.add(new_job)
+                            elif existing.status == "PENDING_PASS" and is_completed:
+                                updated_job = PostPassIngestionJob(
+                                    id=existing.id,
+                                    aoi_id=existing.aoi_id,
+                                    pass_time=existing.pass_time,
+                                    satellite=existing.satellite,
+                                    orbit_direction=existing.orbit_direction,
+                                    status="POLLING_CATALOG",
+                                    attempts=existing.attempts,
+                                    last_polled_at=existing.last_polled_at,
+                                    next_poll_at=now,
+                                    scan_folder=existing.scan_folder,
+                                    error_message=existing.error_message,
+                                    created_at=existing.created_at,
+                                    completed_at=existing.completed_at,
+                                    aoi_name=aoi.name,
+                                    expected_imagery_time=existing.expected_imagery_time,
+                                )
+                                self._post_pass_repo.update(updated_job)
 
                 results.append({
                     "aoi_id": aoi.id,

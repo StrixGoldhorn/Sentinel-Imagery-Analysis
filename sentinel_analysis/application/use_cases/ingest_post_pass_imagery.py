@@ -23,7 +23,25 @@ def _get_backoff_minutes(attempts: int) -> int:
     return 10
 
 
+def _extract_acq_datetime(acq) -> Optional[datetime]:
+    if acq is None:
+        return None
+    if isinstance(acq, Acquisition) or hasattr(acq, "acquired_at"):
+        return acq.acquired_at
+    if isinstance(acq, dict):
+        raw = acq.get("properties", {}).get("datetime") or acq.get("datetime")
+        if raw is not None:
+            if isinstance(raw, datetime):
+                return raw.astimezone(timezone.utc)
+            try:
+                return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+            except Exception:
+                return None
+    return None
+
+
 class IngestPostPassImagery:
+
     """Checks for newly published Copernicus SAR imagery post-pass and triggers automated scan ingestion."""
 
     def __init__(
@@ -33,7 +51,7 @@ class IngestPostPassImagery:
         imagery_provider: ImageryProvider,
         create_scan: CreateScan,
         detect_ships: Optional[DetectShips] = None,
-        max_wait_hours: float = 6.0,
+        max_wait_hours: float = 24.0,
     ) -> None:
         self._jobs = post_pass_repository
         self._aois = aoi_repository
@@ -83,41 +101,17 @@ class IngestPostPassImagery:
                 })
                 continue
 
-            # Check timeout
-            elapsed_seconds = (now - job.pass_time).total_seconds()
-            if elapsed_seconds > (self._max_wait_hours * 3600):
-                updated_job = PostPassIngestionJob(
-                    id=job.id,
-                    aoi_id=job.aoi_id,
-                    pass_time=job.pass_time,
-                    satellite=job.satellite,
-                    orbit_direction=job.orbit_direction,
-                    status="TIMED_OUT",
-                    attempts=job.attempts,
-                    last_polled_at=now,
-                    next_poll_at=None,
-                    scan_folder=job.scan_folder,
-                    error_message=f"Exceeded maximum post-pass wait window ({self._max_wait_hours} hours)",
-                    created_at=job.created_at,
-                    completed_at=now,
-                    aoi_name=aoi.name,
-                )
-                self._jobs.update(updated_job)
-                results.append({
-                    "job_id": job.id,
-                    "aoi_id": job.aoi_id,
-                    "status": "TIMED_OUT",
-                    "message": f"Exceeded maximum post-pass wait window ({self._max_wait_hours}h)",
-                })
-                continue
+            expected_time = job.expected_imagery_time or job.pass_time
+            elapsed_seconds = (now - expected_time).total_seconds()
 
             try:
-                # Query Copernicus for acquisition matching pass time window (±15 min)
-                window_start = job.pass_time - timedelta(minutes=15)
-                window_end = job.pass_time + timedelta(minutes=15)
-                
+                # Query Copernicus for acquisition matching expected imagery window (±1 hour)
+                window_start = expected_time - timedelta(hours=1)
+                window_end = expected_time + timedelta(hours=1)
+
                 acquisition_ready = False
-                matched_acquisition = None
+                matched_acq_time = None
+                more_recent_acq_time = None
 
                 if hasattr(self._imagery, "search_historical_acquisitions"):
                     acquisitions = self._imagery.search_historical_acquisitions(
@@ -126,14 +120,36 @@ class IngestPostPassImagery:
                         end_date=window_end,
                         limit=5,
                     )
-                    if acquisitions:
-                        acquisition_ready = True
+                    for acq in (acquisitions or []):
+                        a_dt = _extract_acq_datetime(acq)
+                        if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600:
+                            acquisition_ready = True
+                            matched_acq_time = a_dt
+                            break
+
+                    if not acquisition_ready:
+                        # Check if a more recent acquisition has already been published beyond the +1hr window
+                        recent_acquisitions = self._imagery.search_historical_acquisitions(
+                            aoi.bbox,
+                            start_date=window_end,
+                            end_date=now + timedelta(days=1),
+                            limit=5,
+                        )
+                        for acq in (recent_acquisitions or []):
+                            a_dt = _extract_acq_datetime(acq)
+                            if a_dt and a_dt > window_end:
+                                more_recent_acq_time = a_dt
+                                break
                 else:
                     # Fallback to find_latest_acquisition
                     acq = self._imagery.find_latest_acquisition(aoi.bbox, days_ago=1)
-                    if acq is not None and abs((acq.acquired_at - job.pass_time).total_seconds()) <= 1800:
-                        acquisition_ready = True
-                        matched_acquisition = acq
+                    if acq is not None:
+                        diff_sec = (acq.acquired_at - expected_time).total_seconds()
+                        if abs(diff_sec) <= 3600:
+                            acquisition_ready = True
+                            matched_acq_time = acq.acquired_at
+                        elif diff_sec > 3600:
+                            more_recent_acq_time = acq.acquired_at
 
                 if acquisition_ready:
                     # Mark as INGESTING
@@ -152,6 +168,7 @@ class IngestPostPassImagery:
                         created_at=job.created_at,
                         completed_at=None,
                         aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
                     )
                     self._jobs.update(ingesting_job)
 
@@ -186,6 +203,7 @@ class IngestPostPassImagery:
                         created_at=job.created_at,
                         completed_at=now,
                         aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
                     )
                     self._jobs.update(completed_job)
                     results.append({
@@ -193,6 +211,64 @@ class IngestPostPassImagery:
                         "aoi_id": job.aoi_id,
                         "status": "COMPLETED",
                         "scan_folder": scan.folder_name,
+                    })
+                elif more_recent_acq_time is not None:
+                    # A more recent orbit has already occurred and been published; expected pass was missed
+                    err_msg = (
+                        f"Timing mismatch: Detected more recent imagery acquired at "
+                        f"{more_recent_acq_time.strftime('%Y-%m-%d %H:%M:%S UTC')}, which is outside the expected window "
+                        f"({expected_time.strftime('%Y-%m-%d %H:%M:%S UTC')} ± 1h). Target pass imagery was not acquired."
+                    )
+                    failed_job = PostPassIngestionJob(
+                        id=job.id,
+                        aoi_id=job.aoi_id,
+                        pass_time=job.pass_time,
+                        satellite=job.satellite,
+                        orbit_direction=job.orbit_direction,
+                        status="FAILED",
+                        attempts=job.attempts + 1,
+                        last_polled_at=now,
+                        next_poll_at=None,
+                        scan_folder=job.scan_folder,
+                        error_message=err_msg,
+                        created_at=job.created_at,
+                        completed_at=now,
+                        aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
+                    )
+                    self._jobs.update(failed_job)
+                    results.append({
+                        "job_id": job.id,
+                        "aoi_id": job.aoi_id,
+                        "status": "FAILED",
+                        "error": err_msg,
+                    })
+                elif elapsed_seconds > (self._max_wait_hours * 3600):
+                    # Timeout: No matching imagery in catalog and maximum wait duration exceeded
+                    timeout_msg = f"Exceeded maximum post-pass wait window ({self._max_wait_hours} hours)"
+                    timed_out_job = PostPassIngestionJob(
+                        id=job.id,
+                        aoi_id=job.aoi_id,
+                        pass_time=job.pass_time,
+                        satellite=job.satellite,
+                        orbit_direction=job.orbit_direction,
+                        status="TIMED_OUT",
+                        attempts=job.attempts + 1,
+                        last_polled_at=now,
+                        next_poll_at=None,
+                        scan_folder=job.scan_folder,
+                        error_message=timeout_msg,
+                        created_at=job.created_at,
+                        completed_at=now,
+                        aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
+                    )
+                    self._jobs.update(timed_out_job)
+                    results.append({
+                        "job_id": job.id,
+                        "aoi_id": job.aoi_id,
+                        "status": "TIMED_OUT",
+                        "message": timeout_msg,
                     })
                 else:
                     new_attempts = job.attempts + 1
@@ -214,6 +290,7 @@ class IngestPostPassImagery:
                         created_at=job.created_at,
                         completed_at=None,
                         aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
                     )
                     self._jobs.update(updated_job)
                     results.append({
@@ -241,6 +318,7 @@ class IngestPostPassImagery:
                     created_at=job.created_at,
                     completed_at=None,
                     aoi_name=aoi.name,
+                    expected_imagery_time=expected_time,
                 )
                 self._jobs.update(updated_job)
                 results.append({

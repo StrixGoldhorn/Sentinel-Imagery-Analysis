@@ -246,7 +246,7 @@ function renderFlypasts(aoiId, data) {
         cacheBadge = `<span class="flypast-cache-pill live" title="Freshly generated and updated in local database">⚡ Live Forecast</span>`;
     }
 
-    const defaultTab = n2yoPredictions.length > 0 ? 'n2yo' : (histPredictions.length > 0 ? 'hist' : 'combined');
+    const defaultTab = combinedPredictions.length > 0 ? 'combined' : (n2yoPredictions.length > 0 ? 'n2yo' : (histPredictions.length > 0 ? 'hist' : 'combined'));
 
     container.innerHTML = `
         <div class="flypast-header-bar">
@@ -277,17 +277,23 @@ function renderFlypasts(aoiId, data) {
 
         ${statsHtml}
         <div class="flypast-tabs" id="flypast-tabs-${aoiId}">
+            <button class="flypast-tab-btn ${defaultTab === 'combined' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'combined')">
+                ✨ Both (Combined) <span class="tab-count">${combinedPredictions.length}</span>
+            </button>
             <button class="flypast-tab-btn ${defaultTab === 'n2yo' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'n2yo')">
                 🛰️ N2YO Tracking <span class="tab-count">${n2yoPredictions.length}</span>
             </button>
             <button class="flypast-tab-btn ${defaultTab === 'hist' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'hist')">
                 🔁 Scan Extrapolation <span class="tab-count">${histPredictions.length}</span>
             </button>
-            <button class="flypast-tab-btn ${defaultTab === 'combined' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'combined')">
-                ✨ Combined <span class="tab-count">${combinedPredictions.length}</span>
-            </button>
         </div>
 
+        <div id="flypast-tab-combined-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'combined' ? 'block' : 'none'};">
+            <div class="flypast-section-desc">Cross-validated passes merging astronomical tracking and historical repeat cycles.</div>
+            <div class="flypast-list">
+                ${renderPassListHtml(aoiId, combinedPredictions, 'No combined passes available.')}
+            </div>
+        </div>
 
         <div id="flypast-tab-n2yo-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'n2yo' ? 'block' : 'none'};">
             <div class="flypast-section-desc">Astronomical satellite tracking passes from N2YO orbital pass predictions.</div>
@@ -302,13 +308,6 @@ function renderFlypasts(aoiId, data) {
                 ${renderPassListHtml(aoiId, histPredictions, 'No previous scans found for repeat-cycle extrapolation.')}
             </div>
         </div>
-
-        <div id="flypast-tab-combined-${aoiId}" class="flypast-tab-content" style="display: ${defaultTab === 'combined' ? 'block' : 'none'};">
-            <div class="flypast-section-desc">Cross-validated passes merging astronomical tracking and historical repeat cycles.</div>
-            <div class="flypast-list">
-                ${renderPassListHtml(aoiId, combinedPredictions, 'No combined passes available.')}
-            </div>
-        </div>
     `;
 }
 
@@ -317,7 +316,7 @@ function switchFlypastTab(aoiId, tabKey) {
     if (!tabsContainer) return;
 
     const buttons = tabsContainer.querySelectorAll('.flypast-tab-btn');
-    const keys = ['n2yo', 'hist', 'combined'];
+    const keys = ['combined', 'n2yo', 'hist'];
     buttons.forEach((btn, idx) => {
         btn.classList.toggle('active', keys[idx] === tabKey);
     });

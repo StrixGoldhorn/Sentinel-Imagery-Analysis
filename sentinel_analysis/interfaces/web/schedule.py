@@ -1,9 +1,10 @@
 """HTTP routes for planned satellite pass schedules and automated AIS scrape forecasts."""
 
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 
 from sentinel_analysis.interfaces.web.dependencies import container
-from sentinel_analysis.interfaces.web.request_data import RequestValidationError
+from sentinel_analysis.interfaces.web.request_data import RequestValidationError, json_object
 
 
 blueprint = Blueprint("schedule", __name__)
@@ -13,6 +14,14 @@ blueprint = Blueprint("schedule", __name__)
 def schedule_page():
     """Render the planned scrapes and pass schedule dashboard."""
     return render_template("schedule.html")
+
+
+@blueprint.get("/post-pass")
+@blueprint.get("/post_pass")
+@blueprint.get("/ingestion")
+def post_pass_page():
+    """Render the autonomous post-pass imagery ingestion pipeline dashboard."""
+    return render_template("post_pass.html")
 
 
 @blueprint.get("/api/schedule/upcoming")
@@ -126,6 +135,7 @@ def get_post_pass_jobs():
             "aoi_id": job.aoi_id,
             "aoi_name": job.aoi_name or f"AOI #{job.aoi_id}",
             "pass_time": job.pass_time.isoformat() if job.pass_time else None,
+            "expected_imagery_time": job.expected_imagery_time.isoformat() if job.expected_imagery_time else (job.pass_time.isoformat() if job.pass_time else None),
             "satellite": job.satellite,
             "orbit_direction": job.orbit_direction,
             "status": job.status,
@@ -143,6 +153,95 @@ def get_post_pass_jobs():
         count=len(jobs),
         jobs=[_job_dict(j) for j in jobs],
     )
+
+
+@blueprint.post("/api/schedule/post_pass_jobs")
+def create_custom_post_pass_job():
+    """Create a custom post-pass imagery ingestion job for a specified AOI."""
+    payload = json_object()
+    aoi_id_raw = payload.get("aoi_id")
+    if aoi_id_raw is None:
+        raise RequestValidationError("aoi_id is required")
+    try:
+        aoi_id = int(aoi_id_raw)
+        if aoi_id <= 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise RequestValidationError("aoi_id must be a positive integer")
+
+    aoi_repo = getattr(container(), "aoi_repository", None)
+    if aoi_repo is None:
+        raise RequestValidationError("AOI repository not configured")
+    aoi = aoi_repo.get(aoi_id)
+    if aoi is None:
+        raise RequestValidationError(f"Area of interest #{aoi_id} not found")
+
+    pass_time_raw = payload.get("pass_time")
+    if not pass_time_raw:
+        raise RequestValidationError("pass_time is required")
+    try:
+        pass_time = datetime.fromisoformat(str(pass_time_raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception as exc:
+        raise RequestValidationError(f"Invalid pass_time format: {exc}")
+
+    expected_imagery_time_raw = payload.get("expected_imagery_time")
+    if expected_imagery_time_raw:
+        try:
+            expected_imagery_time = datetime.fromisoformat(str(expected_imagery_time_raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+        except Exception as exc:
+            raise RequestValidationError(f"Invalid expected_imagery_time format: {exc}")
+    else:
+        expected_imagery_time = pass_time
+
+    satellite = payload.get("satellite") or "Sentinel-1"
+    orbit_direction = payload.get("orbit_direction") or None
+    poll_immediately = bool(payload.get("poll_immediately", False))
+
+    now = datetime.now(timezone.utc)
+    is_completed = (expected_imagery_time + timedelta(minutes=5)) <= now
+    if poll_immediately or is_completed:
+        status = "POLLING_CATALOG"
+        next_poll_at = now
+    else:
+        status = "PENDING_PASS"
+        next_poll_at = expected_imagery_time + timedelta(minutes=5)
+
+    repo = getattr(container(), "post_pass_repository", None)
+    if repo is None:
+        raise RequestValidationError("Post-pass repository not configured")
+
+    from sentinel_analysis.domain.entities import PostPassIngestionJob
+
+    job = PostPassIngestionJob(
+        aoi_id=aoi_id,
+        pass_time=pass_time,
+        satellite=satellite,
+        orbit_direction=orbit_direction,
+        status=status,
+        attempts=0,
+        next_poll_at=next_poll_at,
+        created_at=now,
+        aoi_name=aoi.name,
+        expected_imagery_time=expected_imagery_time,
+    )
+
+    job_id = repo.add(job)
+
+    results = []
+    if poll_immediately:
+        ingest_use_case = getattr(container(), "ingest_post_pass", None)
+        if ingest_use_case is not None:
+            try:
+                results = ingest_use_case.execute(job_id=job_id)
+            except Exception:
+                pass
+
+    return jsonify(
+        status="success",
+        job_id=job_id,
+        message=f"Post-pass job #{job_id} for '{aoi.name}' queued successfully",
+        results=results,
+    ), 201
 
 
 @blueprint.post("/api/schedule/post_pass_jobs/<int:job_id>/poll")
@@ -188,6 +287,7 @@ def retry_post_pass_job(job_id: int):
         created_at=job.created_at or datetime.now(timezone.utc),
         completed_at=None,
         aoi_name=job.aoi_name,
+        expected_imagery_time=job.expected_imagery_time or job.pass_time,
     )
     repo.update(reset_job)
 
@@ -211,4 +311,19 @@ def delete_post_pass_job(job_id: int):
 
     repo.delete(job_id)
     return jsonify(status="success", message=f"Job #{job_id} deleted successfully")
+
+
+@blueprint.post("/api/schedule/post_pass_jobs/poll_all")
+def poll_all_post_pass_jobs():
+    """Trigger an immediate catalog check for all due post-pass ingestion jobs."""
+    ingest_use_case = getattr(container(), "ingest_post_pass", None)
+    if ingest_use_case is None:
+        raise RequestValidationError("Post-pass ingestion use case not configured")
+
+    try:
+        results = ingest_use_case.execute()
+        return jsonify(status="success", count=len(results), results=results)
+    except Exception as exc:
+        return jsonify(status="error", error=str(exc)), 500
+
 
