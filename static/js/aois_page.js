@@ -348,10 +348,17 @@ function renderPassListHtml(aoiId, predictions, emptyMessage) {
         const track = pred.relative_orbit ? `Track #${pred.relative_orbit}` : '';
         const confPercent = pred.confidence_score ? `${Math.round(pred.confidence_score * 100)}% Conf` : '';
         const source = pred.source || 'N2YO';
-        const sourceLabel = source === 'HISTORICAL_MISSION' ? 'Scan Extrapolation' : (source === 'COMBINED' ? 'Combined' : 'N2YO');
-        const sourceClass = source === 'COMBINED' ? 'badge-combined' : (source === 'HISTORICAL_MISSION' ? 'badge-info' : 'badge-secondary');
+        const contrib = pred.contribution || (source === 'COMBINED' ? 'both' : (source === 'HISTORICAL_MISSION' ? 'historical' : 'n2yo'));
+        let contribBadge = '';
+        if (contrib === 'both') {
+            contribBadge = '<span class="badge" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; font-weight: 600;">✨ Both (N2YO + Historical)</span>';
+        } else if (contrib === 'historical') {
+            contribBadge = '<span class="badge" style="background: #059669; color: #fff; font-weight: 600;">🔁 Historical Cycle</span>';
+        } else {
+            contribBadge = '<span class="badge" style="background: #0284c7; color: #fff; font-weight: 600;">🛰️ N2YO Tracking</span>';
+        }
         const elev = pred.max_elevation ? `Max Elev: ${pred.max_elevation}°` : '';
-        const matchNote = pred.historical_match ? escapeHtml(pred.historical_match) : '';
+        const matchNote = pred.contribution_detail || pred.historical_match ? escapeHtml(pred.contribution_detail || pred.historical_match) : '';
 
         return `
             <div class="flypast-item">
@@ -365,7 +372,7 @@ function renderPassListHtml(aoiId, predictions, emptyMessage) {
                         ${dir ? `<span class="badge ${dirClass}">${escapeHtml(dirArrow)}</span>` : ''}
                         ${track ? `<span class="badge badge-info">${escapeHtml(track)}</span>` : ''}
                         ${confPercent ? `<span class="badge badge-warning">${escapeHtml(confPercent)}</span>` : ''}
-                        <span class="badge ${sourceClass}">[${escapeHtml(sourceLabel)}]</span>
+                        ${contribBadge}
                         ${elev ? `<span style="font-size: 0.78rem; color: #6c757d;">${escapeHtml(elev)}</span>` : ''}
                     </div>
                     ${matchNote ? `<div class="flypast-item-detail">🔍 ${matchNote}</div>` : ''}

@@ -169,6 +169,8 @@ def test_hybrid_predictor_merges_overlapping_passes_into_combined() -> None:
     assert len(results) == 1
     combined = results[0]
     assert combined["source"] == "COMBINED"
+    assert combined["contribution"] == "both"
+    assert combined["contribution_label"] == "Both (N2YO + Historical)"
     assert combined["relative_orbit"] == 142
     assert combined["orbit_direction"] == "ASCENDING"
     assert combined["confidence_score"] == 0.98
@@ -189,8 +191,10 @@ def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
 
     assert len(results) == 2
     assert results[0]["source"] == "N2YO"
+    assert results[0]["contribution"] == "n2yo"
     assert results[0]["confidence_score"] == 0.68  # Lower weight
     assert results[1]["source"] == "HISTORICAL_MISSION"
+    assert results[1]["contribution"] == "historical"
     assert results[1]["confidence_score"] == 0.94  # Higher weight
 
 

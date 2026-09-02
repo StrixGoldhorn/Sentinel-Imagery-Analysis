@@ -1,5 +1,4 @@
-"""Hybrid satellite flypast predictor merging N2YO tracking and historical Sentinel-1 mission modeling."""
-
+import concurrent.futures
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -21,28 +20,58 @@ class HybridPassPredictor:
 
     def predict(self, bbox: BoundingBox, api_key: str) -> list[PassPrediction]:
         n2yo_passes: list[PassPrediction] = []
-        if self._n2yo is not None and isinstance(api_key, str) and api_key.strip():
+        historical_passes: list[PassPrediction] = []
+
+        def _fetch_n2yo() -> list[PassPrediction]:
+            if self._n2yo is not None and isinstance(api_key, str) and api_key.strip():
+                try:
+                    raw_n2yo = self._n2yo.predict(bbox, api_key.strip())
+                    passes: list[PassPrediction] = []
+                    for item in raw_n2yo:
+                        p = dict(item)
+                        if "source" not in p or not p["source"]:
+                            p["source"] = "N2YO"
+                        if "contribution" not in p or not p["contribution"]:
+                            p["contribution"] = "n2yo"
+                        if "contribution_label" not in p or not p["contribution_label"]:
+                            p["contribution_label"] = "N2YO Tracking Only"
+                        if "contribution_detail" not in p or not p["contribution_detail"]:
+                            p["contribution_detail"] = "Astronomical pass tracking via N2YO NORAD orbit propagation"
+                        if "satellite" not in p or not p["satellite"]:
+                            p["satellite"] = "Sentinel-1A"
+                        if "confidence_score" not in p or p["confidence_score"] is None:
+                            p["confidence_score"] = 0.68  # Lower weight for astronomical tracking
+                        passes.append(PassPrediction(**p))  # type: ignore[misc]
+                    return passes
+                except Exception:
+                    return []
+            return []
+
+        def _fetch_hist() -> list[PassPrediction]:
             try:
-                raw_n2yo = self._n2yo.predict(bbox, api_key.strip())
-                for item in raw_n2yo:
+                raw_hist = self._mission_analyzer.predict_from_history(bbox, days_ahead=10)
+                passes: list[PassPrediction] = []
+                for item in raw_hist:
                     p = dict(item)
                     if "source" not in p or not p["source"]:
-                        p["source"] = "N2YO"
-                    if "satellite" not in p or not p["satellite"]:
-                        p["satellite"] = "Sentinel-1A"
-                    if "confidence_score" not in p or p["confidence_score"] is None:
-                        p["confidence_score"] = 0.68  # Lower weight for astronomical tracking
-                    n2yo_passes.append(PassPrediction(**p))  # type: ignore[misc]
+                        p["source"] = "HISTORICAL_MISSION"
+                    if "contribution" not in p or not p["contribution"]:
+                        p["contribution"] = "historical"
+                    if "contribution_label" not in p or not p["contribution_label"]:
+                        p["contribution_label"] = "Historical Repeat Cycle Only"
+                    if "contribution_detail" not in p or not p["contribution_detail"]:
+                        p["contribution_detail"] = p.get("historical_match") or "Extrapolated from Sentinel-1 12-day repeat cycle"
+                    passes.append(PassPrediction(**p))  # type: ignore[misc]
+                return passes
             except Exception:
-                # If N2YO fails (e.g. rate-limit, offline, invalid key), we still proceed with historical predictions
-                n2yo_passes = []
+                return []
 
-        # 2. Historical mission repeat cycle predictions (Higher weight)
-        historical_passes: list[PassPrediction] = []
-        try:
-            historical_passes = self._mission_analyzer.predict_from_history(bbox, days_ahead=10)
-        except Exception:
-            historical_passes = []
+        # Execute both external sources in parallel to dramatically cut latency
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            fut_n2yo = executor.submit(_fetch_n2yo)
+            fut_hist = executor.submit(_fetch_hist)
+            n2yo_passes = fut_n2yo.result()
+            historical_passes = fut_hist.result()
 
         # 3. Merge and cross-validate both sources
         return self._merge_predictions(n2yo_passes, historical_passes)
@@ -89,19 +118,23 @@ class HybridPassPredictor:
                 n_conf = float(n_pass.get("confidence_score") or 0.68)
                 # Weighted blend: 75% historical extrapolation + 25% N2YO tracking + synergy bonus
                 blended_conf = round(min(0.99, (0.75 * h_conf + 0.25 * n_conf) + 0.105), 2)
+                hist_note = h_match.get("historical_match", "")
 
                 merged.append(
                     PassPrediction(
                         time=n_pass["time"],
                         max_elevation=n_pass.get("max_elevation") or h_match.get("max_elevation") or 70.0,
                         source="COMBINED",
+                        contribution="both",
+                        contribution_label="Both (N2YO + Historical)",
+                        contribution_detail=f"Cross-validated: N2YO tracking confirmed by Sentinel-1 repeat cycle ({hist_note})",
                         satellite=h_match.get("satellite") or n_pass.get("satellite") or "Sentinel-1A",
                         orbit_direction=h_match.get("orbit_direction"),
                         relative_orbit=h_match.get("relative_orbit"),
                         confidence_score=blended_conf,
                         swath_mode=h_match.get("swath_mode") or "IW",
                         historical_match=(
-                            f"Cross-validated (N2YO + Historical {h_match.get('historical_match', '')})"
+                            f"Cross-validated (N2YO + Historical {hist_note})"
                         ),
                     )
                 )
@@ -112,6 +145,9 @@ class HybridPassPredictor:
                         time=n_pass["time"],
                         max_elevation=n_pass.get("max_elevation"),
                         source="N2YO",
+                        contribution="n2yo",
+                        contribution_label="N2YO Tracking Only",
+                        contribution_detail="Astronomical pass tracking via N2YO NORAD orbit propagation",
                         satellite=n_pass.get("satellite") or "Sentinel-1A",
                         orbit_direction=n_pass.get("orbit_direction"),
                         relative_orbit=n_pass.get("relative_orbit"),
@@ -124,8 +160,16 @@ class HybridPassPredictor:
         # Include unmatched historical repeat-cycle predictions with high confidence weight
         for h_idx, h_pass in enumerate(hist_passes):
             if h_idx not in matched_hist_indices:
-                merged.append(h_pass)
-
+                p = dict(h_pass)
+                if "source" not in p or not p["source"]:
+                    p["source"] = "HISTORICAL_MISSION"
+                if "contribution" not in p or not p["contribution"]:
+                    p["contribution"] = "historical"
+                if "contribution_label" not in p or not p["contribution_label"]:
+                    p["contribution_label"] = "Historical Repeat Cycle Only"
+                if "contribution_detail" not in p or not p["contribution_detail"]:
+                    p["contribution_detail"] = p.get("historical_match") or "Extrapolated from Sentinel-1 12-day repeat cycle"
+                merged.append(PassPrediction(**p))  # type: ignore[misc]
 
         # Sort all predictions chronologically
         merged.sort(key=lambda p: datetime.fromisoformat(str(p["time"]).replace("Z", "+00:00")))

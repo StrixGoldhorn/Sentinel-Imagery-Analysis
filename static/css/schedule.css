@@ -404,6 +404,37 @@ body {
     color: #ffffff;
 }
 
+.badge-contrib-both {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgba(79, 70, 229, 0.3);
+}
+
+.badge-contrib-n2yo {
+    background-color: #0284c7;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.badge-contrib-hist {
+    background-color: #059669;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.contrib-detail-text {
+    font-size: 0.78rem;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    padding: 2px 7px;
+    border-radius: 4px;
+}
+
 /* Buttons */
 .btn {
     display: inline-flex;

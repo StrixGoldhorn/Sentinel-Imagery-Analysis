@@ -118,15 +118,83 @@ def test_get_upcoming_scrapes_sorting_and_filtering() -> None:
     assert metrics["total_aois"] == 2
     assert metrics["auto_capture_count"] == 1
     assert len(events) == 4
+    assert metrics["cross_validated_count"] == 4
+    assert metrics["n2yo_only_count"] == 0
+    assert metrics["historical_only_count"] == 0
 
     for i in range(len(events) - 1):
         assert events[i]["pass_time"] <= events[i + 1]["pass_time"]
+        assert events[i]["contribution"] == "both"
+        assert events[i]["contribution_label"] == "Both (N2YO + Historical)"
 
     result_auto = use_case.execute(api_key="test_key", auto_capture_only=True)
     assert len(result_auto["events"]) == 2
     for e in result_auto["events"]:
         assert e["auto_capture_enabled"] is True
         assert e["aoi_id"] == 1
+
+
+def test_get_upcoming_scrapes_caching_and_source_contributions() -> None:
+    now = datetime.now(timezone.utc)
+    aoi = AreaOfInterest(
+        id=1,
+        name="Singapore Port",
+        bbox=BoundingBox(103.8, 1.2, 103.9, 1.3),
+        auto_capture_enabled=True,
+    )
+
+    class CachingRepo(StubAOIRepo):
+        def __init__(self, aois):
+            super().__init__(aois)
+            self.cache = {}
+            self.saved_cache = {}
+
+        def get_cached_forecast(self, aoi_id):
+            return self.cache.get(aoi_id)
+
+        def save_cached_forecast(self, aoi_id, forecast_data, ttl_seconds=10800):
+            self.saved_cache[aoi_id] = forecast_data
+
+    cached_preds = [
+        {
+            "time": (now + timedelta(hours=1)).isoformat(),
+            "satellite": "Sentinel-1A",
+            "contribution": "both",
+            "contribution_label": "Both (N2YO + Historical)",
+            "source": "COMBINED",
+        },
+        {
+            "time": (now + timedelta(hours=5)).isoformat(),
+            "satellite": "Sentinel-1C",
+            "contribution": "n2yo",
+            "contribution_label": "N2YO Tracking Only",
+            "source": "N2YO",
+        },
+        {
+            "time": (now + timedelta(hours=10)).isoformat(),
+            "satellite": "Sentinel-1A",
+            "contribution": "historical",
+            "contribution_label": "Historical Repeat Cycle Only",
+            "source": "HISTORICAL_MISSION",
+        },
+    ]
+
+    repo = CachingRepo([aoi])
+    repo.cache[1] = {"predictions": cached_preds}
+    predictor = StubPredictor([])  # Predictor should not be called since cache is hit
+
+    use_case = GetUpcomingScrapes(repo, predictor)
+    res = use_case.execute("api_key")
+    events = res["events"]
+    metrics = res["metrics"]
+
+    assert len(events) == 3
+    assert metrics["cross_validated_count"] == 1
+    assert metrics["n2yo_only_count"] == 1
+    assert metrics["historical_only_count"] == 1
+    assert events[0]["contribution"] == "both"
+    assert events[1]["contribution"] == "n2yo"
+    assert events[2]["contribution"] == "historical"
 
 
 def test_missing_api_key_raises_error() -> None:

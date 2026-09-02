@@ -198,21 +198,25 @@ class Sentinel1MissionAnalyzer:
             candidate_dt = last_dt
             while candidate_dt < max_time:
                 if candidate_dt >= now:
+                    hist_desc = (
+                        f"Historical Track #{track} repeat cycle (+12d cadence)"
+                        if track is not None
+                        else "Historical 12d orbital repeat"
+                    )
                     predicted_passes.append(
                         PassPrediction(
                             time=candidate_dt.isoformat(),
                             max_elevation=75.0,
                             source="HISTORICAL_MISSION",
+                            contribution="historical",
+                            contribution_label="Historical Repeat Cycle Only",
+                            contribution_detail=hist_desc,
                             satellite=platform,
                             orbit_direction=direction,
                             relative_orbit=track,
                             confidence_score=0.94,
                             swath_mode="IW",
-                            historical_match=(
-                                f"Historical Track #{track} repeat cycle (+12d cadence)"
-                                if track is not None
-                                else "Historical 12d orbital repeat"
-                            ),
+                            historical_match=hist_desc,
                         )
                     )
                 candidate_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
@@ -222,21 +226,25 @@ class Sentinel1MissionAnalyzer:
             twin_dt = last_dt + timedelta(days=S1_CONSTELLATION_PHASE_OFFSET_DAYS)
             while twin_dt < max_time:
                 if twin_dt >= now:
+                    twin_desc = (
+                        f"Constellation 180° offset for Track #{track}"
+                        if track is not None
+                        else "Constellation 6d offset"
+                    )
                     predicted_passes.append(
                         PassPrediction(
                             time=twin_dt.isoformat(),
                             max_elevation=70.0,
                             source="HISTORICAL_MISSION",
+                            contribution="historical",
+                            contribution_label="Historical Repeat Cycle Only",
+                            contribution_detail=twin_desc,
                             satellite=twin_platform,
                             orbit_direction=direction,
                             relative_orbit=track,
                             confidence_score=0.90,
                             swath_mode="IW",
-                            historical_match=(
-                                f"Constellation 180° offset for Track #{track}"
-                                if track is not None
-                                else "Constellation 6d offset"
-                            ),
+                            historical_match=twin_desc,
                         )
                     )
                 twin_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
@@ -248,10 +256,13 @@ class Sentinel1MissionAnalyzer:
         if self._provider is None:
             return []
         try:
+            now = datetime.now(timezone.utc)
+            # Query the past 120 days of acquisitions (~10 full repeat cycles) for fast catalog lookups
+            start_dt = now - timedelta(days=120)
             raw_results = self._provider.search_historical_acquisitions(
                 bbox,
-                start_date=datetime(2014, 1, 1, tzinfo=timezone.utc),
-                end_date=datetime.now(timezone.utc),
+                start_date=start_dt,
+                end_date=now,
                 limit=limit,
             )
             return [
@@ -305,6 +316,9 @@ class Sentinel1MissionAnalyzer:
                             time=pass_dt.isoformat(),
                             max_elevation=65.0,
                             source="HISTORICAL_MISSION",
+                            contribution="historical",
+                            contribution_label="Historical Repeat Cycle Only",
+                            contribution_detail="Sun-synchronous nominal orbit crossing",
                             satellite=sat,
                             orbit_direction=direction,
                             relative_orbit=None,

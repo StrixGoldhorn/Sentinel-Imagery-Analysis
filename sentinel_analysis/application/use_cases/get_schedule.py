@@ -1,10 +1,12 @@
 """Use case to aggregate and forecast upcoming satellite passes and AIS scrape windows."""
 
+import concurrent.futures
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRepository
 from sentinel_analysis.application.ports.satellite import PassPredictor
+from sentinel_analysis.domain.entities import AreaOfInterest
 
 
 class GetUpcomingScrapes:
@@ -41,13 +43,52 @@ class GetUpcomingScrapes:
         if auto_capture_only:
             target_aois = [a for a in target_aois if getattr(a, "auto_capture_enabled", False)]
 
+        aoi_predictions_map: dict[int, list[dict[str, Any]]] = {}
+        uncached_aois: list[AreaOfInterest] = []
+
+        # 1. First attempt to load valid forecasts from database cache (sub-millisecond)
+        has_cache_getter = hasattr(self._aoi_repository, "get_cached_forecast")
+        for aoi in target_aois:
+            if has_cache_getter and aoi.id is not None:
+                try:
+                    cached = self._aoi_repository.get_cached_forecast(aoi.id)
+                    if cached and cached.get("predictions"):
+                        aoi_predictions_map[aoi.id] = cached.get("predictions", [])
+                        continue
+                except Exception:
+                    pass
+            uncached_aois.append(aoi)
+
+        # 2. Concurrently fetch predictions for uncached AOIs to minimize latency
+        if uncached_aois:
+            def _fetch_for_aoi(target: AreaOfInterest) -> tuple[int, list[dict[str, Any]]]:
+                try:
+                    preds = self._predictor.predict(target.bbox, api_key)
+                    # Automatically populate SQLite cache if available
+                    if target.id is not None and hasattr(self._aoi_repository, "save_cached_forecast"):
+                        try:
+                            self._aoi_repository.save_cached_forecast(
+                                aoi_id=target.id,
+                                forecast_data={"predictions": preds},
+                                ttl_seconds=10800,
+                            )
+                        except Exception:
+                            pass
+                    return (target.id, preds)
+                except Exception:
+                    return (target.id, [])
+
+            max_workers = min(6, max(1, len(uncached_aois)))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(_fetch_for_aoi, a) for a in uncached_aois]
+                for fut in concurrent.futures.as_completed(futures):
+                    a_id, preds = fut.result()
+                    aoi_predictions_map[a_id] = preds
+
         events: list[dict[str, Any]] = []
 
         for aoi in target_aois:
-            try:
-                raw_predictions = self._predictor.predict(aoi.bbox, api_key)
-            except Exception:
-                continue
+            raw_predictions = aoi_predictions_map.get(aoi.id, [])
 
             for pred in raw_predictions:
                 pass_time_raw = pred.get("time")
@@ -78,6 +119,25 @@ class GetUpcomingScrapes:
                 else:
                     status = "PREDICTED_ONLY"
 
+                src = pred.get("source") or "N2YO"
+                contrib = pred.get("contribution") or (
+                    "both" if src == "COMBINED" else ("historical" if src == "HISTORICAL_MISSION" else "n2yo")
+                )
+                contrib_label = pred.get("contribution_label") or (
+                    "Both (N2YO + Historical)"
+                    if contrib == "both"
+                    else ("Historical Repeat Cycle Only" if contrib == "historical" else "N2YO Tracking Only")
+                )
+                contrib_detail = pred.get("contribution_detail") or pred.get("historical_match") or (
+                    "Cross-validated: N2YO tracking confirmed by Sentinel-1 repeat cycle"
+                    if contrib == "both"
+                    else (
+                        "Extrapolated from Sentinel-1 12-day repeat cycle"
+                        if contrib == "historical"
+                        else "Astronomical pass tracking via N2YO"
+                    )
+                )
+
                 events.append({
                     "aoi_id": aoi.id,
                     "aoi_name": aoi.name,
@@ -91,7 +151,10 @@ class GetUpcomingScrapes:
                     "relative_orbit": pred.get("relative_orbit"),
                     "confidence_score": pred.get("confidence_score"),
                     "max_elevation": pred.get("max_elevation"),
-                    "source": pred.get("source") or "N2YO",
+                    "source": src,
+                    "contribution": contrib,
+                    "contribution_label": contrib_label,
+                    "contribution_detail": contrib_detail,
                     "historical_match": pred.get("historical_match"),
                     "swath_mode": pred.get("swath_mode"),
                     "status": status,
@@ -105,6 +168,9 @@ class GetUpcomingScrapes:
         upcoming_24h = sum(1 for e in events if 0 <= e["seconds_until_pass"] <= 86400)
         upcoming_7d = sum(1 for e in events if 0 <= e["seconds_until_pass"] <= 7 * 86400)
         active_flypasts = sum(1 for e in events if e["is_active"])
+        cross_validated_count = sum(1 for e in events if e.get("contribution") == "both")
+        n2yo_only_count = sum(1 for e in events if e.get("contribution") == "n2yo")
+        historical_only_count = sum(1 for e in events if e.get("contribution") == "historical")
 
         return {
             "events": events,
@@ -115,6 +181,9 @@ class GetUpcomingScrapes:
                 "upcoming_24h_count": upcoming_24h,
                 "upcoming_7d_count": upcoming_7d,
                 "active_flypasts_count": active_flypasts,
+                "cross_validated_count": cross_validated_count,
+                "n2yo_only_count": n2yo_only_count,
+                "historical_only_count": historical_only_count,
             },
             "generated_at": now.isoformat(),
         }

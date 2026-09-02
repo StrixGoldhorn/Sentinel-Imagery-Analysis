@@ -104,8 +104,10 @@ function applyFilters() {
     const aoiSelect = document.getElementById('filterAoiSelect');
     const autoOnly = document.getElementById('filterAutoOnly') ? document.getElementById('filterAutoOnly').checked : false;
     const searchInput = document.getElementById('filterSearchInput');
+    const sourceSelect = document.getElementById('filterSourceSelect');
 
     const selectedAoiId = aoiSelect && aoiSelect.value ? parseInt(aoiSelect.value, 10) : null;
+    const selectedSource = sourceSelect ? sourceSelect.value : '';
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
 
     filteredEvents = allEvents.filter(event => {
@@ -115,11 +117,18 @@ function applyFilters() {
         if (autoOnly && !event.auto_capture_enabled) {
             return false;
         }
+        if (selectedSource) {
+            const contrib = event.contribution || (event.source === 'COMBINED' ? 'both' : (event.source === 'HISTORICAL_MISSION' ? 'historical' : 'n2yo'));
+            if (contrib !== selectedSource) {
+                return false;
+            }
+        }
         if (query) {
             const aoiMatch = (event.aoi_name || '').toLowerCase().includes(query);
             const satMatch = (event.satellite || '').toLowerCase().includes(query);
             const statusMatch = (event.status || '').toLowerCase().includes(query);
-            if (!aoiMatch && !satMatch && !statusMatch) {
+            const contribMatch = (event.contribution_label || '').toLowerCase().includes(query) || (event.contribution_detail || '').toLowerCase().includes(query);
+            if (!aoiMatch && !satMatch && !statusMatch && !contribMatch) {
                 return false;
             }
         }
@@ -173,7 +182,16 @@ function createScheduleCard(event, index) {
     const track = event.relative_orbit ? `Track #${event.relative_orbit}` : '';
     const conf = event.confidence_score ? `${Math.round(event.confidence_score * 100)}% Conf` : '';
     const elev = event.max_elevation ? `${Math.round(event.max_elevation)}° Elev` : '';
-    const src = event.source || 'N2YO';
+    const contrib = event.contribution || (event.source === 'COMBINED' ? 'both' : (event.source === 'HISTORICAL_MISSION' ? 'historical' : 'n2yo'));
+
+    let contribBadge = '';
+    if (contrib === 'both' || event.source === 'COMBINED') {
+        contribBadge = `<span class="badge badge-contrib-both" title="${escapeHtml(event.contribution_detail || 'Cross-validated: N2YO tracking confirmed by Sentinel-1 repeat cycle')}">✨ Both (N2YO + Historical)</span>`;
+    } else if (contrib === 'historical' || event.source === 'HISTORICAL_MISSION') {
+        contribBadge = `<span class="badge badge-contrib-hist" title="${escapeHtml(event.contribution_detail || 'Historical Sentinel-1 Repeat Cycle')}">🔁 Historical Cycle</span>`;
+    } else {
+        contribBadge = `<span class="badge badge-contrib-n2yo" title="${escapeHtml(event.contribution_detail || 'Astronomical pass tracking via N2YO')}">🛰️ N2YO Tracking</span>`;
+    }
 
     let statusBadge = '';
     if (isLive) {
@@ -191,6 +209,8 @@ function createScheduleCard(event, index) {
 
     const countdownText = formatCountdown(event.pass_time, isLive);
     const isAutoChecked = event.auto_capture_enabled ? 'checked' : '';
+    const contribLabel = event.contribution_label || (contrib === 'both' ? 'Both (N2YO + Historical Repeat Cycle)' : (contrib === 'historical' ? 'Historical Mission Repeat Cycle' : 'N2YO Orbit Tracking'));
+    const contribDetail = event.contribution_detail || '';
 
     card.innerHTML = `
         <div class="card-top-row">
@@ -204,6 +224,7 @@ function createScheduleCard(event, index) {
             </div>
             <div class="event-badges">
                 ${statusBadge}
+                ${contribBadge}
                 <span class="badge badge-track">${escapeHtml(sat)}</span>
                 ${dir ? `<span class="badge ${dirClass}">${escapeHtml(dirArrow)}</span>` : ''}
                 ${track ? `<span class="badge badge-secondary">${escapeHtml(track)}</span>` : ''}
@@ -223,6 +244,10 @@ function createScheduleCard(event, index) {
                 <span style="font-size: 0.82rem; color: #6c757d; font-family: monospace;">
                     [${bboxFormatted}]
                 </span>
+                <div class="contrib-detail-text" title="${escapeHtml(contribDetail || contribLabel)}">
+                    <strong>Source:</strong> ${escapeHtml(contribLabel)}
+                    ${contribDetail ? `&bull; <span>${escapeHtml(contribDetail)}</span>` : ''}
+                </div>
                 <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #495057; margin: 0;">
                     <input type="checkbox" ${isAutoChecked} onchange="toggleCardAutoCapture(${event.aoi_id}, this.checked)">
                     <span>Auto-Capture</span>

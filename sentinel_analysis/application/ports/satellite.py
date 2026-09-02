@@ -36,6 +36,9 @@ class PassPrediction(TypedDict, total=False):
     time: str
     max_elevation: float | int | None
     source: str | None  # "N2YO", "HISTORICAL_MISSION", "COMBINED"
+    contribution: str | None  # "both", "n2yo", "historical"
+    contribution_label: str | None  # e.g. "Both (N2YO + Historical)", "N2YO Tracking Only", "Historical Repeat Cycle Only"
+    contribution_detail: str | None  # Description of factors contributing to forecast
     satellite: str | None  # e.g. "Sentinel-1A", "Sentinel-1C"
     orbit_direction: str | None  # "ASCENDING", "DESCENDING"
     relative_orbit: int | None

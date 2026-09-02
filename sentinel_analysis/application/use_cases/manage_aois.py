@@ -91,30 +91,32 @@ class PredictAreaOfInterest:
 
         predictions = self.execute(aoi_id, api_key)
 
-        n2yo_predictions: list[PassPrediction] = []
-        if self._n2yo_predictor is not None and isinstance(api_key, str) and api_key.strip():
+        # Extract n2yo passes from predictions or fallback to dedicated predictor
+        n2yo_predictions: list[PassPrediction] = [
+            p for p in predictions if p.get("source") in ("N2YO", "COMBINED") or p.get("contribution") in ("n2yo", "both")
+        ]
+        if not n2yo_predictions and self._n2yo_predictor is not None and isinstance(api_key, str) and api_key.strip():
             try:
                 n2yo_predictions = PredictPasses(self._n2yo_predictor).execute(aoi.bbox, api_key)
             except Exception:
                 n2yo_predictions = []
-        else:
-            n2yo_predictions = [p for p in predictions if p.get("source") in ("N2YO", "COMBINED")]
 
-        historical_predictions: list[PassPrediction] = []
+        # Extract historical passes from predictions or fallback to mission analyzer
+        historical_predictions: list[PassPrediction] = [
+            p for p in predictions if p.get("source") in ("HISTORICAL_MISSION", "COMBINED") or p.get("contribution") in ("historical", "both")
+        ]
+        if not historical_predictions and self._mission_analyzer is not None:
+            try:
+                historical_predictions = self._mission_analyzer.predict_from_history(aoi.bbox, days_ahead=10, limit=20)
+            except Exception:
+                historical_predictions = []
+
         mission_summary = None
         if self._mission_analyzer is not None:
             try:
                 mission_summary, _ = self._mission_analyzer.analyze_history(aoi.bbox, limit=50)
             except Exception:
                 mission_summary = None
-
-            try:
-                raw_hist = self._mission_analyzer.predict_from_history(aoi.bbox, days_ahead=10, limit=20)
-                historical_predictions = raw_hist
-            except Exception:
-                historical_predictions = []
-        else:
-            historical_predictions = [p for p in predictions if p.get("source") in ("HISTORICAL_MISSION", "COMBINED")]
 
         next_scan_val = None
         if predictions:

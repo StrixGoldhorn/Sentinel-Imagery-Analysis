@@ -148,6 +148,16 @@
                 </div>
 
                 <div class="control-item">
+                    <label for="filterSourceSelect"><strong>Forecast Source:</strong></label>
+                    <select id="filterSourceSelect" class="select-control" onchange="applyFilters()">
+                        <option value="">All Contributors</option>
+                        <option value="both">✨ Both (N2YO + Historical)</option>
+                        <option value="n2yo">🛰️ N2YO Tracking Only</option>
+                        <option value="historical">🔁 Historical Cycle Only</option>
+                    </select>
+                </div>
+
+                <div class="control-item">
                     <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                         <input type="checkbox" id="filterAutoOnly" onchange="applyFilters()">
                         <span>Auto-Capture AOIs Only</span>
