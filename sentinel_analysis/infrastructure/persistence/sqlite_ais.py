@@ -202,6 +202,83 @@ class SQLiteAISRepository:
                 })
         return results
 
+    def get_vessel_by_id(self, vessel_id: int) -> dict | None:
+        with self._database.connection() as connection:
+            vessel_row = connection.execute(
+                "SELECT id, imo, mmsi, vessel_name, vessel_type, callsign, created_at FROM vessels WHERE id = ?",
+                (vessel_id,),
+            ).fetchone()
+            if not vessel_row:
+                return None
+
+            loc_row = connection.execute(
+                """
+                SELECT latitude, longitude, speed, heading, timestamp, source_plugin
+                FROM vessel_locations
+                WHERE vessel_id = ?
+                ORDER BY timestamp DESC, id DESC
+                LIMIT 1
+                """,
+                (vessel_id,),
+            ).fetchone()
+
+            return {
+                "id": vessel_row[0],
+                "vessel_id": vessel_row[0],
+                "imo": vessel_row[1],
+                "mmsi": vessel_row[2],
+                "name": vessel_row[3] or f"MMSI: {vessel_row[2]}",
+                "vessel_name": vessel_row[3],
+                "type": vessel_row[4] or "Unspecified",
+                "vessel_type": vessel_row[4],
+                "callsign": vessel_row[5],
+                "created_at": vessel_row[6],
+                "latitude": float(loc_row[0]) if loc_row and loc_row[0] is not None else None,
+                "longitude": float(loc_row[1]) if loc_row and loc_row[1] is not None else None,
+                "speed": float(loc_row[2]) if loc_row and loc_row[2] is not None else None,
+                "heading": float(loc_row[3]) if loc_row and loc_row[3] is not None else None,
+                "timestamp": loc_row[4] if loc_row else None,
+                "source_plugin": loc_row[5] if loc_row else None,
+            }
+
+    def update_vessel(
+        self,
+        vessel_id: int,
+        name: str | None = None,
+        vessel_type: str | None = None,
+        callsign: str | None = None,
+        imo: str | None = None,
+    ) -> dict | None:
+        fields = []
+        params = []
+        if name is not None:
+            fields.append("vessel_name = ?")
+            params.append(name.strip() if isinstance(name, str) and name.strip() else None)
+        if vessel_type is not None:
+            fields.append("vessel_type = ?")
+            params.append(vessel_type.strip() if isinstance(vessel_type, str) and vessel_type.strip() else None)
+        if callsign is not None:
+            fields.append("callsign = ?")
+            params.append(callsign.strip() if isinstance(callsign, str) and callsign.strip() else None)
+        if imo is not None:
+            fields.append("imo = ?")
+            cleaned_imo = imo.strip() if isinstance(imo, str) and imo.strip() else None
+            if not cleaned_imo:
+                raise ValueError("IMO cannot be empty")
+            params.append(cleaned_imo)
+
+        with self._database.connection() as connection:
+            row = connection.execute("SELECT id FROM vessels WHERE id = ?", (vessel_id,)).fetchone()
+            if not row:
+                return None
+            if fields:
+                params.append(vessel_id)
+                connection.execute(
+                    f"UPDATE vessels SET {', '.join(fields)} WHERE id = ?",
+                    tuple(params),
+                )
+        return self.get_vessel_by_id(vessel_id)
+
     def get_scraper_config(self, plugin_name: str) -> dict | None:
         with self._database.connection() as connection:
             cursor = connection.execute(
@@ -230,6 +307,21 @@ class SQLiteAISRepository:
                     "updated_at": row[7],
                 }
         return None
+
+    def get_scraper_detail(self, plugin_name: str) -> dict | None:
+        detail = self.get_scraper_config(plugin_name)
+        if detail is not None:
+            return detail
+        return {
+            "plugin_name": plugin_name,
+            "enabled": True,
+            "description": None,
+            "config": {},
+            "cooldown_until": None,
+            "consecutive_failures": 0,
+            "last_failure_reason": None,
+            "updated_at": None,
+        }
 
     def get_all_scraper_configs(self) -> dict[str, bool]:
         configs: dict[str, bool] = {}
@@ -293,6 +385,45 @@ class SQLiteAISRepository:
                 """,
                 (plugin_name, config_str),
             )
+
+    def update_scraper(
+        self,
+        plugin_name: str,
+        enabled: bool | None = None,
+        description: str | None = None,
+        config: dict | None = None,
+    ) -> dict | None:
+        with self._database.connection() as connection:
+            row = connection.execute(
+                "SELECT enabled, description, config_json FROM scraper_config WHERE plugin_name = ?",
+                (plugin_name,),
+            ).fetchone()
+
+            current_enabled = bool(row[0]) if row else True
+            current_description = row[1] if row else None
+            current_config = json.loads(row[2]) if (row and row[2]) else {}
+
+            new_enabled = enabled if enabled is not None else current_enabled
+            new_description = description if description is not None else current_description
+            new_config = config if config is not None else current_config
+            connection.execute(
+                """
+                INSERT INTO scraper_config (plugin_name, enabled, description, config_json, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(plugin_name) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    description = excluded.description,
+                    config_json = excluded.config_json,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    plugin_name,
+                    1 if new_enabled else 0,
+                    new_description,
+                    json.dumps(new_config),
+                ),
+            )
+        return self.get_scraper_config(plugin_name)
 
     def record_scraper_failure(
         self,

@@ -32,7 +32,23 @@ class AISRepository(Protocol):
     def get_timeline_bounds(self) -> dict[str, object]:
         ...
 
+    def get_vessel_by_id(self, vessel_id: int) -> dict | None:
+        ...
+
+    def update_vessel(
+        self,
+        vessel_id: int,
+        name: str | None = None,
+        vessel_type: str | None = None,
+        callsign: str | None = None,
+        imo: str | None = None,
+    ) -> dict | None:
+        ...
+
     def get_scraper_config(self, plugin_name: str) -> dict | None:
+        ...
+
+    def get_scraper_detail(self, plugin_name: str) -> dict | None:
         ...
 
     def get_all_scraper_configs(self) -> dict[str, bool]:
@@ -54,6 +70,15 @@ class AISRepository(Protocol):
         ...
 
     def update_scraper_settings(self, plugin_name: str, config: dict) -> None:
+        ...
+
+    def update_scraper(
+        self,
+        plugin_name: str,
+        enabled: bool | None = None,
+        description: str | None = None,
+        config: dict | None = None,
+    ) -> dict | None:
         ...
 
     def record_scraper_failure(

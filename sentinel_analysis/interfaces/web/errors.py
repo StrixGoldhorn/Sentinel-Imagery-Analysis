@@ -11,6 +11,7 @@ from sentinel_analysis.application.exceptions import (
     NoImageryFoundError,
     PluginNotFoundError,
     ScanNotFoundError,
+    VesselNotFoundError,
 )
 from sentinel_analysis.domain.exceptions import DomainValidationError
 from sentinel_analysis.interfaces.web.request_data import RequestValidationError
@@ -31,6 +32,7 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(ScanNotFoundError)
     @app.errorhandler(AreaOfInterestNotFoundError)
+    @app.errorhandler(VesselNotFoundError)
     @app.errorhandler(NoImageryFoundError)
     def not_found(exc: Exception):
         return _error(str(exc), 404)

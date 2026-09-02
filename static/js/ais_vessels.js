@@ -633,8 +633,11 @@ function renderVesselsOnMap(mapInstance) {
                     <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Coordinates</span><span class="vessel-val">${vessel.latitude.toFixed(5)}° N, ${vessel.longitude.toFixed(5)}° E</span></div>
                     <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Last Reported</span><span class="vessel-val">${zuluTime} (${localTime})</span></div>
                 </div>
-                <div class="vessel-popup-actions">
-                    <button class="btn btn-sm btn-primary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="map.setView([${vessel.latitude}, ${vessel.longitude}], Math.max(map.getZoom(), 14))">
+                <div class="vessel-popup-actions" style="display: flex; gap: 6px; justify-content: flex-end;">
+                    <button class="btn btn-sm btn-secondary" style="padding: 4px 10px; font-size: 0.8rem; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="openEditVesselModal(${vessel.vessel_id})">
+                        ✏️ Edit Details
+                    </button>
+                    <button class="btn btn-sm btn-primary" style="padding: 4px 10px; font-size: 0.8rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="map.setView([${vessel.latitude}, ${vessel.longitude}], Math.max(map.getZoom(), 14))">
                         Center Map
                     </button>
                 </div>
@@ -692,5 +695,167 @@ function applyAisFilters() {
 function escapeHtml(str) {
     if (typeof str !== 'string') return String(str ?? '');
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Vessel Details Modal and Editing Functions
+ */
+function onVesselTypeSelectChange(value) {
+    const customInput = document.getElementById('editVesselTypeCustom');
+    if (!customInput) return;
+    if (value === '__custom__') {
+        customInput.style.display = 'block';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+    }
+}
+
+async function openEditVesselModal(vesselId) {
+    const modal = document.getElementById('editVesselModal');
+    if (!modal) return;
+
+    // Reset fields
+    document.getElementById('editVesselId').value = vesselId;
+    document.getElementById('editVesselMmsi').value = 'Loading...';
+    document.getElementById('editVesselName').value = '';
+    document.getElementById('editVesselImo').value = '';
+    document.getElementById('editVesselCallsign').value = '';
+    
+    const typeSelect = document.getElementById('editVesselTypeSelect');
+    const customTypeInput = document.getElementById('editVesselTypeCustom');
+    typeSelect.value = 'Unspecified';
+    customTypeInput.style.display = 'none';
+    customTypeInput.value = '';
+
+    // Show modal immediately
+    modal.classList.add('active');
+
+    // Find local vessel data first for instant population
+    const localVessel = aisVesselsData.find(v => v.vessel_id === vesselId);
+    if (localVessel) {
+        populateVesselModalFields(localVessel);
+    }
+
+    // Fetch freshest data from API
+    try {
+        const res = await fetch(`/api/ais/vessels/${vesselId}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.vessel) {
+                populateVesselModalFields(data.vessel);
+            }
+        }
+    } catch (err) {
+        console.warn('Could not fetch vessel details from API:', err);
+    }
+}
+
+function populateVesselModalFields(vessel) {
+    document.getElementById('editVesselMmsi').value = vessel.mmsi || '';
+    document.getElementById('editVesselName').value = vessel.name && !vessel.name.startsWith('MMSI:') ? vessel.name : (vessel.vessel_name || '');
+    document.getElementById('editVesselImo').value = vessel.imo && !vessel.imo.startsWith('UNKNOWN-') ? vessel.imo : '';
+    document.getElementById('editVesselCallsign').value = vessel.callsign || '';
+
+    const typeSelect = document.getElementById('editVesselTypeSelect');
+    const customTypeInput = document.getElementById('editVesselTypeCustom');
+    const vesselType = vessel.type || vessel.vessel_type || 'Unspecified';
+
+    const standardTypes = ['Cargo', 'Tanker', 'Passenger', 'Tug', 'Fishing', 'Military', 'Pleasure', 'High Speed Craft', 'Unspecified'];
+    const matchedType = standardTypes.find(t => t.toLowerCase() === vesselType.toLowerCase());
+
+    if (matchedType) {
+        typeSelect.value = matchedType;
+        customTypeInput.style.display = 'none';
+        customTypeInput.value = '';
+    } else {
+        typeSelect.value = '__custom__';
+        customTypeInput.style.display = 'block';
+        customTypeInput.value = vesselType;
+    }
+}
+
+function closeEditVesselModal() {
+    const modal = document.getElementById('editVesselModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+async function saveVesselDetails(event) {
+    if (event) event.preventDefault();
+
+    const vesselId = parseInt(document.getElementById('editVesselId').value, 10);
+    if (!vesselId) return;
+
+    const name = document.getElementById('editVesselName').value.trim();
+    const imo = document.getElementById('editVesselImo').value.trim();
+    const callsign = document.getElementById('editVesselCallsign').value.trim();
+    const typeSelectVal = document.getElementById('editVesselTypeSelect').value;
+    const customType = document.getElementById('editVesselTypeCustom').value.trim();
+    const vesselType = typeSelectVal === '__custom__' ? customType : typeSelectVal;
+
+    const saveBtn = document.getElementById('saveVesselBtn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = 'Saving...';
+    }
+
+    try {
+        const payload = {
+            name: name || null,
+            vessel_type: vesselType || null,
+            callsign: callsign || null,
+            imo: imo || null
+        };
+
+        const res = await fetch(`/api/ais/vessels/${vesselId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Failed to update vessel');
+        }
+
+        const updated = data.vessel;
+
+        // Update in-memory data
+        aisVesselsData.forEach(v => {
+            if (v.vessel_id === vesselId) {
+                v.name = updated.name;
+                v.vessel_name = updated.vessel_name;
+                v.type = updated.type;
+                v.vessel_type = updated.vessel_type;
+                v.callsign = updated.callsign;
+                v.imo = updated.imo;
+            }
+        });
+
+        // Re-render map markers
+        if (typeof map !== 'undefined' && map) {
+            renderVesselsOnMap(map);
+        }
+
+        closeEditVesselModal();
+        if (typeof showNotification === 'function') {
+            showNotification(`Vessel ${updated.name || updated.mmsi} updated successfully.`, 'success');
+        }
+    } catch (err) {
+        console.error('Error updating vessel:', err);
+        if (typeof showNotification === 'function') {
+            showNotification(`Error: ${err.message}`, 'error');
+        } else {
+            alert(`Error: ${err.message}`);
+        }
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = 'Save Changes';
+        }
+    }
 }
 

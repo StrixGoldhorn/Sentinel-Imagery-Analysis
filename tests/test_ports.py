@@ -104,7 +104,16 @@ class CompleteAdapter:
     def get_timeline_bounds(self):
         return {"min_timestamp": None, "max_timestamp": None, "total_records": 0, "count": 0}
 
+    def get_vessel_by_id(self, vessel_id):
+        return None
+
+    def update_vessel(self, vessel_id, name=None, vessel_type=None, callsign=None, imo=None):
+        return None
+
     def get_scraper_config(self, plugin_name):
+        return None
+
+    def get_scraper_detail(self, plugin_name):
         return None
 
     def get_all_scraper_configs(self):
@@ -120,6 +129,9 @@ class CompleteAdapter:
         return {}
 
     def update_scraper_settings(self, plugin_name, config):
+        return None
+
+    def update_scraper(self, plugin_name, enabled=None, description=None, config=None):
         return None
 
     def record_scraper_failure(self, plugin_name, reason, cooldown_until, consecutive_failures):

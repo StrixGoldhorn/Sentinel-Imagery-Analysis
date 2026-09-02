@@ -8,8 +8,10 @@ from sentinel_analysis.application.use_cases import (
     DeleteScan,
     DetectShips,
     GetScan,
+    GetScraperDetail,
     GetScraperLogsUseCase,
     GetUpcomingScrapes,
+    GetVesselDetails,
     GetVesselPositions,
     IngestAIS,
     IngestPostPassImagery,
@@ -21,7 +23,9 @@ from sentinel_analysis.application.use_cases import (
     ResetScraperCooldown,
     ScrapeAreaOfInterestAIS,
     ToggleScraper,
+    UpdateScraper,
     UpdateScraperConfig,
+    UpdateVesselDetails,
 )
 
 from sentinel_analysis.bootstrap.config import Settings
@@ -89,11 +93,15 @@ class ApplicationContainer:
         self.ais_plugin_registry = DynamicAISPluginRegistry()
         self.ingest_ais = IngestAIS(self.ais_plugin_registry, self.ais_repository)
         self.list_scrapers = ListScrapers(self.ais_plugin_registry, self.ais_repository)
+        self.get_scraper_detail = GetScraperDetail(self.ais_plugin_registry, self.ais_repository)
         self.toggle_scraper = ToggleScraper(self.ais_plugin_registry, self.ais_repository)
+        self.update_scraper = UpdateScraper(self.ais_plugin_registry, self.ais_repository)
         self.update_scraper_config = UpdateScraperConfig(self.ais_plugin_registry, self.ais_repository)
         self.reset_scraper_cooldown = ResetScraperCooldown(self.ais_plugin_registry, self.ais_repository)
         self.get_scraper_logs_use_case = GetScraperLogsUseCase(self.ais_repository)
         self.get_vessels = GetVesselPositions(self.ais_repository)
+        self.get_vessel_details = GetVesselDetails(self.ais_repository)
+        self.update_vessel_details = UpdateVesselDetails(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
         self.ingest_post_pass = IngestPostPassImagery(
             self.post_pass_repository,

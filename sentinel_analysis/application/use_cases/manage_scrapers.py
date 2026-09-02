@@ -238,6 +238,150 @@ class ResetScraperCooldown:
         }
 
 
+class GetScraperDetail:
+    """Retrieves full details, configuration, status, and stats for a single AIS scraper plugin."""
+
+    def __init__(
+        self,
+        registry: AISPluginRegistry,
+        repository: AISRepository,
+    ) -> None:
+        self._registry = registry
+        self._repository = repository
+
+    def execute(self, plugin_name: str) -> dict[str, Any]:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("Scraper plugin name must be a non-empty string")
+        plugin_name = plugin_name.strip()
+
+        plugins = self._registry.get_plugins(plugin_name)
+        if not plugins:
+            raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
+
+        meta = {}
+        if hasattr(self._registry, "get_plugin_metadata"):
+            meta = self._registry.get_plugin_metadata(plugin_name)
+        else:
+            meta = {
+                "name": plugin_name,
+                "display_name": plugin_name,
+                "category": "Custom",
+                "description": "",
+                "requires_network": True,
+                "default_enabled": True,
+            }
+
+        p_detail = {}
+        if hasattr(self._repository, "get_scraper_detail"):
+            p_detail = self._repository.get_scraper_detail(plugin_name) or {}
+        elif hasattr(self._repository, "get_scraper_config"):
+            p_detail = self._repository.get_scraper_config(plugin_name) or {}
+
+        default_enabled = meta.get("default_enabled", True)
+        enabled = p_detail.get("enabled", default_enabled) if "enabled" in p_detail else default_enabled
+        config = p_detail.get("config", {})
+        description = p_detail.get("description") or meta.get("description", "")
+        cooldown_raw = p_detail.get("cooldown_until")
+        cooldown_dt = _parse_cooldown_datetime(cooldown_raw)
+        consecutive_failures = p_detail.get("consecutive_failures", 0)
+        last_failure_reason = p_detail.get("last_failure_reason")
+
+        now = datetime.now(timezone.utc)
+        is_cooling_down = False
+        remaining_seconds = 0
+        if cooldown_dt and cooldown_dt > now:
+            is_cooling_down = True
+            remaining_seconds = max(0, int((cooldown_dt - now).total_seconds()))
+
+        stats = {}
+        if hasattr(self._repository, "get_scraper_stats"):
+            stats = self._repository.get_scraper_stats()
+        p_stats = stats.get(plugin_name, {})
+
+        total_runs = p_stats.get("total_runs", 0)
+        total_records = p_stats.get("total_records", 0)
+        success_runs = p_stats.get("success_runs", 0)
+        failed_runs = p_stats.get("failed_runs", 0)
+        success_rate = (success_runs / total_runs * 100.0) if total_runs > 0 else 100.0
+
+        return {
+            "name": plugin_name,
+            "display_name": meta.get("display_name", plugin_name),
+            "category": meta.get("category", "General"),
+            "description": description,
+            "default_description": meta.get("description", ""),
+            "requires_network": meta.get("requires_network", True),
+            "enabled": enabled,
+            "config": config,
+            "cooldown_until": cooldown_dt.isoformat() if cooldown_dt else None,
+            "is_cooling_down": is_cooling_down,
+            "cooldown_remaining_seconds": remaining_seconds,
+            "consecutive_failures": consecutive_failures,
+            "last_failure_reason": last_failure_reason,
+            "total_runs": total_runs,
+            "total_records": total_records,
+            "success_runs": success_runs,
+            "failed_runs": failed_runs,
+            "success_rate": round(success_rate, 1),
+            "last_run_at": p_stats.get("last_run_at"),
+            "updated_at": p_detail.get("updated_at"),
+        }
+
+
+class UpdateScraper:
+    """Updates custom metadata, description, enabled state, and network configuration for an AIS scraper plugin."""
+
+    def __init__(
+        self,
+        registry: AISPluginRegistry,
+        repository: AISRepository,
+    ) -> None:
+        self._registry = registry
+        self._repository = repository
+
+    def execute(
+        self,
+        plugin_name: str,
+        enabled: bool | None = None,
+        description: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("Scraper plugin name must be a non-empty string")
+        plugin_name = plugin_name.strip()
+
+        plugins = self._registry.get_plugins(plugin_name)
+        if not plugins:
+            raise PluginNotFoundError(f"Unknown AIS plugin: {plugin_name}")
+
+        if config is not None and not isinstance(config, dict):
+            raise ValueError("Config must be a dictionary")
+
+        if hasattr(self._repository, "update_scraper"):
+            self._repository.update_scraper(
+                plugin_name=plugin_name,
+                enabled=enabled,
+                description=description,
+                config=config,
+            )
+        else:
+            if enabled is not None:
+                self._repository.set_scraper_config(plugin_name, enabled)
+            if config is not None:
+                self._repository.update_scraper_settings(plugin_name, config)
+
+        if config is not None:
+            for p in plugins:
+                if hasattr(p, "configure"):
+                    try:
+                        p.configure(config)
+                    except Exception:
+                        pass
+
+        getter = GetScraperDetail(self._registry, self._repository)
+        return getter.execute(plugin_name)
+
+
 class GetScraperLogsUseCase:
     """Retrieves paginated, filterable scraper execution audit logs."""
 

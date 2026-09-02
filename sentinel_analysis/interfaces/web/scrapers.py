@@ -33,6 +33,60 @@ def list_scrapers_api():
         }), 500
 
 
+@blueprint.route("/api/scrapers/<name>", methods=["GET"])
+def get_scraper_api(name: str):
+    """Retrieve full detail, configuration, and runtime stats for an individual scraper."""
+    app_container = container()
+    try:
+        scraper = app_container.get_scraper_detail.execute(name)
+        return jsonify({
+            "status": "success",
+            "scraper": scraper,
+        }), 200
+    except ValueError as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 500
+
+
+@blueprint.route("/api/scrapers/<name>", methods=["PUT", "PATCH"])
+def update_scraper_api(name: str):
+    """Update custom settings, description, and enablement status for an individual scraper."""
+    app_container = container()
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled") if "enabled" in data else None
+    description = data.get("description") if "description" in data else None
+    config = data.get("config") if "config" in data else None
+
+    try:
+        scraper = app_container.update_scraper.execute(
+            plugin_name=name,
+            enabled=enabled,
+            description=description,
+            config=config,
+        )
+        return jsonify({
+            "status": "success",
+            "scraper": scraper,
+        }), 200
+    except ValueError as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 400
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 500
+
+
 @blueprint.route("/api/scrapers/<name>/toggle", methods=["POST"])
 def toggle_scraper_api(name: str):
     """Toggle the enabled status of an AIS scraper."""

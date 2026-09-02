@@ -84,3 +84,27 @@ def get_ais_timeline():
         bounds = repo.get_timeline_bounds()
         return jsonify(status="success", **bounds)
     return jsonify(status="success", min_timestamp=None, max_timestamp=None, total_records=0, count=0)
+
+
+@blueprint.get("/api/ais/vessels/<int:vessel_id>")
+def get_vessel(vessel_id: int):
+    vessel = container().get_vessel_details.execute(vessel_id)
+    return jsonify(status="success", vessel=vessel)
+
+
+@blueprint.route("/api/ais/vessels/<int:vessel_id>", methods=["PUT", "PATCH", "POST"])
+def update_vessel(vessel_id: int):
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name") if "name" in payload else payload.get("vessel_name")
+    vessel_type = payload.get("type") if "type" in payload else payload.get("vessel_type")
+    callsign = payload.get("callsign")
+    imo = payload.get("imo")
+
+    updated = container().update_vessel_details.execute(
+        vessel_id=vessel_id,
+        name=name,
+        vessel_type=vessel_type,
+        callsign=callsign,
+        imo=imo,
+    )
+    return jsonify(status="success", vessel=updated)

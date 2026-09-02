@@ -235,6 +235,62 @@
     </div>
 </div>
 
+<!-- Edit Vessel Details Modal -->
+<div id="editVesselModal" class="inspector-modal" onclick="if(event.target === this) closeEditVesselModal()">
+    <div class="inspector-card" style="width: 440px;">
+        <button class="inspector-close-btn" onclick="closeEditVesselModal()">&times;</button>
+        <h3 style="margin-top: 0; margin-bottom: 6px;">✏️ Edit Vessel Details</h3>
+        <p style="font-size: 0.82em; color: #6c757d; margin-top: 0; margin-bottom: 16px;">Update vessel classification, registration, and callsign attributes.</p>
+
+        <form id="editVesselForm" onsubmit="saveVesselDetails(event)">
+            <input type="hidden" id="editVesselId">
+
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.82em; font-weight: 600; color: #495057; margin-bottom: 4px;">MMSI (Identifier)</label>
+                <input type="text" id="editVesselMmsi" disabled style="width: 100%; padding: 7px 10px; font-size: 0.9em; background: #e9ecef; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box; cursor: not-allowed; color: #495057;">
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.82em; font-weight: 600; color: #495057; margin-bottom: 4px;">Vessel Name</label>
+                <input type="text" id="editVesselName" placeholder="e.g. EVER GIVEN" style="width: 100%; padding: 7px 10px; font-size: 0.9em; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box;">
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label style="display: block; font-size: 0.82em; font-weight: 600; color: #495057; margin-bottom: 4px;">Ship Classification / Type</label>
+                <select id="editVesselTypeSelect" style="width: 100%; padding: 7px 10px; font-size: 0.9em; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box; background: #fff;" onchange="onVesselTypeSelectChange(this.value)">
+                    <option value="Cargo">Cargo</option>
+                    <option value="Tanker">Tanker</option>
+                    <option value="Passenger">Passenger</option>
+                    <option value="Tug">Tug / Pilot</option>
+                    <option value="Fishing">Fishing</option>
+                    <option value="Military">Military / SAR</option>
+                    <option value="Pleasure">Pleasure / Sailing</option>
+                    <option value="High Speed Craft">High Speed Craft</option>
+                    <option value="Unspecified">Unspecified / Other</option>
+                    <option value="__custom__">Custom Type...</option>
+                </select>
+                <input type="text" id="editVesselTypeCustom" placeholder="Enter custom ship type" style="display: none; width: 100%; margin-top: 6px; padding: 7px 10px; font-size: 0.9em; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box;">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px;">
+                <div>
+                    <label style="display: block; font-size: 0.82em; font-weight: 600; color: #495057; margin-bottom: 4px;">IMO Number</label>
+                    <input type="text" id="editVesselImo" placeholder="e.g. 9811000" style="width: 100%; padding: 7px 10px; font-size: 0.9em; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.82em; font-weight: 600; color: #495057; margin-bottom: 4px;">Callsign</label>
+                    <input type="text" id="editVesselCallsign" placeholder="e.g. H3RC" style="width: 100%; padding: 7px 10px; font-size: 0.9em; border: 1px solid #ced4da; border-radius: 4px; box-sizing: border-box;">
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;">
+                <button type="button" style="padding: 7px 14px; font-size: 0.88em; background: #e9ecef; color: #495057; border: 1px solid #ced4da; border-radius: 4px; cursor: pointer;" onclick="closeEditVesselModal()">Cancel</button>
+                <button type="submit" id="saveVesselBtn" style="padding: 7px 16px; font-size: 0.88em; background: #007bff; color: #ffffff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>

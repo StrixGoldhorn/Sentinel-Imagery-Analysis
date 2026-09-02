@@ -282,13 +282,15 @@ async function toggleScraper(pluginName, checkbox) {
 /**
  * Open configuration modal
  */
-function openConfigModal(pluginName) {
+async function openConfigModal(pluginName) {
     const scraper = allScrapers.find(s => s.name === pluginName);
     if (!scraper) return;
 
     const modal = document.getElementById('scraperConfigModal');
     const title = document.getElementById('modalScraperTitle');
     const hiddenName = document.getElementById('configPluginName');
+    const enabledCheckbox = document.getElementById('cfgEnabled');
+    const descInput = document.getElementById('cfgDescription');
     const proxyInput = document.getElementById('cfgProxyUrl');
     const apiKeyInput = document.getElementById('cfgApiKey');
     const hostInput = document.getElementById('cfgHost');
@@ -305,6 +307,9 @@ function openConfigModal(pluginName) {
 
     title.textContent = `Configure ${scraper.display_name}`;
     hiddenName.value = pluginName;
+
+    if (enabledCheckbox) enabledCheckbox.checked = Boolean(scraper.enabled);
+    if (descInput) descInput.value = scraper.description || '';
 
     const cfg = scraper.config || {};
     proxyInput.value = cfg.proxy_url || '';
@@ -330,6 +335,30 @@ function openConfigModal(pluginName) {
     }
 
     modal.style.display = 'flex';
+
+    // Fetch fresh details from individual scraper API
+    try {
+        const response = await fetch(`/api/scrapers/${encodeURIComponent(pluginName)}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.status === 'success' && data.scraper) {
+                const fresh = data.scraper;
+                if (enabledCheckbox) enabledCheckbox.checked = Boolean(fresh.enabled);
+                if (descInput) descInput.value = fresh.description || '';
+                const freshCfg = fresh.config || {};
+                proxyInput.value = freshCfg.proxy_url || '';
+                apiKeyInput.value = freshCfg.api_key || '';
+                hostInput.value = freshCfg.host || '0.0.0.0';
+                portInput.value = freshCfg.port || 10110;
+                uaInput.value = freshCfg.user_agent || '';
+                timeoutInput.value = freshCfg.timeout || 30;
+                if (zoneDelayInput) zoneDelayInput.value = (freshCfg.zone_delay_seconds !== undefined ? freshCfg.zone_delay_seconds : (freshCfg.zone_delay !== undefined ? freshCfg.zone_delay : 0));
+                if (zoneSizeInput) zoneSizeInput.value = (freshCfg.zone_size_nm !== undefined ? freshCfg.zone_size_nm : 10.0);
+            }
+        }
+    } catch (err) {
+        console.warn('Could not fetch individual scraper detail:', err);
+    }
 }
 
 function closeConfigModal() {
@@ -344,6 +373,8 @@ async function saveScraperConfig(event) {
     event.preventDefault();
     const pluginName = document.getElementById('configPluginName').value;
     const btnSave = document.getElementById('btnSaveConfig');
+    const enabledCheckbox = document.getElementById('cfgEnabled');
+    const descInput = document.getElementById('cfgDescription');
 
     const configData = {
         proxy_url: document.getElementById('cfgProxyUrl').value.trim(),
@@ -356,19 +387,25 @@ async function saveScraperConfig(event) {
         zone_size_nm: parseFloat(document.getElementById('cfgZoneSize').value) || 10.0,
     };
 
+    const payload = {
+        enabled: enabledCheckbox ? enabledCheckbox.checked : true,
+        description: descInput ? descInput.value.trim() : null,
+        config: configData,
+    };
+
     btnSave.disabled = true;
     btnSave.textContent = 'Saving...';
 
     try {
-        const response = await fetch(`/api/scrapers/${encodeURIComponent(pluginName)}/config`, {
-            method: 'POST',
+        const response = await fetch(`/api/scrapers/${encodeURIComponent(pluginName)}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(configData),
+            body: JSON.stringify(payload),
         });
         const data = await response.json();
 
         if (data.status === 'success') {
-            showToast(`Configuration for "${pluginName}" saved successfully.`, 'success');
+            showToast(`Scraper "${pluginName}" updated successfully.`, 'success');
             closeConfigModal();
             loadScrapersData();
         } else {
@@ -378,7 +415,7 @@ async function saveScraperConfig(event) {
         showToast(`Network error saving configuration: ${err.message}`, 'error');
     } finally {
         btnSave.disabled = false;
-        btnSave.textContent = 'Save Configuration';
+        btnSave.textContent = 'Save Changes';
     }
 }
 

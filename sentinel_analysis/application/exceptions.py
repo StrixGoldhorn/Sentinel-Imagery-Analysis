@@ -33,3 +33,7 @@ class NoImageryFoundError(ApplicationError):
 
 class ScanNotFoundError(ApplicationError):
     """Raised when a requested scan does not exist."""
+
+
+class VesselNotFoundError(ApplicationError, LookupError):
+    """Raised when a vessel command targets a missing record."""

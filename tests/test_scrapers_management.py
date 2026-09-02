@@ -53,11 +53,34 @@ class MemoryAISRepository:
         return {
             "plugin_name": plugin_name,
             "enabled": self._configs[plugin_name],
+            "description": getattr(self, "_descriptions", {}).get(plugin_name),
             "config": self._custom_configs.get(plugin_name, {}),
             "cooldown_until": f_info.get("cooldown_until"),
             "consecutive_failures": f_info.get("consecutive_failures", 0),
             "last_failure_reason": f_info.get("reason"),
         }
+
+    def get_scraper_detail(self, plugin_name: str):
+        return self.get_scraper_config(plugin_name)
+
+    def update_scraper(
+        self,
+        plugin_name: str,
+        enabled: bool | None = None,
+        description: str | None = None,
+        config: dict | None = None,
+    ):
+        if not hasattr(self, "_descriptions"):
+            self._descriptions = {}
+        if enabled is not None:
+            self._configs[plugin_name] = enabled
+        elif plugin_name not in self._configs:
+            self._configs[plugin_name] = True
+        if description is not None:
+            self._descriptions[plugin_name] = description
+        if config is not None:
+            self._custom_configs[plugin_name] = config
+        return self.get_scraper_config(plugin_name)
 
     def set_scraper_config(self, plugin_name: str, enabled: bool):
         self._configs[plugin_name] = enabled
