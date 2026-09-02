@@ -36,19 +36,53 @@ class Sentinel1MissionAnalyzer:
     def __init__(self, data_provider: HistoricalDataProvider | None = None) -> None:
         self._provider = data_provider
 
+    @staticmethod
+    def calculate_dynamic_history_limit(bbox: BoundingBox) -> int:
+        """Calculate historical query depth based on latitude.
+
+        Sentinel-1 operates in a Sun-synchronous near-polar orbit (~98.18° inclination).
+        Ground tracks converge towards polar regions, resulting in higher temporal resolution
+        and multiple overlapping orbit swaths for areas further from the equator.
+        """
+        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+        if lat >= 50.0:
+            return 500  # High latitudes (e.g. North Sea, Arctic, Baltic)
+        if lat >= 30.0:
+            return 300  # Mid latitudes (e.g. Mediterranean, Japan, US)
+        if lat >= 15.0:
+            return 200  # Sub-tropical latitudes
+        return 150      # Equatorial latitudes (e.g. Singapore, Panama)
+
+    @staticmethod
+    def get_nominal_revisit_days(bbox: BoundingBox) -> float:
+        """Estimate nominal revisit frequency (in days) according to latitude convergence."""
+        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+        if lat >= 60.0:
+            return 1.5
+        if lat >= 45.0:
+            return 2.5
+        if lat >= 30.0:
+            return 3.5
+        if lat >= 15.0:
+            return 4.5
+        return 6.0
+
     def analyze_history(
         self,
         bbox: BoundingBox,
-        limit: int = 100,
+        limit: int | None = None,
     ) -> tuple[MissionAnalysisSummary, list[HistoricalMissionPass]]:
-        raw_passes = self._fetch_history(bbox, limit=limit)
+        fetch_limit = limit if limit is not None else self.calculate_dynamic_history_limit(bbox)
+        raw_passes = self._fetch_history(bbox, limit=fetch_limit)
+        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+
         if not raw_passes:
             # Baseline summary when catalog history is empty or unpopulated
             summary: MissionAnalysisSummary = {
                 "total_acquisitions": 0,
                 "first_acquisition": None,
                 "latest_acquisition": None,
-                "average_revisit_days": 6.0,  # Nominal 2-satellite Sentinel-1 constellation cadence
+                "average_revisit_days": self.get_nominal_revisit_days(bbox),
                 "dominant_tracks": [],
                 "ascending_count": 0,
                 "descending_count": 0,
@@ -79,7 +113,7 @@ class Sentinel1MissionAnalyzer:
         avg_revisit = (
             round(sum(revisit_deltas) / len(revisit_deltas), 1)
             if revisit_deltas
-            else 12.0
+            else self.get_nominal_revisit_days(bbox)
         )
 
         tracks = [p["relative_orbit"] for p in sorted_passes if p.get("relative_orbit") is not None]
@@ -138,7 +172,7 @@ class Sentinel1MissionAnalyzer:
         limit: int = 20,
     ) -> list[PassPrediction]:
         """Project future Sentinel-1 passes using exact 12-day / 175-orbit repeat cycle mechanics."""
-        _, history = self.analyze_history(bbox, limit=100)
+        _, history = self.analyze_history(bbox, limit=None)
         now = datetime.now(timezone.utc)
         max_time = now + timedelta(days=max(1, days_ahead))
 
@@ -172,7 +206,7 @@ class Sentinel1MissionAnalyzer:
                             satellite=platform,
                             orbit_direction=direction,
                             relative_orbit=track,
-                            confidence_score=0.92,
+                            confidence_score=0.94,
                             swath_mode="IW",
                             historical_match=(
                                 f"Historical Track #{track} repeat cycle (+12d cadence)"
@@ -196,7 +230,7 @@ class Sentinel1MissionAnalyzer:
                             satellite=twin_platform,
                             orbit_direction=direction,
                             relative_orbit=track,
-                            confidence_score=0.88,
+                            confidence_score=0.90,
                             swath_mode="IW",
                             historical_match=(
                                 f"Constellation 180° offset for Track #{track}"

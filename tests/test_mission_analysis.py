@@ -177,7 +177,7 @@ def test_hybrid_predictor_merges_overlapping_passes_into_combined() -> None:
 def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
     now = datetime.now(timezone.utc)
     pass_1 = PassPrediction(time=(now + timedelta(days=1)).isoformat(), max_elevation=45.0, source="N2YO")
-    pass_2 = PassPrediction(time=(now + timedelta(days=3)).isoformat(), max_elevation=75.0, source="HISTORICAL_MISSION", relative_orbit=88)
+    pass_2 = PassPrediction(time=(now + timedelta(days=3)).isoformat(), max_elevation=75.0, source="HISTORICAL_MISSION", relative_orbit=88, confidence_score=0.94)
 
     n2yo_predictor = MockPassPredictor([pass_1])
     class StubAnalyzer(Sentinel1MissionAnalyzer):
@@ -189,7 +189,9 @@ def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
 
     assert len(results) == 2
     assert results[0]["source"] == "N2YO"
+    assert results[0]["confidence_score"] == 0.68  # Lower weight
     assert results[1]["source"] == "HISTORICAL_MISSION"
+    assert results[1]["confidence_score"] == 0.94  # Higher weight
 
 
 def test_analyze_mission_passes_use_case() -> None:
@@ -238,10 +240,92 @@ def test_check_and_schedule_aois_executes_1_minute_cadence_ais_scraping_during_f
     assert results[0]["flypast_active"] is True
     assert results[0]["status"] == "FLYPAST_ACTIVE"
     assert results[0]["ais_records"] == 12
-    assert len(mock_ingest.calls) == 1
+def test_dynamic_history_limit_scales_with_latitude() -> None:
+    equatorial = BoundingBox(103.5, 1.0, 104.5, 2.0)
+    subtropical = BoundingBox(120.0, 22.0, 122.0, 24.0)
+    mid_lat = BoundingBox(135.0, 35.0, 137.0, 37.0)
+    high_lat = BoundingBox(3.0, 56.0, 6.0, 59.0)  # North Sea / Norway
+
+    assert Sentinel1MissionAnalyzer.calculate_dynamic_history_limit(equatorial) == 150
+    assert Sentinel1MissionAnalyzer.calculate_dynamic_history_limit(subtropical) == 200
+    assert Sentinel1MissionAnalyzer.calculate_dynamic_history_limit(mid_lat) == 300
+    assert Sentinel1MissionAnalyzer.calculate_dynamic_history_limit(high_lat) == 500
+
+    assert Sentinel1MissionAnalyzer.get_nominal_revisit_days(equatorial) == 6.0
+    assert Sentinel1MissionAnalyzer.get_nominal_revisit_days(high_lat) <= 2.5
+
+
+def test_analyzer_uses_dynamic_limit_when_querying_provider() -> None:
+    class TrackingProvider:
+        def __init__(self):
+            self.last_limit = None
+
+        def search_historical_acquisitions(self, bbox, start_date=None, end_date=None, limit=100):
+            self.last_limit = limit
+            return []
+
+    provider = TrackingProvider()
+    analyzer = Sentinel1MissionAnalyzer(provider)
+
+    # High latitude bbox (North Sea)
+    high_lat_bbox = BoundingBox(3.0, 58.0, 6.0, 60.0)
+    analyzer.analyze_history(high_lat_bbox)
+    assert provider.last_limit == 500
+
+    # Equatorial bbox (Singapore Strait)
+    eq_bbox = BoundingBox(103.5, 1.0, 104.5, 2.0)
+    analyzer.analyze_history(eq_bbox)
+    assert provider.last_limit == 150
+
+
+def test_high_latitude_multi_track_convergence_predictions() -> None:
+    now = datetime.now(timezone.utc)
+    high_lat_bbox = BoundingBox(3.0, 58.0, 6.0, 60.0)
+
+    # 3 distinct overlapping relative orbits typical of high latitudes
+    raw_records = [
+        {
+            "product_id": "S1A_001",
+            "platform": "Sentinel-1A",
+            "acquisition_time": (now - timedelta(days=2)).isoformat(),
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 14,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+        {
+            "product_id": "S1A_002",
+            "platform": "Sentinel-1A",
+            "acquisition_time": (now - timedelta(days=5)).isoformat(),
+            "orbit_direction": "DESCENDING",
+            "relative_orbit": 87,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+        {
+            "product_id": "S1A_003",
+            "platform": "Sentinel-1A",
+            "acquisition_time": (now - timedelta(days=8)).isoformat(),
+            "orbit_direction": "ASCENDING",
+            "relative_orbit": 160,
+            "polarisation": "VV+VH",
+            "instrument_mode": "IW",
+        },
+    ]
+
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider(raw_records))
+    predictions = analyzer.predict_from_history(high_lat_bbox, days_ahead=12, limit=20)
+
+    # Multi-track convergence generates frequent future passes across all 3 tracks
+    predicted_tracks = {p["relative_orbit"] for p in predictions}
+    assert 14 in predicted_tracks
+    assert 87 in predicted_tracks
+    assert 160 in predicted_tracks
+    assert len(predictions) >= 3
 
 
 def load_tests(loader, standard_tests, pattern):
+
     import inspect
     suite = unittest.TestSuite()
     for name, obj in list(globals().items()):

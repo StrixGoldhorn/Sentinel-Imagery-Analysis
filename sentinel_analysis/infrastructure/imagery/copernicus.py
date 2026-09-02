@@ -210,7 +210,7 @@ class CopernicusImageryProvider:
                     "bbox": ",".join(map(str, bbox.as_list())),
                     "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
                     "collections": "sentinel-1-grd",
-                    "limit": max(1, min(limit, 250)),
+                    "limit": max(1, min(limit, 500)),
                 },
                 timeout=60,
             )
