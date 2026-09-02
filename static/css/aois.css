@@ -328,6 +328,39 @@ body {
     border: 1px solid #d2e3fc;
 }
 
+.flypast-cache-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.flypast-ttl-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: #495057;
+    font-weight: 500;
+    margin: 0;
+}
+
+.flypast-ttl-select {
+    padding: 2px 6px;
+    font-size: 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    background-color: #ffffff;
+    color: #212529;
+    cursor: pointer;
+    outline: none;
+}
+
+.flypast-ttl-select:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25);
+}
+
 .flypast-refresh-btn {
     display: inline-flex;
     align-items: center;

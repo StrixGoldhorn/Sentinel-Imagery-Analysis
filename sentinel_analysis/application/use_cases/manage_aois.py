@@ -38,7 +38,7 @@ class PredictAreaOfInterest:
         predictor: PassPredictor,
         mission_analyzer: Optional[MissionPassAnalyzer] = None,
         n2yo_predictor: Optional[PassPredictor] = None,
-        cache_ttl_seconds: int = 3600,
+        cache_ttl_seconds: int = 10800,
     ) -> None:
         self._repository = repository
         self._predictor = predictor
@@ -64,6 +64,7 @@ class PredictAreaOfInterest:
         aoi_id: int,
         api_key: str,
         force_refresh: bool = False,
+        cache_ttl_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
         if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
             raise ValueError("Area-of-interest ID must be a positive integer")
@@ -71,12 +72,22 @@ class PredictAreaOfInterest:
         if aoi is None:
             raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
 
+        effective_ttl = (
+            cache_ttl_seconds
+            if cache_ttl_seconds is not None and isinstance(cache_ttl_seconds, int) and cache_ttl_seconds > 0
+            else self._cache_ttl_seconds
+        )
+
+        # 1. Check database cache first if not explicitly refreshing
         if not force_refresh and hasattr(self._repository, "get_cached_forecast"):
-            cached = self._repository.get_cached_forecast(aoi_id)
-            if cached is not None:
-                cached["cached"] = True
-                cached["name"] = aoi.name
-                return cached
+            try:
+                cached = self._repository.get_cached_forecast(aoi_id)
+                if cached is not None:
+                    cached_dict = dict(cached)
+                    cached_dict["cached"] = True
+                    return cached_dict
+            except Exception:
+                pass
 
         predictions = self.execute(aoi_id, api_key)
 
@@ -115,7 +126,7 @@ class PredictAreaOfInterest:
 
         now = datetime.now(timezone.utc)
         fetched_at = now
-        expires_at = now + timedelta(seconds=self._cache_ttl_seconds)
+        expires_at = now + timedelta(seconds=effective_ttl)
 
         forecast_result: dict[str, Any] = {
             "aoi_id": aoi.id,
@@ -135,10 +146,9 @@ class PredictAreaOfInterest:
                 self._repository.save_cached_forecast(
                     aoi_id=aoi.id,
                     forecast_data=forecast_result,
-                    ttl_seconds=self._cache_ttl_seconds,
+                    ttl_seconds=effective_ttl,
                 )
             except Exception:
                 pass
 
         return forecast_result
-

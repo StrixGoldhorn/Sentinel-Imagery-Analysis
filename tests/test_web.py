@@ -445,6 +445,12 @@ def test_predict_aoi_route_supports_refresh_flag_and_cache_metadata() -> None:
     assert res_refresh.status_code == 200
     assert container.predict_aoi.keyword_calls[-1].get("force_refresh") is True
 
+    # Custom ttl_hours query parameter
+    res_ttl = client.post("/api/aoi/1/predict?ttl_hours=6")
+    assert res_ttl.status_code == 200
+    assert container.predict_aoi.keyword_calls[-1].get("cache_ttl_seconds") == 21600
+
+
 
 
 def test_schedule_page_route() -> None:

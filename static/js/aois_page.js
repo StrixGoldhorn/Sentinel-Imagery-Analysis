@@ -156,7 +156,23 @@ async function toggleFlypasts(aoiId) {
     }
 }
 
-async function loadFlypastsData(aoiId, forceRefresh = false) {
+function getPreferredCacheTtlHours() {
+    const val = localStorage.getItem('aoi_forecast_cache_ttl_hours');
+    return val !== null ? parseFloat(val) : 3;
+}
+
+function setPreferredCacheTtlHours(hours) {
+    localStorage.setItem('aoi_forecast_cache_ttl_hours', hours.toString());
+}
+
+async function changeFlypastCacheTtl(aoiId, ttlHoursStr) {
+    const hours = parseFloat(ttlHoursStr);
+    setPreferredCacheTtlHours(hours);
+    delete aoiPredictionsCache[aoiId];
+    await loadFlypastsData(aoiId, true, hours);
+}
+
+async function loadFlypastsData(aoiId, forceRefresh = false, customTtlHours = null) {
     const contentDiv = document.getElementById(`flypasts-content-${aoiId}`);
     if (contentDiv) {
         contentDiv.innerHTML = `
@@ -167,7 +183,11 @@ async function loadFlypastsData(aoiId, forceRefresh = false) {
     }
 
     try {
-        const url = forceRefresh ? `/api/aoi/${aoiId}/predict?refresh=true` : `/api/aoi/${aoiId}/predict`;
+        const ttlHours = customTtlHours !== null ? customTtlHours : getPreferredCacheTtlHours();
+        let url = `/api/aoi/${aoiId}/predict?ttl_hours=${encodeURIComponent(ttlHours)}`;
+        if (forceRefresh || ttlHours === 0) {
+            url += '&refresh=true';
+        }
         const response = await fetch(url, { method: 'POST' });
         const data = await response.json();
 
@@ -196,6 +216,8 @@ function renderFlypasts(aoiId, data) {
     const histPredictions = data.historical_predictions || [];
     const combinedPredictions = (data.predictions || []).slice(0, 10);
     const missionAnalysis = data.mission_analysis;
+
+    const currentTtl = getPreferredCacheTtlHours();
 
     if (n2yoPredictions.length === 0 && histPredictions.length === 0 && combinedPredictions.length === 0) {
         container.innerHTML = `
@@ -228,7 +250,21 @@ function renderFlypasts(aoiId, data) {
 
     container.innerHTML = `
         <div class="flypast-header-bar">
-            <div>${cacheBadge}</div>
+            <div class="flypast-cache-info">
+                ${cacheBadge}
+                <label class="flypast-ttl-label" for="flypast-ttl-${aoiId}">
+                    <span>Cache:</span>
+                    <select class="flypast-ttl-select" id="flypast-ttl-${aoiId}" onchange="changeFlypastCacheTtl(${aoiId}, this.value)" title="Change how long forecasts are cached in the database">
+                        <option value="0.5" ${currentTtl === 0.5 ? 'selected' : ''}>30 mins</option>
+                        <option value="1" ${currentTtl === 1 ? 'selected' : ''}>1 hour</option>
+                        <option value="3" ${currentTtl === 3 ? 'selected' : ''}>3 hours (Default)</option>
+                        <option value="6" ${currentTtl === 6 ? 'selected' : ''}>6 hours</option>
+                        <option value="12" ${currentTtl === 12 ? 'selected' : ''}>12 hours</option>
+                        <option value="24" ${currentTtl === 24 ? 'selected' : ''}>24 hours</option>
+                        <option value="0" ${currentTtl === 0 ? 'selected' : ''}>No Cache (Always Live)</option>
+                    </select>
+                </label>
+            </div>
             <button class="flypast-refresh-btn" onclick="refreshFlypasts(${aoiId})" title="Force recalculation and update local database cache">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -238,6 +274,7 @@ function renderFlypasts(aoiId, data) {
                 Refresh Forecast
             </button>
         </div>
+
         ${statsHtml}
         <div class="flypast-tabs" id="flypast-tabs-${aoiId}">
             <button class="flypast-tab-btn ${defaultTab === 'n2yo' ? 'active' : ''}" onclick="switchFlypastTab(${aoiId}, 'n2yo')">

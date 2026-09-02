@@ -37,11 +37,28 @@ def add_aoi():
 @blueprint.post("/api/aoi/<int:aoi_id>/predict")
 def predict_aoi(aoi_id: int):
     force_refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")
-    if not force_refresh and request.is_json:
+    custom_ttl = None
+
+    if "cache_ttl" in request.args:
+        try:
+            custom_ttl = int(request.args["cache_ttl"])
+        except ValueError:
+            pass
+    elif "ttl_hours" in request.args:
+        try:
+            custom_ttl = int(float(request.args["ttl_hours"]) * 3600)
+        except ValueError:
+            pass
+
+    if request.is_json:
         try:
             body = request.get_json(silent=True) or {}
             if body.get("refresh") or body.get("force_refresh"):
                 force_refresh = True
+            if "cache_ttl_seconds" in body:
+                custom_ttl = int(body["cache_ttl_seconds"])
+            elif "ttl_hours" in body:
+                custom_ttl = int(float(body["ttl_hours"]) * 3600)
         except Exception:
             pass
 
@@ -49,9 +66,18 @@ def predict_aoi(aoi_id: int):
     use_case = container().predict_aoi
     if hasattr(use_case, "execute_with_analysis"):
         try:
-            result = use_case.execute_with_analysis(aoi_id, api_key, force_refresh=force_refresh)
+            result = use_case.execute_with_analysis(
+                aoi_id,
+                api_key,
+                force_refresh=force_refresh,
+                cache_ttl_seconds=custom_ttl,
+            )
         except TypeError:
-            result = use_case.execute_with_analysis(aoi_id, api_key)
+            try:
+                result = use_case.execute_with_analysis(aoi_id, api_key, force_refresh=force_refresh)
+            except TypeError:
+                result = use_case.execute_with_analysis(aoi_id, api_key)
+
         predictions = result.get("predictions", [])
         n2yo_predictions = result.get("n2yo_predictions", [])
         historical_predictions = result.get("historical_predictions", [])

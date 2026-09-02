@@ -465,6 +465,58 @@ def test_predict_aoi_force_refresh_bypasses_cache_and_updates_db() -> None:
     assert repository.cached_forecast["next_scan"] == "2026-09-01T18:00:00+00:00"
 
 
+def test_predict_aoi_cache_ttl_defaults_to_3_hours() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Singapore", BBOX, id=1))
+
+    class MockPredictor:
+        def predict(self, bbox, api_key):
+            return [{"time": "2026-09-02T12:00:00Z", "max_elevation": 70.0, "source": "N2YO"}]
+
+    predictor = MockPredictor()
+    use_case = PredictAreaOfInterest(repository, predictor=predictor)
+
+    result = use_case.execute_with_analysis(1, "test_key")
+
+    assert result["cached"] is False
+    assert len(repository.saved_forecasts) == 1
+    aoi_id, forecast_data, ttl_seconds = repository.saved_forecasts[0]
+    assert aoi_id == 1
+    assert ttl_seconds == 10800  # 3 hours in seconds
+
+    # Verify expiration timestamp is approximately 3 hours after fetch
+    fetched_dt = datetime.fromisoformat(result["fetched_at"].replace("Z", "+00:00"))
+    expires_dt = datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00"))
+    delta_seconds = (expires_dt - fetched_dt).total_seconds()
+    assert abs(delta_seconds - 10800) < 5
+
+
+def test_predict_aoi_custom_cache_ttl_override() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Singapore", BBOX, id=1))
+
+    class MockPredictor:
+        def predict(self, bbox, api_key):
+            return [{"time": "2026-09-02T12:00:00Z", "max_elevation": 70.0, "source": "N2YO"}]
+
+    predictor = MockPredictor()
+    use_case = PredictAreaOfInterest(repository, predictor=predictor)
+
+    # Custom 6 hours (21600 seconds)
+    result = use_case.execute_with_analysis(1, "test_key", cache_ttl_seconds=21600)
+
+    assert result["cached"] is False
+    assert len(repository.saved_forecasts) == 1
+    aoi_id, forecast_data, ttl_seconds = repository.saved_forecasts[0]
+    assert aoi_id == 1
+    assert ttl_seconds == 21600
+
+    fetched_dt = datetime.fromisoformat(result["fetched_at"].replace("Z", "+00:00"))
+    expires_dt = datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00"))
+    delta_seconds = (expires_dt - fetched_dt).total_seconds()
+    assert abs(delta_seconds - 21600) < 5
+
+
+
+
 
 
 def load_tests(loader, standard_tests, pattern):
