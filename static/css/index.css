@@ -221,15 +221,22 @@ details.closing summary ~ * {
     border: 2px solid !important;
     border-bottom: none !important;
     border-radius: 6px 6px 0 0 !important;
-    padding: 4px 10px !important;
+    padding: 5px 12px !important;
     font-size: 11.5px !important;
     line-height: 1.35 !important;
     margin: 0 !important;
     translate: 0 calc(-50% + 2px) !important;
     box-shadow: 0 -2px 6px rgba(0,0,0,0.25) !important;
-    pointer-events: none !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
     white-space: nowrap !important;
     user-select: none !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.folder-tab-tooltip:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.35) !important;
+    filter: brightness(1.12);
 }
 .folder-tab-tooltip strong {
     display: block;
@@ -238,6 +245,25 @@ details.closing summary ~ * {
     color: #ffffff;
     letter-spacing: 0.2px;
 }
+.tab-cv-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px;
+    margin-top: 3px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(52, 152, 219, 0.25);
+    color: #93c5fd;
+    border: 1px solid rgba(52, 152, 219, 0.5);
+    letter-spacing: 0.2px;
+}
+.tab-cv-badge.has-detections {
+    background: rgba(230, 126, 34, 0.3);
+    color: #fed7aa;
+    border-color: rgba(230, 126, 34, 0.7);
+}
 .folder-tab-sar { border-color: #3498db !important; }
 .folder-tab-cv { border-color: #ff3333 !important; }
 .folder-tab-obb { border-color: #e67e22 !important; }
@@ -245,6 +271,167 @@ details.closing summary ~ * {
 .folder-tab-tooltip::before,
 .folder-tab-tooltip::after {
     display: none !important; /* Hides default leaflet tooltip arrow */
+}
+
+/* SAR Tab Quick Actions Popup */
+.sar-tab-popup .leaflet-popup-content-wrapper {
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.22);
+    padding: 4px;
+}
+.sar-tab-popup .leaflet-popup-content {
+    margin: 10px 14px;
+    line-height: 1.4;
+}
+.sar-tab-popup h4 {
+    margin: 0 0 6px 0;
+    font-size: 0.98rem;
+    color: #1e293b;
+    word-break: break-word;
+}
+.sar-tab-popup .sar-tab-popup-meta {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+.sar-tab-popup .sar-tab-popup-count-box {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 10px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.82rem;
+}
+.sar-tab-popup-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sar-tab-popup-actions button {
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: center;
+    border: none;
+    transition: all 0.15s ease;
+}
+.sar-tab-popup-btn-primary {
+    background: #007bff;
+    color: #ffffff;
+}
+.sar-tab-popup-btn-primary:hover {
+    background: #0056b3;
+}
+.sar-tab-popup-btn-secondary {
+    background: #e2e8f0;
+    color: #334155;
+    border: 1px solid #cbd5e1 !important;
+}
+.sar-tab-popup-btn-secondary:hover {
+    background: #cbd5e1;
+}
+
+/* SAR Ship Detection List Cards */
+.detection-item-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.detection-item-card:hover {
+    border-color: #93c5fd;
+    box-shadow: 0 4px 12px rgba(0,123,255,0.12);
+    transform: translateY(-1px);
+}
+.detection-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.detection-item-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.detection-confidence-badge {
+    font-size: 0.76rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+.detection-confidence-badge.medium {
+    background: #fffbeb;
+    color: #d97706;
+    border-color: #fde68a;
+}
+.detection-confidence-badge.low {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+.detection-item-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 6px 12px;
+    background: #f8fafc;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+.detection-item-field {
+    display: flex;
+    flex-direction: column;
+}
+.detection-item-field span.lbl {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+.detection-item-field span.val {
+    font-weight: 600;
+    color: #1e293b;
+}
+.detection-item-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+.detection-item-actions button {
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    border: none;
+    transition: background-color 0.15s;
+}
+.sar-detections-empty {
+    text-align: center;
+    padding: 30px 20px;
+    color: #64748b;
+    background: #f8fafc;
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
 }
 
 /* Crop & Detection Inspector Modal */
