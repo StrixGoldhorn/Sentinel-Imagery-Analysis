@@ -19,30 +19,34 @@ class MigrationRunner:
     def run_migrations(self) -> list[str]:
         """Apply all pending migrations in alphabetical order within a transaction."""
         applied: list[str] = []
-        with sqlite3.connect(self._database_path) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS _schema_migrations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    version TEXT NOT NULL UNIQUE,
-                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                );
-                """
-            )
-            already_applied = {
-                row[0]
-                for row in connection.execute("SELECT version FROM _schema_migrations").fetchall()
-            }
+        connection = sqlite3.connect(self._database_path)
+        try:
+            with connection:
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS _schema_migrations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        version TEXT NOT NULL UNIQUE,
+                        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+                already_applied = {
+                    row[0]
+                    for row in connection.execute("SELECT version FROM _schema_migrations").fetchall()
+                }
 
-            migration_files = sorted(self._migrations_dir.glob("*.sql"))
-            for file_path in migration_files:
-                version = file_path.name
-                if version not in already_applied:
-                    sql = file_path.read_text(encoding="utf-8")
-                    connection.executescript(sql)
-                    connection.execute(
-                        "INSERT INTO _schema_migrations (version) VALUES (?)",
-                        (version,),
-                    )
-                    applied.append(version)
+                migration_files = sorted(self._migrations_dir.glob("*.sql"))
+                for file_path in migration_files:
+                    version = file_path.name
+                    if version not in already_applied:
+                        sql = file_path.read_text(encoding="utf-8")
+                        connection.executescript(sql)
+                        connection.execute(
+                            "INSERT INTO _schema_migrations (version) VALUES (?)",
+                            (version,),
+                        )
+                        applied.append(version)
+        finally:
+            connection.close()
         return applied

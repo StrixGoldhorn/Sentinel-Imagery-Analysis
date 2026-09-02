@@ -1,8 +1,13 @@
 """Unit tests for the FilesystemTileCache."""
 
 import shutil
+import tempfile
 import unittest
 from pathlib import Path
+
+_TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
+_TMP_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(_TMP_DIR)
 
 from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 

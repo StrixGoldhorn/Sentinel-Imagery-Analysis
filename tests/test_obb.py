@@ -1,7 +1,12 @@
 """Unit tests for Oriented Bounding Box (OBB) ship detection."""
 
+import tempfile
 import unittest
 from pathlib import Path
+
+_TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
+_TMP_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(_TMP_DIR)
 
 import numpy as np
 from PIL import Image

@@ -180,6 +180,70 @@
             <a href="/aois" class="btn btn-primary">Check Areas of Interest</a>
         </div>
 
+        <!-- Autonomous Post-Pass Imagery Ingestion Pipeline Section -->
+        <div class="post-pass-section" style="background: white; border-radius: 10px; border: 1px solid #e2e8f0; padding: 24px; margin-top: 30px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="background: rgba(79, 70, 229, 0.1); color: #4f46e5; width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem; color: #1e293b; display: flex; align-items: center; gap: 8px;">
+                            Autonomous Post-Pass Ingestion Pipeline
+                            <span id="postPassCountBadge" class="badge badge-secondary" style="font-size: 0.75rem;">0 active</span>
+                        </h3>
+                        <p style="margin: 3px 0 0; font-size: 0.85rem; color: #64748b;">
+                            Autonomously polls Copernicus Data Space catalog for newly published SAR GRD products following completed passes and triggers scan stitching.
+                        </p>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <select id="filterPostPassStatus" class="select-control" style="font-size: 0.85rem; padding: 6px 12px;" onchange="loadPostPassJobs()">
+                        <option value="">All Job Statuses</option>
+                        <option value="POLLING_CATALOG">Polling Catalog</option>
+                        <option value="INGESTING">Ingesting &amp; Stitching</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="TIMED_OUT">Timed Out</option>
+                        <option value="FAILED">Failed</option>
+                    </select>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="loadPostPassJobs()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                        Refresh Jobs
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive" style="overflow-x: auto;">
+                <table class="table" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left;">
+                            <th style="padding: 10px 14px; color: #475569;">AOI &amp; Pass Time</th>
+                            <th style="padding: 10px 14px; color: #475569;">Satellite</th>
+                            <th style="padding: 10px 14px; color: #475569;">Ingestion State</th>
+                            <th style="padding: 10px 14px; color: #475569;">Attempts &amp; Next Check</th>
+                            <th style="padding: 10px 14px; color: #475569;">Generated Scan</th>
+                            <th style="padding: 10px 14px; color: #475569; text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="postPassTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #64748b; padding: 25px;">
+                                <span class="loading-spinner"></span> Loading post-pass ingestion pipeline tasks...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- Quick Links to Dedicated Logs and Scrapers Pages -->
         <div class="logs-section" style="display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; background: white; border-radius: 10px; border: 1px solid #e2e8f0; margin-top: 30px;">
             <div style="display: flex; align-items: center; gap: 12px;">

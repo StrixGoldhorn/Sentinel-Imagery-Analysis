@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
+_TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
+_TMP_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(_TMP_DIR)
+
 from sentinel_analysis.application.ports.ais import AISPlugin
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox

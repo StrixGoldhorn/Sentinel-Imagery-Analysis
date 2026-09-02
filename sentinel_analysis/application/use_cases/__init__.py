@@ -5,6 +5,7 @@ from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
+from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
 from sentinel_analysis.application.use_cases.manage_aois import (
     AddAreaOfInterest,
     ListAreasOfInterest,
@@ -44,6 +45,7 @@ __all__ = [
     "GetUpcomingScrapes",
     "GetVesselPositions",
     "IngestAIS",
+    "IngestPostPassImagery",
     "ListAreasOfInterest",
     "ListScans",
     "ListScrapers",
@@ -56,5 +58,6 @@ __all__ = [
     "UpdateScraperConfig",
     "calculate_pass_window",
 ]
+
 
 

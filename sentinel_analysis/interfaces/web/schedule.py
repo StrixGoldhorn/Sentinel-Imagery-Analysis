@@ -100,3 +100,115 @@ def trigger_schedule_poll():
         results = container().schedule_aois.execute(api_key)
 
     return jsonify(status="success", results=results)
+
+
+@blueprint.get("/api/schedule/post_pass_jobs")
+def get_post_pass_jobs():
+    """Return recent post-pass imagery ingestion jobs."""
+    limit_raw = request.args.get("limit", "50")
+    try:
+        limit = max(1, min(int(limit_raw), 200))
+    except ValueError:
+        limit = 50
+
+    repo = getattr(container(), "post_pass_repository", None)
+    if repo is None:
+        return jsonify(status="success", jobs=[], count=0)
+
+    jobs = repo.list(limit=limit)
+    status_filter = request.args.get("status")
+    if status_filter:
+        jobs = [j for j in jobs if j.status.upper() == status_filter.strip().upper()]
+
+    def _job_dict(job):
+        return {
+            "id": job.id,
+            "aoi_id": job.aoi_id,
+            "aoi_name": job.aoi_name or f"AOI #{job.aoi_id}",
+            "pass_time": job.pass_time.isoformat() if job.pass_time else None,
+            "satellite": job.satellite,
+            "orbit_direction": job.orbit_direction,
+            "status": job.status,
+            "attempts": job.attempts,
+            "last_polled_at": job.last_polled_at.isoformat() if job.last_polled_at else None,
+            "next_poll_at": job.next_poll_at.isoformat() if job.next_poll_at else None,
+            "scan_folder": job.scan_folder,
+            "error_message": job.error_message,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        }
+
+    return jsonify(
+        status="success",
+        count=len(jobs),
+        jobs=[_job_dict(j) for j in jobs],
+    )
+
+
+@blueprint.post("/api/schedule/post_pass_jobs/<int:job_id>/poll")
+def poll_post_pass_job(job_id: int):
+    """Trigger an immediate catalog check for a specific post-pass ingestion job."""
+    ingest_use_case = getattr(container(), "ingest_post_pass", None)
+    if ingest_use_case is None:
+        raise RequestValidationError("Post-pass ingestion use case not configured")
+
+    try:
+        results = ingest_use_case.execute(job_id=job_id)
+        return jsonify(status="success", results=results)
+    except Exception as exc:
+        return jsonify(status="error", error=str(exc)), 500
+
+
+@blueprint.post("/api/schedule/post_pass_jobs/<int:job_id>/retry")
+def retry_post_pass_job(job_id: int):
+    """Reset a failed or timed-out job to POLLING_CATALOG and immediately run check."""
+    repo = getattr(container(), "post_pass_repository", None)
+    if repo is None:
+        raise RequestValidationError("Post-pass repository not configured")
+
+    job = repo.get(job_id)
+    if job is None:
+        raise RequestValidationError(f"Post-pass job #{job_id} not found")
+
+    from datetime import datetime, timezone
+    from sentinel_analysis.domain.entities import PostPassIngestionJob
+
+    reset_job = PostPassIngestionJob(
+        id=job.id,
+        aoi_id=job.aoi_id,
+        pass_time=job.pass_time,
+        satellite=job.satellite,
+        orbit_direction=job.orbit_direction,
+        status="POLLING_CATALOG",
+        attempts=0,
+        last_polled_at=None,
+        next_poll_at=None,
+        scan_folder=None,
+        error_message=None,
+        created_at=job.created_at or datetime.now(timezone.utc),
+        completed_at=None,
+        aoi_name=job.aoi_name,
+    )
+    repo.update(reset_job)
+
+    ingest_use_case = getattr(container(), "ingest_post_pass", None)
+    results = []
+    if ingest_use_case is not None:
+        try:
+            results = ingest_use_case.execute(job_id=job_id)
+        except Exception:
+            pass
+
+    return jsonify(status="success", message="Job reset to polling", results=results)
+
+
+@blueprint.delete("/api/schedule/post_pass_jobs/<int:job_id>")
+def delete_post_pass_job(job_id: int):
+    """Delete a post-pass ingestion job."""
+    repo = getattr(container(), "post_pass_repository", None)
+    if repo is None:
+        raise RequestValidationError("Post-pass repository not configured")
+
+    repo.delete(job_id)
+    return jsonify(status="success", message=f"Job #{job_id} deleted successfully")
+

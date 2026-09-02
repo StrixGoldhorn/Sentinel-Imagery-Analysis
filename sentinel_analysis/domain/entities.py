@@ -334,3 +334,52 @@ class AISRecord:
     def __post_init__(self) -> None:
         if self.vessel.mmsi != self.position.mmsi:
             raise DomainValidationError("Vessel and position MMSI identifiers must match")
+
+
+@dataclass(frozen=True)
+class PostPassIngestionJob:
+    aoi_id: int
+    pass_time: datetime
+    satellite: str = "Sentinel-1"
+    orbit_direction: Optional[str] = None
+    status: str = "POLLING_CATALOG"
+    attempts: int = 0
+    last_polled_at: Optional[datetime] = None
+    next_poll_at: Optional[datetime] = None
+    scan_folder: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    id: Optional[int] = None
+    aoi_name: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.aoi_id, bool) or not isinstance(self.aoi_id, int) or self.aoi_id <= 0:
+            raise DomainValidationError("AOI ID must be a positive integer")
+        object.__setattr__(self, "pass_time", _utc_datetime(self.pass_time, "Pass time"))
+        object.__setattr__(self, "satellite", _required_text(self.satellite, "Satellite"))
+        if self.orbit_direction is not None:
+            object.__setattr__(self, "orbit_direction", _optional_text(self.orbit_direction, "Orbit direction"))
+        status = _required_text(self.status, "Job status").upper()
+        valid_statuses = {"PENDING_PASS", "POLLING_CATALOG", "INGESTING", "COMPLETED", "TIMED_OUT", "FAILED"}
+        if status not in valid_statuses:
+            raise DomainValidationError(f"Invalid job status: {status}. Must be one of {valid_statuses}")
+        object.__setattr__(self, "status", status)
+        _non_negative_integer(self.attempts, "Attempts")
+        if self.last_polled_at is not None:
+            object.__setattr__(self, "last_polled_at", _utc_datetime(self.last_polled_at, "Last polled at"))
+        if self.next_poll_at is not None:
+            object.__setattr__(self, "next_poll_at", _utc_datetime(self.next_poll_at, "Next poll at"))
+        if self.scan_folder is not None:
+            object.__setattr__(self, "scan_folder", _optional_text(self.scan_folder, "Scan folder"))
+        if self.error_message is not None:
+            object.__setattr__(self, "error_message", _optional_text(self.error_message, "Error message"))
+        if self.created_at is not None:
+            object.__setattr__(self, "created_at", _utc_datetime(self.created_at, "Created at"))
+        if self.completed_at is not None:
+            object.__setattr__(self, "completed_at", _utc_datetime(self.completed_at, "Completed at"))
+        if self.id is not None and (isinstance(self.id, bool) or not isinstance(self.id, int) or self.id <= 0):
+            raise DomainValidationError("Job ID must be a positive integer")
+        if self.aoi_name is not None:
+            object.__setattr__(self, "aoi_name", _optional_text(self.aoi_name, "AOI name"))
+

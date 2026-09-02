@@ -14,6 +14,7 @@ from sentinel_analysis.application.ports.cache import TileCache
 from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.application.ports.task_queue import TaskQueue
@@ -35,9 +36,11 @@ __all__ = [
     "LocationResolver",
     "PassPrediction",
     "PassPredictor",
+    "PostPassIngestionRepository",
     "ScanRepository",
     "ShipDetector",
     "TaskQueue",
     "TileCache",
     "TileImage",
 ]
+

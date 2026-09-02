@@ -12,6 +12,7 @@ from sentinel_analysis.application.use_cases import (
     GetUpcomingScrapes,
     GetVesselPositions,
     IngestAIS,
+    IngestPostPassImagery,
     ListAreasOfInterest,
     ListScans,
     ListScrapers,
@@ -33,6 +34,7 @@ from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitch
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
@@ -47,6 +49,7 @@ class ApplicationContainer:
         self.scan_repository = FilesystemScanRepository(settings.output_root)
         self.aoi_repository = SQLiteAreaOfInterestRepository(settings.database_path)
         self.ais_repository = SQLiteAISRepository(settings.database_path)
+        self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
         self.tile_cache = FilesystemTileCache(settings.cache_root)
         self.task_queue = ThreadedTaskQueue()
 
@@ -92,11 +95,20 @@ class ApplicationContainer:
         self.get_scraper_logs_use_case = GetScraperLogsUseCase(self.ais_repository)
         self.get_vessels = GetVesselPositions(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
+        self.ingest_post_pass = IngestPostPassImagery(
+            self.post_pass_repository,
+            self.aoi_repository,
+            imagery,
+            self.create_scan,
+            self.detect_ships,
+        )
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,
             self.hybrid_predictor,
             self.create_scan,
             self.ingest_ais,
+            self.post_pass_repository,
+            self.ingest_post_pass,
         )
         self.get_upcoming_scrapes = GetUpcomingScrapes(
             self.aoi_repository,
@@ -106,6 +118,8 @@ class ApplicationContainer:
             self.schedule_aois,
             settings.n2yo_api_key or "default_key",
             poll_interval_seconds=60.0,
+            post_pass_repo=self.post_pass_repository,
         )
+
 
 

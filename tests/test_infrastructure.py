@@ -2,10 +2,15 @@
 
 import json
 import random
+import tempfile
 import unittest
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
+
+_TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
+_TMP_DIR.mkdir(parents=True, exist_ok=True)
+tempfile.tempdir = str(_TMP_DIR)
 
 from PIL import Image
 
