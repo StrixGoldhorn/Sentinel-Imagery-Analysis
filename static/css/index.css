@@ -275,65 +275,342 @@ details.closing summary ~ * {
 
 /* SAR Tab Quick Actions Popup */
 .sar-tab-popup .leaflet-popup-content-wrapper {
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.22);
-    padding: 4px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 12px 28px -4px rgba(0, 0, 0, 0.22), 0 4px 10px -2px rgba(0, 0, 0, 0.06);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
 }
 .sar-tab-popup .leaflet-popup-content {
-    margin: 10px 14px;
+    margin: 0;
     line-height: 1.4;
+    min-width: 250px;
 }
-.sar-tab-popup h4 {
-    margin: 0 0 6px 0;
-    font-size: 0.98rem;
-    color: #1e293b;
-    word-break: break-word;
+.sar-tab-popup a.leaflet-popup-close-button {
+    top: 10px !important;
+    right: 10px !important;
+    color: #64748b !important;
+    padding: 4px !important;
+    font-size: 18px !important;
+    border-radius: 50% !important;
+    width: 24px !important;
+    height: 24px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: all 0.15s ease !important;
+    z-index: 10;
 }
-.sar-tab-popup .sar-tab-popup-meta {
-    font-size: 0.78rem;
-    color: #64748b;
+.sar-tab-popup a.leaflet-popup-close-button:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+}
+.sar-tab-popup-content {
+    padding: 16px 18px 14px 18px;
+}
+.sar-tab-popup-header {
+    padding-right: 28px;
     margin-bottom: 8px;
 }
-.sar-tab-popup .sar-tab-popup-count-box {
-    background: #f1f5f9;
+.sar-tab-popup-header h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+    word-break: break-all;
+    line-height: 1.3;
+}
+.sar-tab-popup-meta {
+    background: #f8fafc;
     border: 1px solid #e2e8f0;
     border-radius: 6px;
     padding: 6px 10px;
     margin-bottom: 10px;
     display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.sar-tab-popup-meta .meta-row {
+    display: flex;
+    align-items: baseline;
+    font-size: 0.76rem;
+    color: #64748b;
+    gap: 6px;
+}
+.sar-tab-popup-meta .meta-lbl {
+    font-weight: 600;
+    color: #475569;
+    min-width: 36px;
+    text-transform: uppercase;
+    font-size: 0.68rem;
+    letter-spacing: 0.3px;
+}
+.sar-tab-popup-meta .meta-val {
+    color: #1e293b;
+    font-weight: 500;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.74rem;
+}
+.sar-tab-popup-count-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    display: flex;
     align-items: center;
     justify-content: space-between;
     font-size: 0.82rem;
 }
+.sar-tab-popup-count-box .count-lbl {
+    font-weight: 600;
+    color: #334155;
+}
+.sar-tab-popup-count-box .count-badge {
+    font-size: 0.75rem;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.sar-tab-popup-count-box .count-badge.not-run {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+}
+.sar-tab-popup-count-box .count-badge.has-ships {
+    background: #fff7ed;
+    color: #ea580c;
+    border: 1px solid #fed7aa;
+}
+.sar-tab-popup-count-box .count-badge.zero-ships {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
 .sar-tab-popup-actions {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
 }
 .sar-tab-popup-actions button {
     cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 5px;
+    padding: 8px 12px;
+    border-radius: 6px;
     font-size: 0.82rem;
     font-weight: 600;
     text-align: center;
     border: none;
     transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
 }
 .sar-tab-popup-btn-primary {
-    background: #007bff;
+    background: #2563eb;
     color: #ffffff;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
 }
 .sar-tab-popup-btn-primary:hover {
-    background: #0056b3;
+    background: #1d4ed8;
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.3);
+    transform: translateY(-1px);
 }
 .sar-tab-popup-btn-secondary {
-    background: #e2e8f0;
+    background: #f8fafc;
     color: #334155;
     border: 1px solid #cbd5e1 !important;
 }
 .sar-tab-popup-btn-secondary:hover {
-    background: #cbd5e1;
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8 !important;
+}
+.sar-tab-popup-footer {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+    text-align: center;
+}
+.sar-tab-popup-footer a {
+    font-size: 0.76rem;
+    color: #2563eb;
+    text-decoration: none;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.15s ease;
+}
+.sar-tab-popup-footer a:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
+}
+
+/* Custom CV Detection Popup on Map */
+.cv-detection-popup .leaflet-popup-content-wrapper {
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -2px rgba(0, 0, 0, 0.08);
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+}
+.cv-detection-popup .leaflet-popup-content {
+    margin: 0;
+    line-height: 1.4;
+}
+.cv-detection-popup a.leaflet-popup-close-button {
+    top: 8px;
+    right: 8px;
+    color: #64748b;
+    padding: 4px;
+    font-size: 16px;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+}
+.cv-detection-popup a.leaflet-popup-close-button:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+.cv-detection-popup-card {
+    min-width: 230px;
+    padding: 12px 14px;
+}
+.cv-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-right: 18px;
+}
+.cv-popup-title-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.cv-popup-icon {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+.cv-popup-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.1px;
+}
+.cv-popup-sub {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.cv-conf-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+.cv-conf-badge.high {
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+}
+.cv-conf-badge.medium {
+    background: #fffbeb;
+    color: #d97706;
+    border: 1px solid #fde68a;
+}
+.cv-conf-badge.low {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fecaca;
+}
+.cv-popup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+}
+.cv-popup-cell {
+    display: flex;
+    flex-direction: column;
+}
+.cv-popup-cell .cv-lbl {
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.cv-popup-cell .cv-val {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+.cv-popup-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.cv-popup-btn-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #ffffff;
+    background: #2563eb;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+    transition: all 0.15s ease;
+}
+.cv-popup-btn-primary:hover {
+    background: #1d4ed8;
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.3);
+    transform: translateY(-1px);
+}
+.cv-popup-btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.cv-popup-btn-secondary:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8;
 }
 
 /* SAR Ship Detection List Cards */
@@ -414,24 +691,68 @@ details.closing summary ~ * {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 4px;
+    margin-top: 6px;
 }
-.detection-item-actions button {
-    padding: 5px 10px;
-    font-size: 0.78rem;
-    border-radius: 4px;
+.sar-btn-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #f1f5f9 !important;
+    color: #334155 !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
     cursor: pointer;
-    font-weight: 600;
-    border: none;
-    transition: background-color 0.15s;
+    transition: all 0.15s ease;
+}
+.sar-btn-zoom:hover {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+}
+.sar-btn-inspect {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.2);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.sar-btn-inspect:hover {
+    background: #1d4ed8 !important;
+    box-shadow: 0 3px 8px rgba(37, 99, 235, 0.3);
+    transform: translateY(-1px);
 }
 .sar-detections-empty {
     text-align: center;
-    padding: 30px 20px;
+    padding: 36px 20px;
     color: #64748b;
     background: #f8fafc;
     border: 2px dashed #cbd5e1;
     border-radius: 8px;
+}
+#sarDetectionsContainer::-webkit-scrollbar {
+    width: 6px;
+}
+#sarDetectionsContainer::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+#sarDetectionsContainer::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+#sarDetectionsContainer::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
 }
 
 /* Crop & Detection Inspector Modal */

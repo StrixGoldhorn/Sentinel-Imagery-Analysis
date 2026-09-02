@@ -31,18 +31,36 @@ function getSarTabPopupContent(uiId) {
     const count = layerObj.detections ? layerObj.detections.length : 0;
     const btnText = layerObj.cvRun ? `📋 View Detected Ships (${count})` : '🚢 View Detected Ships (Run CV)';
 
+    let countBadgeClass = 'not-run';
+    let countBadgeText = 'Not Run';
+    if (layerObj.cvRun) {
+        if (count > 0) {
+            countBadgeClass = 'has-ships';
+            countBadgeText = `${count} Ship${count === 1 ? '' : 's'}`;
+        } else {
+            countBadgeClass = 'zero-ships';
+            countBadgeText = '0 Ships';
+        }
+    }
+
     return `
-        <div class="sar-tab-popup" style="min-width: 230px;">
-            <h4>${escapeHtml(name)}</h4>
+        <div class="sar-tab-popup-content">
+            <div class="sar-tab-popup-header">
+                <h4 title="${escapeHtml(name)}">${escapeHtml(name)}</h4>
+            </div>
             <div class="sar-tab-popup-meta">
-                <strong>Zulu:</strong> ${layerObj.zuluTime}<br>
-                <strong>Local:</strong> ${layerObj.localTime}
+                <div class="meta-row">
+                    <span class="meta-lbl">Zulu:</span>
+                    <span class="meta-val">${layerObj.zuluTime}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-lbl">Local:</span>
+                    <span class="meta-val">${layerObj.localTime}</span>
+                </div>
             </div>
             <div class="sar-tab-popup-count-box">
-                <span><strong>Ships Detected (CV):</strong></span>
-                <span class="badge" style="font-size: 0.78rem; padding: 2px 7px; background: ${layerObj.cvRun && count > 0 ? '#e67e22' : (layerObj.cvRun ? '#28a745' : '#007bff')}; color: white; border-radius: 4px; font-weight: 600;">
-                    ${layerObj.cvRun ? `${count} Ships` : 'Not Run'}
-                </span>
+                <span class="count-lbl">Ships Detected (CV):</span>
+                <span class="count-badge ${countBadgeClass}">${countBadgeText}</span>
             </div>
             <div class="sar-tab-popup-actions">
                 <button type="button" class="sar-tab-popup-btn-primary" onclick="openSarShipDetectionsModal('${uiId}')">
@@ -54,9 +72,12 @@ function getSarTabPopupContent(uiId) {
                 <button type="button" class="sar-tab-popup-btn-secondary" onclick="zoomToLayerBounds('${uiId}')">
                     🔍 Zoom to Bounds
                 </button>
-                <div style="margin-top: 4px; text-align: center;">
-                    <a href="${layerObj.imageUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 0.78em; color: #007bff; text-decoration: none;">Download Original PNG</a>
-                </div>
+            </div>
+            <div class="sar-tab-popup-footer">
+                <a href="${layerObj.imageUrl}" target="_blank" rel="noopener noreferrer">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Download Original PNG
+                </a>
             </div>
         </div>
     `;
@@ -83,11 +104,11 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
         weight: 2,
         fill: false,
         interactive: true
-    }).bindPopup(() => getSarTabPopupContent(layerId), { className: 'sar-tab-popup', minWidth: 230 });
+    }).bindPopup(() => getSarTabPopupContent(layerId), { className: 'sar-tab-popup', minWidth: 260 });
 
     const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 6, opacity: 0, fillOpacity: 0, interactive: true })
         .bindTooltip(getSarTabTooltipContent(captureName, 0, false), { permanent: true, className: 'folder-tab-tooltip folder-tab-sar', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET })
-        .bindPopup(() => getSarTabPopupContent(layerId), { className: 'sar-tab-popup', offset: [15, -5], minWidth: 230 });
+        .bindPopup(() => getSarTabPopupContent(layerId), { className: 'sar-tab-popup', offset: [15, -5], minWidth: 260 });
 
     tabMarker.on('click', function() {
         this.openPopup();
@@ -318,21 +339,54 @@ async function runCVDetection(folderName, uiId) {
                 }
 
                 // Popup with vessel metrology + button to open crop inspector
-                const lengthInfo = item.length ? `<br><strong>Est. Length:</strong> ${item.length} m<br><strong>Est. Beam:</strong> ${item.beam} m<br><strong>Heading:</strong> ${item.angle}°` : '';
-                const confInfo = item.confidence ? `<br><strong>Confidence:</strong> ${(item.confidence * 100).toFixed(1)}%` : '';
-                shapeLayer.bindPopup(`
-                    <div style="min-width: 150px;">
-                        <strong>Vessel Detection #${idx + 1}</strong>
-                        <hr style="margin: 4px 0;">
-                        ${confInfo}
-                        ${lengthInfo}
-                        <hr style="margin: 6px 0;">
-                        <div style="display: flex; flex-direction: column; gap: 4px;">
-                            <button class="btn" style="width: 100%; padding: 4px; font-size: 0.8em;" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>Inspect Crop & Radar</button>
-                            <button class="btn" style="width: 100%; padding: 4px; font-size: 0.8em; background: #17a2b8;" onclick='openSarShipDetectionsModal("${uiId}")'>View All Ships List</button>
+                const confVal = item.confidence !== undefined ? (item.confidence * 100).toFixed(1) : null;
+                const confNum = item.confidence !== undefined ? item.confidence : 1;
+                let confClass = 'high';
+                if (confNum < 0.6) confClass = 'low';
+                else if (confNum < 0.8) confClass = 'medium';
+
+                const popupContent = `
+                    <div class="cv-detection-popup-card">
+                        <div class="cv-popup-header">
+                            <div class="cv-popup-title-group">
+                                <span class="cv-popup-icon">🚢</span>
+                                <div>
+                                    <div class="cv-popup-title">Vessel Detection #${idx + 1}</div>
+                                    <div class="cv-popup-sub">SAR Computer Vision</div>
+                                </div>
+                            </div>
+                            ${confVal !== null ? `<span class="cv-conf-badge ${confClass}">${confVal}% Conf</span>` : ''}
+                        </div>
+                        <div class="cv-popup-grid">
+                            <div class="cv-popup-cell">
+                                <span class="cv-lbl">Est. Length</span>
+                                <span class="cv-val">${item.length ? `${item.length} m` : 'N/A'}</span>
+                            </div>
+                            <div class="cv-popup-cell">
+                                <span class="cv-lbl">Est. Beam</span>
+                                <span class="cv-val">${item.beam ? `${item.beam} m` : 'N/A'}</span>
+                            </div>
+                            <div class="cv-popup-cell">
+                                <span class="cv-lbl">Heading</span>
+                                <span class="cv-val">${item.angle !== undefined ? `${item.angle}°` : 'N/A'}</span>
+                            </div>
+                            <div class="cv-popup-cell">
+                                <span class="cv-lbl">Pixel Size</span>
+                                <span class="cv-val">${item.width}×${item.height} px</span>
+                            </div>
+                        </div>
+                        <div class="cv-popup-actions">
+                            <button type="button" class="cv-popup-btn-primary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
+                                🔍 Inspect Crop & Radar
+                            </button>
+                            <button type="button" class="cv-popup-btn-secondary" onclick='openSarShipDetectionsModal("${uiId}")'>
+                                📋 View All Ships List
+                            </button>
                         </div>
                     </div>
-                `);
+                `;
+
+                shapeLayer.bindPopup(popupContent, { className: 'cv-detection-popup', minWidth: 240 });
 
                 shapeLayer.addTo(detectLayer);
 
@@ -564,10 +618,10 @@ function renderSarDetectionsList() {
                     </div>
                 </div>
                 <div class="detection-item-actions">
-                    <button type="button" style="background: #e2e8f0; color: #334155;" onclick='zoomToShipDetection("${layerObj.uiId}", ${item.origIdx})'>
+                    <button type="button" class="sar-btn-zoom" onclick='zoomToShipDetection("${layerObj.uiId}", ${item.origIdx})'>
                         🎯 Zoom on Map
                     </button>
-                    <button type="button" style="background: #007bff; color: white;" onclick='inspectDetection("${layerObj.folder}", ${JSON.stringify(item)})'>
+                    <button type="button" class="sar-btn-inspect" onclick='inspectDetection("${layerObj.folder}", ${JSON.stringify(item)})'>
                         🔍 Inspect Radar Crop
                     </button>
                 </div>
@@ -604,8 +658,13 @@ function zoomToShipDetection(uiId, detectionIndex) {
     closeSarShipDetectionsModal();
     map.setView([shipLat, shipLon], Math.max(map.getZoom(), 14), { animate: true });
 
-    // Open popup for this detection if layer is visible
+    // Open popup for this detection if layer is available
     if (layerObj.detectLayer) {
+        if (!map.hasLayer(layerObj.detectLayer)) {
+            map.addLayer(layerObj.detectLayer);
+            const toggleCb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
+            if (toggleCb) toggleCb.checked = true;
+        }
         const layers = layerObj.detectLayer.getLayers();
         if (layers[detectionIndex]) {
             setTimeout(() => {
