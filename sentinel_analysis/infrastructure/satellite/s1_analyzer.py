@@ -44,7 +44,7 @@ class Sentinel1MissionAnalyzer:
         Ground tracks converge towards polar regions, resulting in higher temporal resolution
         and multiple overlapping orbit swaths for areas further from the equator.
         """
-        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+        lat = abs(bbox.center[0])
         if lat >= 50.0:
             return 500  # High latitudes (e.g. North Sea, Arctic, Baltic)
         if lat >= 30.0:
@@ -56,7 +56,7 @@ class Sentinel1MissionAnalyzer:
     @staticmethod
     def get_nominal_revisit_days(bbox: BoundingBox) -> float:
         """Estimate nominal revisit frequency (in days) according to latitude convergence."""
-        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+        lat = abs(bbox.center[0])
         if lat >= 60.0:
             return 1.5
         if lat >= 45.0:
@@ -74,7 +74,7 @@ class Sentinel1MissionAnalyzer:
     ) -> tuple[MissionAnalysisSummary, list[HistoricalMissionPass]]:
         fetch_limit = limit if limit is not None else self.calculate_dynamic_history_limit(bbox)
         raw_passes = self._fetch_history(bbox, limit=fetch_limit)
-        lat = abs((bbox.min_lat + bbox.max_lat) / 2.0)
+        lat = abs(bbox.center[0])
 
         if not raw_passes:
             # Baseline summary when catalog history is empty or unpopulated

@@ -88,7 +88,7 @@ class HybridPassPredictor:
                 h_conf = float(h_match.get("confidence_score") or 0.94)
                 n_conf = float(n_pass.get("confidence_score") or 0.68)
                 # Weighted blend: 75% historical extrapolation + 25% N2YO tracking + synergy bonus
-                blended_conf = round(min(0.99, (0.75 * h_conf + 0.25 * n_conf) + 0.10), 2)
+                blended_conf = round(min(0.99, (0.75 * h_conf + 0.25 * n_conf) + 0.105), 2)
 
                 merged.append(
                     PassPrediction(
