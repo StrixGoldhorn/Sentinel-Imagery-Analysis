@@ -206,26 +206,58 @@ function initAoiHandlers() {
 }
 
 async function forceScanAOI(aoiId) {
+    let startPopup = null;
     try {
-        showNotification("Initiating immediate AIS vessel scan...", "info");
+        startPopup = showNotification(`Initiating immediate AIS vessel scan for AOI #${aoiId}...`, "info", {
+            autoClose: false,
+            closable: true,
+            title: "⚡ Force AIS Scan Started"
+        });
+
         const res = await fetch(`/api/aoi/${aoiId}/force_ais_scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force: true })
         });
         const data = await res.json();
+
+        if (startPopup && typeof startPopup.close === 'function') {
+            startPopup.close();
+        }
+
         if (res.ok && data.status === 'success') {
             const count = (data.results && data.results.total_inserted) || 0;
-            showNotification(`Force AIS scan complete: ${count} vessel records ingested!`, "success");
+            showNotification(`Force AIS scan complete: ${count} vessel records ingested into database.`, "success", {
+                autoClose: false,
+                closable: true,
+                showAckButton: true,
+                ackText: "Dismiss",
+                title: "✅ Force Scan Results"
+            });
             if (typeof refreshAISVessels === 'function' && typeof map !== 'undefined' && map) {
                 refreshAISVessels(map);
             }
         } else {
-            showNotification(`Force AIS scan failed: ${data.error || 'Unknown error'}`, "error");
+            showNotification(`Force AIS scan failed: ${data.error || 'Unknown error'}`, "error", {
+                autoClose: false,
+                closable: true,
+                showAckButton: true,
+                ackText: "Dismiss",
+                title: "❌ Force Scan Failed"
+            });
         }
     } catch (err) {
         console.error("Error running force AIS scan:", err);
-        showNotification("Failed to trigger force AIS scan.", "error");
+        if (startPopup && typeof startPopup.close === 'function') {
+            startPopup.close();
+        }
+        showNotification(`Failed to trigger force AIS scan: ${err.message || 'Connection error'}`, "error", {
+            autoClose: false,
+            closable: true,
+            showAckButton: true,
+            ackText: "Dismiss",
+            title: "❌ Force Scan Error"
+        });
     }
 }
 

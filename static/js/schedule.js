@@ -522,24 +522,45 @@ async function scrapePassAIS(aoiId, passTime) {
 }
 
 async function forceScanAOIAIS(aoiId) {
+    let startToast = null;
     try {
-        showToast('Initiating immediate live AIS vessel scan...', 'info');
+        startToast = showToast('Initiating immediate live AIS vessel scan...', 'info', {
+            autoClose: false,
+            title: '⚡ Force AIS Scan Started'
+        });
         const res = await fetch(`/api/aoi/${aoiId}/force_ais_scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ force: true })
         });
         const data = await res.json();
+
+        if (startToast && typeof startToast.close === 'function') {
+            startToast.close();
+        }
+
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            showToast(`Force AIS scan complete: ${total} vessel records ingested!`, 'success');
+            showToast(`Force AIS scan complete: ${total} vessel records ingested!`, 'success', {
+                autoClose: false,
+                title: '✅ Force Scan Results'
+            });
             loadLogs();
         } else {
-            showToast('Force AIS scan failed: ' + (data.error || 'Unknown error'), 'error');
+            showToast('Force AIS scan failed: ' + (data.error || 'Unknown error'), 'error', {
+                autoClose: false,
+                title: '❌ Force Scan Failed'
+            });
         }
     } catch (err) {
         console.error('Error in force AIS scan:', err);
-        showToast('Connection error during force AIS scan', 'error');
+        if (startToast && typeof startToast.close === 'function') {
+            startToast.close();
+        }
+        showToast('Connection error during force AIS scan: ' + (err.message || 'Server unreachable'), 'error', {
+            autoClose: false,
+            title: '❌ Force Scan Error'
+        });
     }
 }
 
@@ -555,39 +576,71 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', options = {}) {
     let container = document.getElementById('toastContainer');
     if (!container) {
         container = document.createElement('div');
         container.id = 'toastContainer';
-        container.style.cssText = 'position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;';
+        container.style.cssText = 'position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 12px; pointer-events: none; max-width: 420px; width: calc(100% - 48px);';
         document.body.appendChild(container);
     }
 
     const toast = document.createElement('div');
     const bgColors = {
-        success: '#28a745',
-        error: '#dc3545',
-        info: '#17a2b8',
-        warning: '#ffc107'
+        success: '#16a34a',
+        error: '#dc2626',
+        info: '#0284c7',
+        warning: '#d97706'
     };
-    const textColors = {
-        warning: '#212529',
-        default: '#ffffff'
+    const borders = {
+        success: '#bbf7d0',
+        error: '#fecaca',
+        info: '#bae6fd',
+        warning: '#fef3c7'
     };
 
+    const autoClose = options.autoClose !== undefined ? options.autoClose : true;
+    const title = options.title || '';
+
     toast.style.cssText = `
-        background: ${bgColors[type] || '#333'};
-        color: ${textColors[type] || textColors.default};
-        padding: 10px 16px;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        background: ${bgColors[type] || '#1e293b'};
+        color: #ffffff;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.92rem;
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4), 0 8px 10px -6px rgba(0,0,0,0.3);
         opacity: 0;
         transform: translateY(10px);
-        transition: all 0.3s ease;
+        transition: all 0.25s ease-out;
+        pointer-events: auto;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-left: 5px solid ${borders[type] || 'transparent'};
     `;
-    toast.textContent = message;
+
+    toast.innerHTML = `
+        <div style="flex: 1; min-width: 0;">
+            ${title ? `<div style="font-weight: 700; margin-bottom: 4px; font-size: 0.95rem;">${escapeHtml(title)}</div>` : ''}
+            <div style="word-break: break-word; font-size: 0.88rem;">${escapeHtml(message)}</div>
+            ${!autoClose ? '<div style="margin-top: 8px;"><button type="button" class="toast-ack-btn" style="background: rgba(255,255,255,0.22); border: 1px solid rgba(255,255,255,0.45); color: #fff; padding: 3px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Dismiss</button></div>' : ''}
+        </div>
+        <button type="button" class="toast-close-btn" style="background: transparent; border: none; color: rgba(255,255,255,0.85); font-size: 1.3rem; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px; margin-top: -3px; margin-right: -4px;">&times;</button>
+    `;
+
+    const closeToast = () => {
+        if (!toast.parentNode) return;
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        setTimeout(() => { if (toast.parentNode) toast.remove(); }, 250);
+    };
+
+    const closeBtn = toast.querySelector('.toast-close-btn');
+    if (closeBtn) closeBtn.onclick = closeToast;
+    const ackBtn = toast.querySelector('.toast-ack-btn');
+    if (ackBtn) ackBtn.onclick = closeToast;
+
     container.appendChild(toast);
 
     requestAnimationFrame(() => {
@@ -595,11 +648,20 @@ function showToast(message, type = 'info') {
         toast.style.transform = 'translateY(0)';
     });
 
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-        setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    let timer = null;
+    if (autoClose) {
+        timer = setTimeout(() => {
+            closeToast();
+        }, options.duration || 4000);
+    }
+
+    return {
+        element: toast,
+        close: () => {
+            if (timer) clearTimeout(timer);
+            closeToast();
+        }
+    };
 }
 
 async function loadPostPassJobs() {

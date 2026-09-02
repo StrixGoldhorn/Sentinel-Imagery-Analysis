@@ -36,29 +36,121 @@ body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, 
 /* Global Notification System */
 .notification-container {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: 9999;
+    bottom: 24px;
+    right: 24px;
+    z-index: 99999;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
     pointer-events: none;
+    max-width: 420px;
+    width: calc(100% - 48px);
 }
+
 .notification {
-    color: white;
-    padding: 12px 20px;
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    font-size: 0.95rem;
+    color: #ffffff;
+    background-color: #1e293b; /* Solid opaque fallback */
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    font-size: 0.92rem;
+    line-height: 1.45;
     opacity: 0;
     transform: translateX(100%);
-    transition: all 0.3s ease-in-out;
-    min-width: 250px;
+    transition: transform 0.25s ease-out, opacity 0.25s ease-out;
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    box-sizing: border-box;
+    border-left: 5px solid transparent;
 }
+
 .notification.show {
     opacity: 1;
     transform: translateX(0);
 }
-.notification.error { background-color: #e74c3c; }
-.notification.warning { background-color: #f39c12; }
-.notification.success { background-color: #2ecc71; }
+
+.notification.info {
+    background-color: #0284c7; /* Solid Sky/Ocean Blue */
+    border-left-color: #bae6fd;
+}
+
+.notification.success {
+    background-color: #16a34a; /* Solid Green */
+    border-left-color: #bbf7d0;
+}
+
+.notification.warning {
+    background-color: #d97706; /* Solid Amber */
+    border-left-color: #fef3c7;
+}
+
+.notification.error {
+    background-color: #dc2626; /* Solid Red */
+    border-left-color: #fecaca;
+}
+
+.notification-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.notification-message {
+    font-size: 0.88rem;
+    word-break: break-word;
+}
+
+.notification-close {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 1.35rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background-color 0.15s, color 0.15s;
+    margin-top: -3px;
+    margin-right: -4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-close:hover {
+    color: #ffffff;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.notification-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+}
+
+.notification-ack-btn {
+    background: rgba(255, 255, 255, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    color: #ffffff;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.notification-ack-btn:hover {
+    background: rgba(255, 255, 255, 0.38);
+}
