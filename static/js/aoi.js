@@ -17,35 +17,52 @@ function toggleAoiLayer(uiId) {
     if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
 }
 
+function teleportToAoi(aoiId) {
+    const item = aoiMapLayers.find(l => l.id === aoiId);
+    if (item && item.bounds) {
+        if (!map.hasLayer(item.leafletLayer)) {
+            map.addLayer(item.leafletLayer);
+            const cb = document.querySelector(`#${item.uiId} > .layer-info-header input[type="checkbox"]`);
+            if (cb) cb.checked = true;
+        }
+        map.fitBounds(item.bounds, { padding: [60, 60], maxZoom: 14 });
+        if (typeof showNotification === 'function') {
+            showNotification(`Teleported to AOI: ${item.name || 'Selected Area'}`, 'info');
+        }
+    }
+}
+
 async function loadAOIs() {
     try {
         const response = await fetch(CONFIG.API_AOI);
         const aois = await response.json();
         const aoiList = document.getElementById('aoiList');
         
+        // Clear UI list
         if (aoiList) {
             aoiList.innerHTML = '';
-            if (aois.length === 0) {
-                aoiList.innerHTML = '<div style="color: #666; font-size: 0.85em;">No AOIs saved yet.</div>';
-            }
         }
         
-        // Clear existing AOI map layers
-        aoiMapLayers.forEach(item => {
-            map.removeLayer(item.leafletLayer);
-            const uiEl = document.getElementById(item.uiId);
-            if (uiEl) uiEl.remove();
+        // Remove existing AOI layers and controls
+        aoiMapLayers.forEach(l => {
+            if (map.hasLayer(l.leafletLayer)) map.removeLayer(l.leafletLayer);
+            const el = document.getElementById(l.uiId);
+            if (el) el.remove();
         });
         aoiMapLayers = [];
+
+        if (aois.length === 0) {
+            if (aoiList) {
+                aoiList.innerHTML = '<p style="color: #666; font-size: 0.9em;">No Areas of Interest saved yet.</p>';
+            }
+            return;
+        }
 
         aois.forEach(aoi => {
             const safeAoiName = escapeHtml(aoi.name);
             if (aoiList) {
                 const div = document.createElement('div');
-                div.style.border = '1px solid #eee';
-                div.style.padding = '10px';
-                div.style.borderRadius = '5px';
-                div.style.backgroundColor = '#fdfdfd';
+                div.style.cssText = 'border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #fafafa;';
                 
                 let nextScanText = '<span style="color: #666; font-size: 0.8em;">Not predicted yet</span>';
                 if (aoi.next_scan) {
@@ -63,8 +80,8 @@ async function loadAOIs() {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 4px; flex-wrap: wrap;">
                         <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
                         <div style="display: flex; gap: 4px;">
+                            <button class="btn btn-sm btn-outline-primary" style="padding: 2px 6px; font-size: 0.75em;" onclick="teleportToAoi(${aoi.id})" title="Center map on AOI">⌖ Teleport</button>
                             <button class="btn" style="padding: 3px 6px; font-size: 0.75em;" onclick="predictAOI(${aoi.id})">Predict</button>
-                            <button class="btn" style="padding: 3px 6px; font-size: 0.75em; background: #f39c12; color: white; border: none;" onclick="forceScanAOI(${aoi.id})" title="Force immediate AIS vessel scan regardless of flyby">Force AIS</button>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8em; color: #444;">
@@ -89,6 +106,16 @@ async function loadAOIs() {
                     <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
                         <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
                         <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${safeAoiName}">AOI: ${safeAoiName}</strong>
+                        <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="22" y1="12" x2="18" y2="12"></line>
+                                <line x1="6" y1="12" x2="2" y2="12"></line>
+                                <line x1="12" y1="6" x2="12" y2="2"></line>
+                                <line x1="12" y1="22" x2="12" y2="18"></line>
+                            </svg>
+                            Teleport
+                        </button>
                     </div>
                     <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
                         <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
@@ -99,7 +126,7 @@ async function loadAOIs() {
                 </div>
             `;
             document.getElementById('layersList').insertAdjacentHTML('beforeend', controlHtml);
-            aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id });
+            aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id, name: safeAoiName });
         });
         
         if (typeof updateTabsVisibility === 'function') updateTabsVisibility();

@@ -660,6 +660,9 @@ function renderVesselsOnMap(mapInstance) {
                     <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Last Reported</span><span class="vessel-val">${zuluTime} (${localTime})</span></div>
                 </div>
                 <div class="vessel-popup-actions" style="display: flex; gap: 6px; justify-content: flex-end;">
+                    <button class="btn btn-sm btn-info" style="padding: 4px 10px; font-size: 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="if(typeof openShipDetailsSidebar === 'function') { const v = aisVesselsData.find(x => x.vessel_id === ${vessel.vessel_id}); if (v) openShipDetailsSidebar(v); }">
+                        🚢 Dossier
+                    </button>
                     <button class="btn btn-sm btn-secondary" style="padding: 4px 10px; font-size: 0.8rem; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="openEditVesselModal(${vessel.vessel_id})">
                         ✏️ Edit Details
                     </button>
@@ -670,6 +673,12 @@ function renderVesselsOnMap(mapInstance) {
             </div>
         `;
         marker.bindPopup(popupHtml, { maxWidth: 340 });
+
+        marker.on('click', () => {
+            if (typeof openShipDetailsSidebar === 'function') {
+                openShipDetailsSidebar(vessel);
+            }
+        });
 
         aisVesselLayer.addLayer(marker);
 
@@ -864,6 +873,14 @@ async function saveVesselDetails(event) {
         // Re-render map markers
         if (typeof map !== 'undefined' && map) {
             renderVesselsOnMap(map);
+        }
+
+        // Refresh ship details sidebar if open for this vessel
+        if (typeof currentSelectedShip !== 'undefined' && currentSelectedShip && currentSelectedShip.vessel_id === vesselId) {
+            const fresh = aisVesselsData.find(v => v.vessel_id === vesselId);
+            if (fresh && typeof openShipDetailsSidebar === 'function') {
+                openShipDetailsSidebar(fresh);
+            }
         }
 
         closeEditVesselModal();

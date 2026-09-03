@@ -209,6 +209,7 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
 
     activeLayers.push(layerObj);
     if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
+    if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
 }
 
 function removeSpecificLayer(folderName, uiId) {
@@ -229,6 +230,8 @@ function removeSpecificLayer(folderName, uiId) {
         if (currentModalLayerId === uiId) {
             closeSarShipDetectionsModal();
         }
+        if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
+        if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
     }
 }
 
@@ -308,6 +311,12 @@ async function runCVDetection(folderName, uiId) {
             layerObj.cvThreshold = thresholdVal;
 
             detectionsList.forEach((item, idx) => {
+                const cx = item.center_x !== undefined ? item.center_x : (item.x + item.width / 2);
+                const cy = item.center_y !== undefined ? item.center_y : (item.y + item.height / 2);
+                item.lat = Number((maxLat - cy * latScale).toFixed(5));
+                item.lng = Number((minLon + cx * lonScale).toFixed(5));
+                item.id = idx + 1;
+
                 const b_minLon = minLon + item.x * lonScale;
                 const b_maxLon = minLon + (item.x + item.width) * lonScale;
                 const b_maxLat = maxLat - item.y * latScale;
@@ -376,17 +385,26 @@ async function runCVDetection(folderName, uiId) {
                             </div>
                         </div>
                         <div class="cv-popup-actions">
-                            <button type="button" class="cv-popup-btn-primary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
-                                🔍 Inspect Crop & Radar
+                            <button type="button" class="cv-popup-btn-primary" style="background: #0ea5e9; color: white;" onclick='if (typeof openSarDetectionInShipSidebar === "function") openSarDetectionInShipSidebar("${folderName}", ${JSON.stringify(item)})'>
+                                🚢 Dossier
+                            </button>
+                            <button type="button" class="cv-popup-btn-secondary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
+                                🔍 Crop & Stats
                             </button>
                             <button type="button" class="cv-popup-btn-secondary" onclick='openSarShipDetectionsModal("${uiId}")'>
-                                📋 View All Ships List
+                                📋 All Ships
                             </button>
                         </div>
                     </div>
                 `;
 
                 shapeLayer.bindPopup(popupContent, { className: 'cv-detection-popup', minWidth: 240 });
+
+                shapeLayer.on('click', () => {
+                    if (typeof openSarDetectionInShipSidebar === 'function') {
+                        openSarDetectionInShipSidebar(folderName, item);
+                    }
+                });
 
                 shapeLayer.addTo(detectLayer);
 
@@ -413,6 +431,7 @@ async function runCVDetection(folderName, uiId) {
             layerObj.outlineLayer.setPopupContent(getSarTabPopupContent(uiId));
 
             if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
+            if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
             if (btn) {
                 btn.disabled = false;
                 btn.innerText = "Update Detection";

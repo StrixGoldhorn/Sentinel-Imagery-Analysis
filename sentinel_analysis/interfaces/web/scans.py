@@ -6,7 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from flask import Blueprint, jsonify, render_template, request, send_from_directory
+from flask import Blueprint, Response, jsonify, render_template, request, send_from_directory
 from PIL import Image
 
 from sentinel_analysis.interfaces.web.dependencies import container
@@ -94,14 +94,26 @@ def run_cv(folder_name: str):
 @blueprint.get("/api/scan/<folder_name>/crop")
 def get_detection_crop(folder_name: str):
     scan = container().get_scan.execute(safe_folder_name(folder_name))
-    try:
-        x = int(request.args.get("x", 0))
-        y = int(request.args.get("y", 0))
-        w = int(request.args.get("width", 50))
-        h = int(request.args.get("height", 50))
-        padding = max(0, int(request.args.get("padding", 20)))
-    except (TypeError, ValueError) as exc:
-        raise RequestValidationError("Coordinates and dimensions must be valid integers") from exc
+    bbox = request.args.get("bbox")
+    if bbox:
+        try:
+            parts = [int(float(p.strip())) for p in bbox.split(",")]
+            if len(parts) == 4:
+                x, y, w, h = parts
+            else:
+                x, y, w, h = 0, 0, 50, 50
+            padding = max(0, int(request.args.get("padding", 20)))
+        except (TypeError, ValueError) as exc:
+            raise RequestValidationError("Coordinates and dimensions must be valid numbers") from exc
+    else:
+        try:
+            x = int(request.args.get("x", 0))
+            y = int(request.args.get("y", 0))
+            w = int(request.args.get("width", 50))
+            h = int(request.args.get("height", 50))
+            padding = max(0, int(request.args.get("padding", 20)))
+        except (TypeError, ValueError) as exc:
+            raise RequestValidationError("Coordinates and dimensions must be valid integers") from exc
 
     if w <= 0 or h <= 0 or x < 0 or y < 0:
         raise RequestValidationError("Crop dimensions must be positive non-negative integers")
@@ -124,8 +136,12 @@ def get_detection_crop(folder_name: str):
     if crop.size == 0:
         raise RequestValidationError("Specified crop bounding box is outside image boundaries")
 
-    # Encode crop to PNG data URI
+    # Encode crop to PNG
     _, buffer = cv2.imencode(".png", crop)
+
+    if request.args.get("raw") in ("1", "true") or request.headers.get("Accept", "").startswith("image/"):
+        return Response(buffer.tobytes(), mimetype="image/png")
+
     encoded = base64.b64encode(buffer).decode("utf-8")
     data_uri = f"data:image/png;base64,{encoded}"
 

@@ -105,6 +105,13 @@ function setupDrawingEvents() {
             const sizeText = `${dim.width.toFixed(2)} km x ${dim.height.toFixed(2)} km`;
             if (statusText) statusText.innerText = `Area selected: ${sizeText}`;
             if (aoiStatus) aoiStatus.innerText = `Area selected: ${sizeText}`;
+            
+            const bboxBox = document.getElementById('selectedBboxDisplay');
+            const bboxCoords = document.getElementById('selectedBboxCoords');
+            if (bboxBox && bboxCoords) {
+                bboxBox.style.display = 'block';
+                bboxCoords.innerText = `[${currentBbox.map(n => n.toFixed(4)).join(', ')}]`;
+            }
         };
 
         updateSelectionData();
@@ -118,6 +125,8 @@ function setupDrawingEvents() {
             if (saveAoiBtn) saveAoiBtn.disabled = true;
             if (statusText) statusText.innerText = "Draw a rectangle to begin.";
             if (aoiStatus) aoiStatus.innerText = "Draw a rectangle to begin.";
+            const bboxBox = document.getElementById('selectedBboxDisplay');
+            if (bboxBox) bboxBox.style.display = 'none';
         }
     });
 }

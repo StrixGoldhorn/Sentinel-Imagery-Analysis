@@ -9,22 +9,149 @@
 {% endblock %}
 
 {% block content %}
-<div class="sidebar">
-    <div class="accordion-item">
-        <button class="accordion-header active" onclick="toggleAccordion(this)">Area Scan</button>
-        <div id="scan-page" class="accordion-content active">
-            <h3>SAR Area Scan</h3>
-            <p id="status">Draw a rectangle to begin.</p>
-            <button id="scanBtn" disabled>Scan Selected Area</button>
-            <button id="clearScansBtn" style="background: #dc3545; margin-top: 5px;">Clear All Scans</button>
-        </div>
+<!-- C2 Left Tactical Rail -->
+<nav class="c2-rail" id="c2Rail">
+    <div class="c2-rail-top">
+        <button type="button" class="c2-rail-btn active" id="c2TabBtn-scan" data-tab="scan" data-tooltip="SAR Acquisition & Area Scan" onclick="switchC2Tab('scan')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"></circle>
+                <line x1="12" y1="3" x2="12" y2="21"></line>
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+            <span class="c2-rail-label">SAR</span>
+        </button>
+
+        <button type="button" class="c2-rail-btn" id="c2TabBtn-layers" data-tab="layers" data-tooltip="Imagery Layers & Nautical Charts" onclick="switchC2Tab('layers')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                <polyline points="2 17 12 22 22 17"></polyline>
+                <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+            <span class="c2-rail-label">Layers</span>
+        </button>
+
+        <button type="button" class="c2-rail-btn" id="c2TabBtn-ais" data-tab="ais" data-tooltip="Live AIS Vessels & Telemetry" onclick="switchC2Tab('ais')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 20a2.4 2.4 0 0 0 2 1 2.4 2.4 0 0 0 2-1 2.4 2.4 0 0 1 2-1 2.4 2.4 0 0 1 2 1 2.4 2.4 0 0 0 2 1 2.4 2.4 0 0 0 2-1 2.4 2.4 0 0 1 2-1 2.4 2.4 0 0 1 2 1 2.4 2.4 0 0 0 2 1 2.4 2.4 0 0 0 2-1"></path>
+                <path d="M4 18L3 12h18l-1 6"></path>
+                <path d="M12 2v7"></path>
+                <path d="M8 9h8"></path>
+            </svg>
+            <span class="c2-rail-label">AIS</span>
+        </button>
+
+        <button type="button" class="c2-rail-btn" id="c2TabBtn-aoi" data-tab="aoi" data-tooltip="Areas of Interest (AOIs)" onclick="switchC2Tab('aoi')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+            <span class="c2-rail-label">AOIs</span>
+        </button>
     </div>
 
-    <div class="accordion-item">
-        <button class="accordion-header" onclick="toggleAccordion(this)">Layers & Nautical</button>
-        <div id="layers-page" class="accordion-content">
-            <h3>Overlays & Charts</h3>
-            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 12px;">
+    <div class="c2-rail-mid">
+        <span class="c2-rail-divider"></span>
+
+        <!-- Quick Map Action Shortcuts -->
+        <button type="button" class="c2-rail-btn c2-quick-btn" id="railDrawBoxBtn" data-tooltip="Draw Bounding Box on Map" onclick="startDrawingBbox()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="3 3"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+        </button>
+
+        <button type="button" class="c2-rail-btn c2-quick-btn" id="railRefreshAisBtn" data-tooltip="Refresh AIS Vessels" onclick="refreshAISVessels(map)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+        </button>
+
+        <button type="button" class="c2-rail-btn c2-quick-btn" id="railResetMapBtn" data-tooltip="Reset Map View" onclick="resetMapView()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+            </svg>
+        </button>
+    </div>
+
+    <div class="c2-rail-bottom">
+        <button type="button" class="c2-rail-btn c2-collapse-btn" id="c2ToggleDrawerBtn" data-tooltip="Collapse / Expand Flyout" onclick="toggleC2Drawer()">
+            <svg id="c2CollapseIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="11 17 6 12 11 7"></polyline>
+                <polyline points="18 17 13 12 18 7"></polyline>
+            </svg>
+        </button>
+    </div>
+</nav>
+
+<!-- Contextual Slide-Out Drawer -->
+<aside class="c2-drawer" id="c2Drawer">
+    <div class="c2-drawer-header">
+        <div class="c2-drawer-title-group">
+            <span class="c2-drawer-badge" id="c2DrawerBadge">SAR</span>
+            <h3 class="c2-drawer-title" id="c2DrawerTitle">SAR Area Scan</h3>
+        </div>
+        <button type="button" class="c2-drawer-close" onclick="toggleC2Drawer(false)" title="Collapse Drawer">&times;</button>
+    </div>
+
+    <div class="c2-drawer-body">
+        <!-- Panel 1: SAR Area Scan -->
+        <div id="scan-page" class="c2-panel active">
+            <div class="c2-panel-desc">Define an Area of Interest on the map and dispatch Sentinel-1 radar acquisition tasks.</div>
+            
+            <div class="c2-card">
+                <div class="c2-card-header">
+                    <span>Selection Status</span>
+                </div>
+                <div class="c2-card-body">
+                    <p id="status" class="status-msg">Draw a rectangle to begin.</p>
+                    <div id="selectedBboxDisplay" class="bbox-readout" style="display: none;">
+                        <span class="bbox-label">Bounding Box:</span>
+                        <code id="selectedBboxCoords">-</code>
+                    </div>
+                </div>
+            </div>
+
+            <div class="c2-action-group">
+                <button id="scanBtn" class="btn btn-primary btn-block" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    Scan Selected Area
+                </button>
+                <button id="clearScansBtn" class="btn btn-danger btn-block" style="background: #dc3545; margin-top: 8px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    Clear All Scans
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel 2: Layers & Nautical Overlays -->
+        <div id="layers-page" class="c2-panel">
+            <div class="c2-panel-desc">Manage loaded SAR imagery rasters, metrology overlays, and nautical basemaps.</div>
+            
+            <div class="c2-card">
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; font-weight: 600; cursor: pointer; margin-bottom: 0;">
+                    <input type="checkbox" id="nauticalChartToggle">
+                    <span>OpenSeaMap Nautical Chart</span>
+                </label>
+                <small style="color: #64748b; display: block; margin-top: 4px; font-size: 0.78em;">Displays seamarks, buoys, lights, shallow water and navigation fairways.</small>
+            </div>
+
+            <h4 class="c2-section-heading">Active SAR Layers</h4>
+            <div id="layersList"></div>
+        </div>
+
+        <!-- Panel 3: Live AIS Vessels -->
+        <div id="ais-page" class="c2-panel">
+            <div class="c2-panel-desc">Track real-time transponder signals, vessel classification, and historical playback.</div>
+            
+            <div class="c2-card">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; font-weight: 600; cursor: pointer; margin-bottom: 0;">
                         <input type="checkbox" id="aisVesselToggle" checked>
@@ -32,13 +159,13 @@
                     </label>
                     <span id="aisVesselCount" class="badge badge-success" style="font-size: 0.75rem; padding: 2px 6px; background-color: #28a745; color: #fff; border-radius: 4px;">0 vessels</span>
                 </div>
-                <small style="color: #6c757d; display: block; margin-top: 4px; font-size: 0.78em;">Live vessel positions with true heading, speed, and ship classification.</small>
+                <small style="color: #64748b; display: block; margin-top: 4px; font-size: 0.78em;">Live vessel positions with true heading, speed, and ship classification.</small>
                 
-                <div style="display: flex; gap: 6px; margin-top: 8px;">
-                    <button type="button" id="refreshAisBtn" style="flex: 1; padding: 4px 8px; font-size: 0.8em; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="refreshAISVessels(map)">
+                <div style="display: flex; gap: 6px; margin-top: 10px;">
+                    <button type="button" id="refreshAisBtn" class="btn btn-sm btn-primary" style="flex: 1; padding: 5px 8px; font-size: 0.8em; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="refreshAISVessels(map)">
                         ↻ Refresh Vessels
                     </button>
-                    <button type="button" id="filterAisBtn" style="padding: 4px 8px; font-size: 0.8em; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="toggleAisFilterPanel()">
+                    <button type="button" id="filterAisBtn" class="btn btn-sm btn-secondary" style="padding: 5px 8px; font-size: 0.8em; background: #64748b; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="toggleAisFilterPanel()">
                         Filter ▾
                     </button>
                 </div>
@@ -117,39 +244,30 @@
                     </div>
                 </div>
             </div>
-
-            <div style="background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #dee2e6; margin-bottom: 12px;">
-                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9em; font-weight: 600; cursor: pointer;">
-                    <input type="checkbox" id="nauticalChartToggle">
-                    <span>OpenSeaMap Nautical Chart</span>
-                </label>
-                <small style="color: #6c757d; display: block; margin-top: 4px; font-size: 0.78em;">Displays seamarks, buoys, lights, shallow water and navigation fairways.</small>
-            </div>
-            <h4>Active Layers</h4>
-            <div id="layersList"></div>
         </div>
-    </div>
 
-    <div class="accordion-item">
-        <button class="accordion-header" onclick="toggleAccordion(this)">Areas of Interest</button>
-        <div id="aoi-page" class="accordion-content">
-            <h3>Areas of Interest (AOIs)</h3>
-            <p id="aoiStatus" style="font-size: 0.9em; margin-bottom: 10px;">Draw a rectangle to begin.</p>
-            <form id="addAoiForm" style="margin-bottom: 15px;">
-                <div style="margin-bottom: 10px;">
-                    <label for="aoiName" style="font-size: 0.85em; color: #666;">Name your drawn area</label>
-                    <input type="text" id="aoiName" placeholder="e.g. Port of Singapore" style="width: 100%; padding: 5px; box-sizing: border-box;" required>
-                </div>
-                <button type="button" id="saveAoiBtn" class="btn" style="width: 100%;" disabled>Save Drawn Area as AOI</button>
-            </form>
-            <hr style="border: 0; border-top: 1px solid #ddd; margin: 10px 0;">
-            <h4 style="font-size: 0.9em; margin-bottom: 10px;">Tracked Locations</h4>
-            <div id="aoiList" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+        <!-- Panel 4: Areas of Interest -->
+        <div id="aoi-page" class="c2-panel">
+            <div class="c2-panel-desc">Monitor defined geographic boundaries and configure automated satellite pass captures.</div>
+            
+            <div class="c2-card">
+                <p id="aoiStatus" style="font-size: 0.88em; margin-bottom: 10px; color: #475569;">Draw a rectangle to begin.</p>
+                <form id="addAoiForm" style="margin-bottom: 0;">
+                    <div style="margin-bottom: 10px;">
+                        <label for="aoiName" style="font-size: 0.82em; font-weight: 600; color: #475569; display: block; margin-bottom: 4px;">AOI Name</label>
+                        <input type="text" id="aoiName" placeholder="e.g. Port of Singapore" style="width: 100%; padding: 7px 10px; font-size: 0.88em; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;" required>
+                    </div>
+                    <button type="button" id="saveAoiBtn" class="btn btn-primary btn-block" disabled>Save Drawn Area as AOI</button>
+                </form>
+            </div>
+
+            <h4 class="c2-section-heading">Tracked Locations</h4>
+            <div id="aoiList" style="max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
                 <!-- AOIs dynamically populated -->
             </div>
         </div>
     </div>
-</div>
+</aside>
 
 <div class="search-group">
     <div style="display: flex; gap: 5px; width: 100%;">
@@ -159,7 +277,180 @@
     <div id="searchResults" class="search-results"></div>
 </div>
 
+<button type="button" class="c2-right-toggle-btn" id="c2RightToggleBtn" onclick="toggleShipDetailsSidebar()" title="Toggle SAR Detections & Ship Intelligence">
+    <span class="btn-icon">🛰️</span>
+    <span class="btn-text">SAR Detections</span>
+    <span class="c2-btn-badge" id="c2RightToggleBadge">0</span>
+</button>
+
 <div id="map"></div>
+
+<!-- C2 Right Sidebar: Ship Dossier & Telemetry Details -->
+<aside class="c2-ship-sidebar" id="c2ShipSidebar">
+    <div class="c2-ship-header">
+        <div class="c2-ship-header-title">
+            <span class="c2-ship-header-icon" id="shipSidebarIcon">🛰️</span>
+            <div>
+                <h3 id="shipSidebarName">Maritime Intelligence</h3>
+                <span class="c2-ship-sub" id="shipSidebarSub">SAR Vessel Detections & AIS Telemetry</span>
+            </div>
+        </div>
+        <button type="button" class="c2-ship-close-btn" id="closeShipSidebarBtn" onclick="closeShipDetailsSidebar()" title="Close details panel">&times;</button>
+    </div>
+
+    <!-- Right Sidebar Nav Tabs -->
+    <div class="c2-ship-tabs">
+        <button type="button" class="c2-ship-tab-btn active" id="tabBtnSarDetections" onclick="switchShipSidebarTab('sar')">
+            <span class="tab-icon">🛰️</span> SAR Detections
+            <span class="c2-tab-count-badge" id="sarDetectionsSidebarBadge">0</span>
+        </button>
+        <button type="button" class="c2-ship-tab-btn" id="tabBtnShipDossier" onclick="switchShipSidebarTab('dossier')">
+            <span class="tab-icon">🚢</span> Selected Vessel
+        </button>
+    </div>
+
+    <div class="c2-ship-body" id="shipSidebarContent">
+        <!-- View 1: SAR Detections List View -->
+        <div id="shipSidebarSarView" class="c2-ship-view">
+            <div class="sar-sidebar-toolbar">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.5px;">Active Imagery Pass</span>
+                    <span id="sarSidebarCountLabel" style="font-size: 0.75rem; color: #0284c7; font-weight: 600;">0 Detected Ships</span>
+                </div>
+                <select id="sarSidebarLayerSelect" class="form-control" style="width: 100%; font-size: 0.82rem; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff;" onchange="renderSarDetectionsInSidebar()">
+                    <option value="__all__">All Active Scans</option>
+                </select>
+            </div>
+
+            <div id="sarSidebarDetectionsList" class="sar-sidebar-detections-list">
+                <!-- Dynamically populated via renderSarDetectionsInSidebar() -->
+            </div>
+        </div>
+
+        <!-- View 2: Selected Vessel Dossier View -->
+        <div id="shipSidebarDossierView" class="c2-ship-view" style="display: none;">
+            <!-- Placeholder when nothing selected -->
+            <div class="c2-ship-placeholder" id="shipSidebarPlaceholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
+                </svg>
+                <p>Select any detected vessel from the <strong>SAR Detections</strong> tab or click an AIS ship marker on the map to inspect live telemetry and radar metrology.</p>
+            </div>
+
+            <!-- Populated details container -->
+            <div class="c2-ship-details-container" id="shipSidebarDetails" style="display: none;">
+                <div style="margin-bottom: 10px;">
+                    <button type="button" class="btn btn-sm" style="background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd; font-size: 0.76rem; padding: 3px 8px; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" onclick="switchShipSidebarTab('sar')">
+                        ← Back to SAR Detections List
+                    </button>
+                </div>
+
+                <!-- Badge & Classification Banner -->
+                <div class="c2-ship-classification-banner">
+                    <span class="c2-ship-type-badge" id="shipSidebarTypeBadge">Cargo</span>
+                    <span class="c2-ship-status-tag" id="shipSidebarStatusTag">Active Transponder</span>
+                </div>
+
+                <!-- Identity Card -->
+                <div class="c2-ship-card">
+                    <h4 class="c2-card-title">Vessel Identification</h4>
+                    <div class="c2-ship-grid-2">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">MMSI</span>
+                            <span class="c2-value font-mono" id="shipSidebarMmsi">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">IMO</span>
+                            <span class="c2-value font-mono" id="shipSidebarImo">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Callsign</span>
+                            <span class="c2-value" id="shipSidebarCallsign">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Flag / Nation</span>
+                            <span class="c2-value" id="shipSidebarFlag">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kinematics & Telemetry Card -->
+                <div class="c2-ship-card">
+                    <h4 class="c2-card-title">Kinematics & Telemetry</h4>
+                    <div class="c2-ship-kpi-row">
+                        <div class="c2-kpi-box">
+                            <span class="c2-kpi-label">Speed Over Ground</span>
+                            <span class="c2-kpi-val" id="shipSidebarSpeed">0.0 <small>kn</small></span>
+                        </div>
+                        <div class="c2-kpi-box">
+                            <span class="c2-kpi-label">Heading / Course</span>
+                            <span class="c2-kpi-val" id="shipSidebarHeading">---°</span>
+                        </div>
+                    </div>
+                    <div class="c2-ship-grid-1" style="margin-top: 10px;">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Coordinates</span>
+                            <span class="c2-value font-mono" id="shipSidebarCoords">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Last Transmission</span>
+                            <span class="c2-value" id="shipSidebarTimestamp">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Source Plugin</span>
+                            <span class="c2-value" id="shipSidebarSource">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SAR Radar Metrology Card (for SAR detections) -->
+                <div class="c2-ship-card" id="shipSidebarSarCard" style="display: none;">
+                    <h4 class="c2-card-title">SAR Radar Metrology</h4>
+                    <div class="c2-ship-grid-2">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Est. Length</span>
+                            <span class="c2-value" id="shipSidebarSarLength">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Est. Beam</span>
+                            <span class="c2-value" id="shipSidebarSarBeam">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Confidence</span>
+                            <span class="c2-value" id="shipSidebarSarConfidence">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Orientation</span>
+                            <span class="c2-value" id="shipSidebarSarHeading">-</span>
+                        </div>
+                    </div>
+                    <div id="shipSidebarCropPreview" style="margin-top: 10px; display: none;">
+                        <span class="c2-label" style="display: block; margin-bottom: 4px;">Radar Chip Preview</span>
+                        <img id="shipSidebarCropImg" src="" alt="Radar Crop" style="width: 100%; max-height: 140px; object-fit: contain; background: #000; border-radius: 4px; border: 1px solid #cbd5e1;">
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="c2-ship-actions">
+                    <button type="button" class="btn btn-primary" id="shipSidebarCenterBtn" onclick="centerOnSelectedShip()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="22" y1="12" x2="18" y2="12"></line>
+                            <line x1="6" y1="12" x2="2" y2="12"></line>
+                            <line x1="12" y1="6" x2="12" y2="2"></line>
+                            <line x1="12" y1="22" x2="12" y2="18"></line>
+                        </svg>
+                        Center on Map
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="shipSidebarEditBtn" onclick="editSelectedShipDetails()">
+                        ✏️ Edit Details
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</aside>
 
 <!-- Floating Map Timeline Player for AIS Vessels -->
 <div id="aisFloatingTimeline" class="ais-floating-timeline" style="display: none;">
