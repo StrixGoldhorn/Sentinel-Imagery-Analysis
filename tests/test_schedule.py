@@ -117,10 +117,18 @@ def test_get_upcoming_scrapes_sorting_and_filtering() -> None:
 
     assert metrics["total_aois"] == 2
     assert metrics["auto_capture_count"] == 1
-    assert len(events) == 4
     assert metrics["cross_validated_count"] == 4
     assert metrics["n2yo_only_count"] == 0
     assert metrics["historical_only_count"] == 0
+    assert metrics["upcoming_24h_count"] == 2
+    assert metrics["upcoming_7d_count"] == 4
+
+    # Horizon filtering for 1 day still preserves 7d metric
+    result_1d = use_case.execute(api_key="test_key", days_ahead=1)
+    assert len(result_1d["events"]) == 2
+    assert len(result_1d["all_events"]) == 4
+    assert result_1d["metrics"]["upcoming_24h_count"] == 2
+    assert result_1d["metrics"]["upcoming_7d_count"] == 4
 
     for i in range(len(events) - 1):
         assert events[i]["pass_time"] <= events[i + 1]["pass_time"]

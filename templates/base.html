@@ -4,63 +4,319 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Sentinel Analysis{% endblock %}</title>
-    <style>
-        body {
-            margin: 0;
-            padding-top: 70px; /* Space for the fixed navbar */
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        .navbar {
-            background-color: #2c3e50;
-            color: white;
-            padding: 0.8rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .navbar .brand {
-            font-size: 1.4rem;
-            font-weight: bold;
-            color: white;
-            text-decoration: none;
-        }
-        .nav-links a {
-            color: #ecf0f1;
-            text-decoration: none;
-            margin-left: 25px;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        .nav-links a:hover {
-            color: #3498db;
-        }
-        .nav-links a.active {
-            color: #3498db;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 5px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
     {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <nav class="navbar">
-        <a href="/" class="brand">Sentinel Analysis</a>
-        <div class="nav-links">
-            <a href="/" class="{{ 'active' if request.path == '/' else '' }}">Map Scan</a>
-            <a href="/aois" class="{{ 'active' if request.path == '/aois' else '' }}">Areas of Interest</a>
-            <a href="/schedule" class="{{ 'active' if request.path == '/schedule' else '' }}">Planned Scrapes</a>
-            <a href="/post-pass" class="{{ 'active' if request.path in ('/post-pass', '/post_pass', '/ingestion') else '' }}">Post-Pass Ingestion</a>
-            <a href="/scrapers" class="{{ 'active' if request.path == '/scrapers' else '' }}">Scrapers</a>
-            <a href="/logs" class="{{ 'active' if request.path == '/logs' else '' }}">Scraper Logs</a>
-            <a href="/gallery" class="{{ 'active' if request.path == '/gallery' else '' }}">Gallery</a>
+    <header class="tactical-header">
+        <!-- Tier 1: Tactical Mission Telemetry Strip -->
+        <div class="top-telemetry-bar">
+            <div class="telemetry-left">
+                <div class="telemetry-item" title="Universal Coordinated Time (Zulu)">
+                    <span class="beacon-dot"></span>
+                    <span id="zuluClockDisplay">ZULU: --:--:--Z</span>
+                </div>
+                <span class="telemetry-divider telemetry-local-sep">•</span>
+                <div class="telemetry-item telemetry-local" title="Local System Time">
+                    <span id="localClockDisplay">LOCAL: --:--:--</span>
+                </div>
+            </div>
+            <div class="telemetry-right">
+                <div class="telemetry-item" id="navNextActItem" title="Next scheduled automation or satellite pass">
+                    <span class="beacon-dot" id="navNextActDot" style="width: 6px; height: 6px;"></span>
+                    <span id="navNextActText">Scheduler: <strong style="color: #2ecc71;">Active</strong></span>
+                </div>
+                <span class="telemetry-divider">|</span>
+                <a href="/logs" class="telemetry-link" title="View Ingestion & Scraper Execution Logs">
+                    <span>Audit Logs</span>
+                </a>
+            </div>
         </div>
-    </nav>
+
+        <!-- Tier 2: Main Tactical Navigation Bar -->
+        <nav class="main-nav-bar">
+            <div class="main-nav-left">
+                <a href="/" class="nav-brand" title="Sentinel Imagery Analysis Platform">
+                    <svg class="nav-brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="22" y1="12" x2="18" y2="12"></line>
+                        <line x1="6" y1="12" x2="2" y2="12"></line>
+                        <line x1="12" y1="6" x2="12" y2="2"></line>
+                        <line x1="12" y1="22" x2="12" y2="18"></line>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                    <span>Sentinel Analysis</span>
+                </a>
+
+                <ul class="nav-links" id="mainNavLinks">
+                    <li class="nav-item">
+                        <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
+                            Map Scan
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/aois" class="{{ 'active' if request.path == '/aois' else '' }}">
+                            Areas of Interest
+                            <span class="nav-badge" id="navAoiBadge" style="display: none;">0</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/schedule" class="{{ 'active' if request.path == '/schedule' else '' }}">
+                            Planned Scrapes
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/gallery" class="{{ 'active' if request.path == '/gallery' else '' }}">
+                            Gallery
+                        </a>
+                    </li>
+                    <!-- Automations Dropdown -->
+                    <li class="nav-item dropdown" id="navDropdownAutomations">
+                        <button type="button" class="dropdown-trigger {{ 'active' if request.path in ('/post-pass', '/post_pass', '/ingestion', '/scrapers', '/logs') else '' }}" aria-expanded="false" onclick="toggleNavDropdown(event)">
+                            <span>Automations</span>
+                            <span class="dropdown-chevron">▾</span>
+                        </button>
+                        <div class="dropdown-menu" id="automationsDropdownMenu">
+                            <a href="/post-pass" class="dropdown-item {{ 'active' if request.path in ('/post-pass', '/post_pass', '/ingestion') else '' }}">
+                                <span>⚡</span> Post-Pass Ingestion
+                            </a>
+                            <a href="/scrapers" class="dropdown-item {{ 'active' if request.path == '/scrapers' else '' }}">
+                                <span>🔌</span> AIS Scrapers
+                            </a>
+                            <a href="/logs" class="dropdown-item {{ 'active' if request.path == '/logs' else '' }}">
+                                <span>📋</span> Scraper Logs
+                            </a>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="main-nav-right">
+                <a href="/?action=scan" class="btn-nav-action" title="Trigger instant SAR Area Scan on Map">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>New Scan</span>
+                </a>
+                <button type="button" class="mobile-toggle" aria-label="Toggle navigation menu" onclick="toggleMobileNav()">
+                    ☰
+                </button>
+            </div>
+        </nav>
+    </header>
+
     {% block content %}{% endblock %}
+
+    <script>
+        // 1. Live Zulu & Local Clocks and Next Act Countdown
+        let navNextActData = null;
+
+        function formatNavCountdown(sec) {
+            if (typeof sec !== 'number' || isNaN(sec)) return '--';
+            if (sec <= 0) return 'now';
+            if (sec < 60) return `${sec}s`;
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            if (m < 60) {
+                return s > 0 ? `${m}m ${s}s` : `${m}m`;
+            }
+            const h = Math.floor(m / 60);
+            const remM = m % 60;
+            if (h < 24) {
+                return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
+            }
+            const d = Math.floor(h / 24);
+            const remH = h % 24;
+            return remH > 0 ? `${d}d ${remH}h` : `${d}d`;
+        }
+
+        let navEvents = [];
+        let navSchedulerInfo = null;
+
+        function updateClocks() {
+            const now = new Date();
+            const nowMs = now.getTime();
+
+            // Zulu Time (UTC)
+            const zYear = now.getUTCFullYear();
+            const zMonth = String(now.getUTCMonth() + 1).padStart(2, '0');
+            const zDay = String(now.getUTCDate()).padStart(2, '0');
+            const zHours = String(now.getUTCHours()).padStart(2, '0');
+            const zMinutes = String(now.getUTCMinutes()).padStart(2, '0');
+            const zSeconds = String(now.getUTCSeconds()).padStart(2, '0');
+            const zuluEl = document.getElementById('zuluClockDisplay');
+            if (zuluEl) {
+                zuluEl.textContent = `ZULU: ${zHours}:${zMinutes}:${zSeconds}Z`;
+                zuluEl.parentElement.setAttribute('title', `Universal Coordinated Time (Zulu): ${zYear}-${zMonth}-${zDay} ${zHours}:${zMinutes}:${zSeconds} UTC`);
+            }
+
+            // Local Time
+            const lHours = String(now.getHours()).padStart(2, '0');
+            const lMinutes = String(now.getMinutes()).padStart(2, '0');
+            const lSeconds = String(now.getSeconds()).padStart(2, '0');
+            const localEl = document.getElementById('localClockDisplay');
+            if (localEl) {
+                localEl.textContent = `LOCAL: ${lHours}:${lMinutes}:${lSeconds}`;
+            }
+
+            // Next Scheduled Act Live Countdown & Status
+            const actTextEl = document.getElementById('navNextActText');
+            const actDotEl = document.getElementById('navNextActDot');
+            if (actTextEl) {
+                // Check if any pass is currently active (±5 min flypast window)
+                const activePass = navEvents.find(e => {
+                    const diff = e.passMs - nowMs;
+                    return (e.isActive || (diff >= -300000 && diff <= 300000));
+                });
+
+                if (activePass) {
+                    actTextEl.innerHTML = `Scheduler: <strong style="color: #2ecc71;">Active (${activePass.actionType} - ${activePass.aoiName})</strong>`;
+                    if (actDotEl) {
+                        actDotEl.style.backgroundColor = '#2ecc71';
+                        actDotEl.style.boxShadow = '0 0 8px rgba(46, 204, 113, 0.8)';
+                    }
+                    return;
+                }
+
+                // Check for earliest future scheduled pass
+                const futurePass = navEvents.find(e => e.passMs > nowMs);
+                if (futurePass) {
+                    const diffSec = Math.floor((futurePass.passMs - nowMs) / 1000);
+                    const countdownStr = formatNavCountdown(diffSec);
+                    actTextEl.innerHTML = `Scheduler: <strong style="color: #2ecc71;">${futurePass.actionType} (${futurePass.aoiName})</strong> in <span style="color: #3498db; font-weight: 600;">${countdownStr}</span>`;
+                    if (actDotEl) {
+                        actDotEl.style.backgroundColor = '#2ecc71';
+                        actDotEl.style.boxShadow = 'none';
+                    }
+                    return;
+                }
+
+                // Fallback to background scheduler polling daemon status
+                if (navSchedulerInfo) {
+                    if (navSchedulerInfo.isRunning) {
+                        const nextPollMs = navSchedulerInfo.lastRunMs + navSchedulerInfo.pollIntervalMs;
+                        const pollDiffSec = Math.floor((nextPollMs - nowMs) / 1000);
+                        if (pollDiffSec > 0 && pollDiffSec <= 60) {
+                            actTextEl.innerHTML = `Scheduler: <strong style="color: #2ecc71;">Orbit Check</strong> in <span style="color: #3498db; font-weight: 600;">${pollDiffSec}s</span>`;
+                        } else {
+                            actTextEl.innerHTML = `Scheduler: <strong style="color: #2ecc71;">Active</strong>`;
+                        }
+                        if (actDotEl) {
+                            actDotEl.style.backgroundColor = '#2ecc71';
+                            actDotEl.style.boxShadow = 'none';
+                        }
+                    } else {
+                        actTextEl.innerHTML = `Scheduler: <span style="color: #95a5a6;">Idle</span>`;
+                        if (actDotEl) {
+                            actDotEl.style.backgroundColor = '#95a5a6';
+                            actDotEl.style.boxShadow = 'none';
+                        }
+                    }
+                }
+            }
+        }
+        setInterval(updateClocks, 1000);
+        updateClocks();
+
+        // 2. Dropdown & Mobile Handlers
+        function toggleNavDropdown(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const dd = document.getElementById('navDropdownAutomations');
+            if (dd) {
+                dd.classList.toggle('open');
+                const menu = document.getElementById('automationsDropdownMenu');
+                if (menu) menu.classList.toggle('show');
+            }
+        }
+
+        function toggleMobileNav() {
+            const links = document.getElementById('mainNavLinks');
+            if (links) links.classList.toggle('open');
+        }
+
+        document.addEventListener('click', function(e) {
+            const dd = document.getElementById('navDropdownAutomations');
+            if (dd && !dd.contains(e.target)) {
+                dd.classList.remove('open');
+                const menu = document.getElementById('automationsDropdownMenu');
+                if (menu) menu.classList.remove('show');
+            }
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const dd = document.getElementById('navDropdownAutomations');
+                if (dd) {
+                    dd.classList.remove('open');
+                    const menu = document.getElementById('automationsDropdownMenu');
+                    if (menu) menu.classList.remove('show');
+                }
+            }
+        });
+
+        // 3. Telemetry and Dynamic Status Fetching
+        async function updateNavTelemetry() {
+            // A. Fetch upcoming events (planned scrapes / passes)
+            try {
+                const res = await fetch('/api/schedule/upcoming?days_ahead=14');
+                if (res.ok) {
+                    const data = await res.json();
+                    const rawEvents = data.all_events || data.events || data.scrapes || [];
+                    navEvents = rawEvents.map(e => {
+                        const rawTime = e.pass_time || e.pass_start_utc;
+                        let d = new Date(rawTime);
+                        if (isNaN(d.getTime()) && typeof rawTime === 'string') {
+                            d = new Date(rawTime.replace(' ', 'T') + (rawTime.endsWith('Z') ? '' : 'Z'));
+                        }
+                        return {
+                            aoiName: e.aoi_name || 'AOI',
+                            passMs: d.getTime(),
+                            actionType: e.auto_capture_enabled ? 'AIS Scrape' : 'Satellite Pass',
+                            isActive: Boolean(e.is_active)
+                        };
+                    }).filter(e => !isNaN(e.passMs)).sort((a, b) => a.passMs - b.passMs);
+                }
+            } catch (err) {}
+
+            // B. Fetch background scheduler daemon status
+            try {
+                const res = await fetch('/api/schedule/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    const s = data.scheduler;
+                    const isRunning = Boolean(s && (s.is_running || s.thread_alive));
+                    navSchedulerInfo = {
+                        isRunning: isRunning,
+                        lastRunMs: s && s.last_run_at ? new Date(s.last_run_at).getTime() : Date.now(),
+                        pollIntervalMs: (s && s.poll_interval_seconds ? s.poll_interval_seconds : 60) * 1000
+                    };
+                }
+            } catch (err) {}
+
+            updateClocks();
+
+            // C. Fetch Areas of Interest count badge
+            try {
+                const res = await fetch('/api/aoi');
+                if (res.ok) {
+                    const aois = await res.json();
+                    const badge = document.getElementById('navAoiBadge');
+                    if (badge && Array.isArray(aois) && aois.length > 0) {
+                        badge.textContent = aois.length;
+                        badge.style.display = 'inline-block';
+                    }
+                }
+            } catch (err) {}
+
+            updateClocks();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateNavTelemetry();
+            setInterval(updateNavTelemetry, 30000);
+        });
+    </script>
 </body>
 </html>

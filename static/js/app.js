@@ -115,6 +115,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Check for new scan action from navbar
+    if (params.get('action') === 'scan') {
+        const scanHeader = document.querySelector('.accordion-header');
+        if (scanHeader && !scanHeader.classList.contains('active')) {
+            toggleAccordion(scanHeader);
+        }
+    }
+
     for (const folder of selected) {
         try {
             const res = await fetch(`${CONFIG.API_GET_SCAN}/${folder}`);

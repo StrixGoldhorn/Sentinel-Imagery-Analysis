@@ -107,7 +107,7 @@ class PredictAreaOfInterest:
         ]
         if not historical_predictions and self._mission_analyzer is not None:
             try:
-                historical_predictions = self._mission_analyzer.predict_from_history(aoi.bbox, days_ahead=10, limit=20)
+                historical_predictions = self._mission_analyzer.predict_from_history(aoi.bbox, days_ahead=10, limit=100)
             except Exception:
                 historical_predictions = []
 

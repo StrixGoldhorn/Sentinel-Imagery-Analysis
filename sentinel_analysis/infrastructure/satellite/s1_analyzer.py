@@ -169,7 +169,7 @@ class Sentinel1MissionAnalyzer:
         self,
         bbox: BoundingBox,
         days_ahead: int = 10,
-        limit: int = 20,
+        limit: int = 100,
     ) -> list[PassPrediction]:
         """Project future Sentinel-1 passes using exact 12-day / 175-orbit repeat cycle mechanics."""
         _, history = self.analyze_history(bbox, limit=None)
@@ -286,7 +286,7 @@ class Sentinel1MissionAnalyzer:
         bbox: BoundingBox,
         start_time: datetime,
         end_time: datetime,
-        limit: int = 10,
+        limit: int = 100,
     ) -> list[PassPrediction]:
         """Synthesize nominal Sentinel-1 passes using Sun-synchronous orbit crossings."""
         lat, lon = bbox.center

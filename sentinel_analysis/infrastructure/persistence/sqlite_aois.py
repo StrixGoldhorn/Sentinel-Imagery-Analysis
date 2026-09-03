@@ -124,7 +124,7 @@ class SQLiteAreaOfInterestRepository:
 
         return {
             "aoi_id": aoi_id,
-            "predictions": comb_filtered,
+            "predictions": comb_filtered if comb_filtered else (hist_filtered or n2yo_filtered),
             "n2yo_predictions": n2yo_filtered,
             "historical_predictions": hist_filtered,
             "mission_analysis": mission_summary,

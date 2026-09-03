@@ -1,7 +1,7 @@
 /* Scanner (index.html) Styles */
 #map { 
     position: fixed;
-    top: 70px;
+    top: var(--navbar-total-h, 74px);
     left: 350px;
     right: 0;
     bottom: 0;
@@ -9,10 +9,10 @@
 }
 .sidebar {
     position: fixed;
-    top: 70px;
+    top: var(--navbar-total-h, 74px);
     left: 0;
     width: 350px;
-    height: calc(100vh - 70px);
+    height: calc(100vh - var(--navbar-total-h, 74px));
     background: white;
     z-index: 1001;
     box-shadow: 2px 0 10px rgba(0,0,0,0.1);

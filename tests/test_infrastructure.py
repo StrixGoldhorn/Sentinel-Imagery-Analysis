@@ -54,11 +54,24 @@ RUNTIME = Path(__file__).resolve().parent / "runtime" / "infrastructure"
 
 
 class FakeResponse:
-    def __init__(self, payload=None, content=b""):
+    def __init__(self, payload=None, content=b"", status_code: int = 200, reason: str = "OK"):
         self.payload = payload
         self.content = content
+        self.status_code = status_code
+        self.reason = reason
 
     def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            req_resp = requests.Response()
+            req_resp.status_code = self.status_code
+            req_resp.reason = self.reason
+            if self.payload is not None:
+                import json
+                req_resp._content = json.dumps(self.payload).encode("utf-8")
+            else:
+                req_resp._content = self.content
+            raise requests.HTTPError(f"HTTP {self.status_code}: {self.reason}", response=req_resp)
         return None
 
     def json(self):
@@ -82,8 +95,105 @@ class FakeHTTPClient:
 
 
 class StaticTokenProvider:
-    def get(self):
-        return "token"
+    def __init__(self, token="token"):
+        self.token = token
+        self.refresh_calls = 0
+
+    def get(self, force_refresh: bool = False):
+        if force_refresh:
+            self.refresh_calls += 1
+        return self.token
+
+
+def test_copernicus_download_tile_retries_transient_502_and_succeeds() -> None:
+    import io
+    img_io = io.BytesIO()
+    Image.new("RGBA", (10, 10), (255, 255, 255, 255)).save(img_io, format="PNG")
+    valid_png = img_io.getvalue()
+
+    # First attempt: 502 Bad Gateway, Second attempt: 200 OK
+    client = FakeHTTPClient(
+        post_responses=[
+            FakeResponse(status_code=502, reason="Bad Gateway"),
+            FakeResponse(content=valid_png, status_code=200),
+        ]
+    )
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        sleep_fn=lambda _: None,
+    )
+    tile = ImageTile(BBOX, 10, 10, 0, 0)
+    acq = Acquisition(datetime(2026, 8, 20, 10, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
+
+    out_file = RUNTIME / "test_download_tile_retry.png"
+    out_file.unlink(missing_ok=True)
+    try:
+        provider.download_tile(tile, acq, out_file)
+        assert out_file.exists()
+        assert len(client.post_calls) == 2
+    finally:
+        out_file.unlink(missing_ok=True)
+
+
+def test_copernicus_download_tile_raises_formatted_error_on_persistent_502() -> None:
+    client = FakeHTTPClient(
+        post_responses=[
+            FakeResponse(status_code=502, reason="Bad Gateway"),
+            FakeResponse(status_code=502, reason="Bad Gateway"),
+            FakeResponse(status_code=502, reason="Bad Gateway"),
+            FakeResponse(status_code=502, reason="Bad Gateway"),
+        ]
+    )
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        sleep_fn=lambda _: None,
+    )
+    tile = ImageTile(BBOX, 10, 10, 0, 0)
+    acq = Acquisition(datetime(2026, 8, 20, 10, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
+
+    out_file = RUNTIME / "test_download_tile_fail.png"
+    try:
+        provider.download_tile(tile, acq, out_file)
+        assert False, "Expected ExternalServiceError"
+    except ExternalServiceError as exc:
+        assert "502" in str(exc)
+        assert "Bad Gateway" in str(exc)
+        assert len(client.post_calls) == 4
+    finally:
+        out_file.unlink(missing_ok=True)
+
+
+def test_copernicus_download_tile_refreshes_token_on_401() -> None:
+    import io
+    img_io = io.BytesIO()
+    Image.new("RGBA", (10, 10), (255, 255, 255, 255)).save(img_io, format="PNG")
+    valid_png = img_io.getvalue()
+
+    token_prov = StaticTokenProvider()
+    client = FakeHTTPClient(
+        post_responses=[
+            FakeResponse(status_code=401, reason="Unauthorized"),
+            FakeResponse(content=valid_png, status_code=200),
+        ]
+    )
+    provider = CopernicusImageryProvider(
+        token_prov,
+        http_client=client,
+        sleep_fn=lambda _: None,
+    )
+    tile = ImageTile(BBOX, 10, 10, 0, 0)
+    acq = Acquisition(datetime(2026, 8, 20, 10, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
+
+    out_file = RUNTIME / "test_download_tile_401.png"
+    try:
+        provider.download_tile(tile, acq, out_file)
+        assert out_file.exists()
+        assert token_prov.refresh_calls == 1
+        assert len(client.post_calls) == 2
+    finally:
+        out_file.unlink(missing_ok=True)
 
 
 class ByteResponse:

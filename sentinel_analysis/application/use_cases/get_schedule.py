@@ -31,7 +31,9 @@ class GetUpcomingScrapes:
             raise ValueError("Satellite prediction API key is required")
         api_key = api_key.strip()
         now = datetime.now(timezone.utc)
-        max_future = now + timedelta(days=max(1, int(days_ahead)))
+        forecast_days = max(1, int(days_ahead))
+        eval_horizon_days = max(14, forecast_days)
+        max_future = now + timedelta(days=eval_horizon_days)
 
         all_aois = list(self._aoi_repository.list())
         total_aois = len(all_aois)
@@ -179,19 +181,28 @@ class GetUpcomingScrapes:
         # Sort chronologically
         events.sort(key=lambda e: e["pass_time"])
 
-        upcoming_24h = sum(1 for e in events if 0 <= e["seconds_until_pass"] <= 86400)
-        upcoming_7d = sum(1 for e in events if 0 <= e["seconds_until_pass"] <= 7 * 86400)
+        # Calculate metrics across the full evaluation horizon (including currently active passes)
+        upcoming_24h = sum(1 for e in events if -300 <= e["seconds_until_pass"] <= 86400)
+        upcoming_7d = sum(1 for e in events if -300 <= e["seconds_until_pass"] <= 7 * 86400)
         active_flypasts = sum(1 for e in events if e["is_active"])
         cross_validated_count = sum(1 for e in events if e.get("contribution") == "both")
         n2yo_only_count = sum(1 for e in events if e.get("contribution") == "n2yo")
         historical_only_count = sum(1 for e in events if e.get("contribution") == "historical")
 
+        # If user explicitly requested a shorter list horizon (e.g. days_ahead < 7),
+        # filter returned events to match the requested days_ahead horizon
+        if forecast_days < eval_horizon_days:
+            returned_events = [e for e in events if e["seconds_until_pass"] <= forecast_days * 86400 + 300]
+        else:
+            returned_events = events
+
         return {
-            "events": events,
+            "events": returned_events,
+            "all_events": events,
             "metrics": {
                 "total_aois": total_aois,
                 "auto_capture_count": auto_capture_count,
-                "total_upcoming_scrapes": len(events),
+                "total_upcoming_scrapes": len(returned_events),
                 "upcoming_24h_count": upcoming_24h,
                 "upcoming_7d_count": upcoming_7d,
                 "active_flypasts_count": active_flypasts,

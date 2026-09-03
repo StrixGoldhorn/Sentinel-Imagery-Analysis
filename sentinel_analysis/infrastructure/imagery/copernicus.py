@@ -21,6 +21,46 @@ IDENTITY_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protoc
 PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 CATALOG_URL = "https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search"
 
+# HTTP status codes considered transient / retriable (server errors and rate limits)
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+def _is_transient_error(exc: Exception) -> bool:
+    """Check if an exception is a transient network or server error suitable for retry."""
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return True
+    if hasattr(exc, "response") and exc.response is not None:
+        status = getattr(exc.response, "status_code", None)
+        if status in RETRYABLE_STATUS_CODES:
+            return True
+    return False
+
+
+def _format_service_error(exc: Exception, default_msg: str) -> str:
+    """Extract helpful error details from Copernicus response or exception."""
+    if hasattr(exc, "response") and exc.response is not None:
+        status = getattr(exc.response, "status_code", None)
+        status_suffix = f" (HTTP {status})" if status else ""
+        try:
+            err_json = exc.response.json()
+            if isinstance(err_json, Mapping):
+                if "error" in err_json:
+                    err_obj = err_json["error"]
+                    if isinstance(err_obj, Mapping) and "message" in err_obj:
+                        return f"{default_msg}{status_suffix}: {err_obj['message']}"
+                    return f"{default_msg}{status_suffix}: {err_obj}"
+                if "message" in err_json:
+                    return f"{default_msg}{status_suffix}: {err_json['message']}"
+                if "detail" in err_json:
+                    return f"{default_msg}{status_suffix}: {err_json['detail']}"
+        except Exception:
+            pass
+        if hasattr(exc.response, "reason") and exc.response.reason:
+            return f"{default_msg}{status_suffix}: {exc.response.reason}"
+        if status:
+            return f"{default_msg}{status_suffix}"
+    return default_msg
+
 
 class HTTPResponse(Protocol):
     content: bytes
@@ -41,7 +81,7 @@ class HTTPClient(Protocol):
 
 
 class AccessTokenProvider(Protocol):
-    def get(self) -> str:
+    def get(self, force_refresh: bool = False) -> str:
         ...
 
 
@@ -52,40 +92,53 @@ class CopernicusTokenProvider:
         password: str | None,
         http_client: HTTPClient | None = None,
         monotonic_clock: Callable[[], float] | None = None,
+        sleep_fn: Callable[[float], None] | None = None,
+        max_retries: int = 3,
+        backoff_factor: float = 1.0,
     ) -> None:
         self._username = username
         self._password = password
         self._http = http_client or requests
         self._monotonic = monotonic_clock or time.monotonic
+        self._sleep = sleep_fn or time.sleep
+        self._max_retries = max_retries
+        self._backoff = backoff_factor
         self._access_token: str | None = None
         self._expires_at = 0.0
 
-    def get(self) -> str:
+    def get(self, force_refresh: bool = False) -> str:
         if not self._username or not self._password:
             raise AuthenticationError("Copernicus credentials are not configured")
-        if self._access_token and self._monotonic() < self._expires_at:
+        if not force_refresh and self._access_token and self._monotonic() < self._expires_at:
             return self._access_token
 
-        try:
-            response = self._http.post(
-                IDENTITY_URL,
-                data={
-                    "client_id": "cdse-public",
-                    "username": self._username,
-                    "password": self._password,
-                    "grant_type": "password",
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=60,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except requests.RequestException as exc:
-            if hasattr(exc, "response") and exc.response is not None:
-                if exc.response.status_code in (400, 401, 403):
-                    raise AuthenticationError("Copernicus authentication rejected: please verify your COP_USERNAME and COP_PASSWORD credentials") from exc
-            raise ExternalServiceError("Copernicus authentication service unreachable") from exc
-
+        payload = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = self._http.post(
+                    IDENTITY_URL,
+                    data={
+                        "client_id": "cdse-public",
+                        "username": self._username,
+                        "password": self._password,
+                        "grant_type": "password",
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    timeout=60,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                break
+            except requests.RequestException as exc:
+                if hasattr(exc, "response") and exc.response is not None:
+                    if exc.response.status_code in (400, 401, 403):
+                        raise AuthenticationError(
+                            "Copernicus authentication rejected: please verify your COP_USERNAME and COP_PASSWORD credentials"
+                        ) from exc
+                if attempt < self._max_retries and _is_transient_error(exc):
+                    self._sleep(self._backoff * (2 ** attempt))
+                    continue
+                raise ExternalServiceError("Copernicus authentication service unreachable") from exc
 
         if not isinstance(payload, Mapping) or "access_token" not in payload:
             raise ExternalServiceError("Copernicus returned an invalid token response")
@@ -109,6 +162,9 @@ class CopernicusImageryProvider:
         clock: Callable[[], datetime] | None = None,
         tile_cache: TileCache | None = None,
         evalscript: str = SAR,
+        sleep_fn: Callable[[float], None] | None = None,
+        max_retries: int = 3,
+        backoff_factor: float = 1.0,
     ) -> None:
         self._token_provider = token_provider
         self._tiler = tiler or TileGridCalculator()
@@ -116,6 +172,15 @@ class CopernicusImageryProvider:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._tile_cache = tile_cache
         self._evalscript = evalscript
+        self._sleep = sleep_fn or time.sleep
+        self._max_retries = max_retries
+        self._backoff = backoff_factor
+
+    def _get_token(self, force_refresh: bool = False) -> str:
+        try:
+            return self._token_provider.get(force_refresh=force_refresh)
+        except TypeError:
+            return self._token_provider.get()
 
     def find_latest_acquisition(
         self,
@@ -137,19 +202,35 @@ class CopernicusImageryProvider:
                 start = datetime(2014, 1, 1, tzinfo=timezone.utc)
 
             end = now + timedelta(days=1)
-            response = self._http.get(
-                CATALOG_URL,
-                headers={"Authorization": f"Bearer {self._token_provider.get()}"},
-                params={
-                    "bbox": ",".join(map(str, bbox.as_list())),
-                    "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
-                    "collections": "sentinel-1-grd",
-                    "limit": 1,
-                },
-                timeout=60,
-            )
-            response.raise_for_status()
-            payload = response.json()
+
+            payload = None
+            for attempt in range(self._max_retries + 1):
+                try:
+                    response = self._http.get(
+                        CATALOG_URL,
+                        headers={"Authorization": f"Bearer {self._get_token()}"},
+                        params={
+                            "bbox": ",".join(map(str, bbox.as_list())),
+                            "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
+                            "collections": "sentinel-1-grd",
+                            "limit": 1,
+                        },
+                        timeout=60,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    break
+                except requests.RequestException as exc:
+                    status = getattr(getattr(exc, "response", None), "status_code", None)
+                    if status == 401 and attempt < self._max_retries:
+                        self._get_token(force_refresh=True)
+                        continue
+                    if attempt < self._max_retries and _is_transient_error(exc):
+                        self._sleep(self._backoff * (2 ** attempt))
+                        continue
+                    msg = _format_service_error(exc, "Copernicus catalog request failed")
+                    raise ExternalServiceError(msg) from exc
+
             if not isinstance(payload, Mapping):
                 raise ValueError("Catalog response must be an object")
             features = payload.get("features", [])
@@ -165,16 +246,8 @@ class CopernicusImageryProvider:
                 raise ValueError("Catalog feature properties must be an object")
             acquired_at = datetime.fromisoformat(str(properties["datetime"]).replace("Z", "+00:00"))
             product_id = feature.get("id")
-        except requests.RequestException as exc:
-            msg = "Copernicus catalog request failed"
-            if hasattr(exc, "response") and exc.response is not None:
-                try:
-                    err_json = exc.response.json()
-                    if isinstance(err_json, dict) and "message" in err_json:
-                        msg = f"Copernicus catalog error: {err_json['message']}"
-                except Exception:
-                    pass
-            raise ExternalServiceError(msg) from exc
+        except ExternalServiceError:
+            raise
         except (KeyError, TypeError, ValueError) as exc:
             raise ExternalServiceError("Copernicus catalog response invalid") from exc
         return Acquisition(acquired_at, "Sentinel-1", "sentinel-1-grd", str(product_id) if product_id else None)
@@ -203,21 +276,35 @@ class CopernicusImageryProvider:
                 end = end.replace(tzinfo=timezone.utc)
             end = end.astimezone(timezone.utc)
 
-            response = self._http.get(
-                CATALOG_URL,
-                headers={"Authorization": f"Bearer {self._token_provider.get()}"},
-                params={
-                    "bbox": ",".join(map(str, bbox.as_list())),
-                    "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
-                    "collections": "sentinel-1-grd",
-                    "limit": max(1, min(limit, 500)),
-                },
-                timeout=60,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            payload = None
+            for attempt in range(self._max_retries + 1):
+                try:
+                    response = self._http.get(
+                        CATALOG_URL,
+                        headers={"Authorization": f"Bearer {self._get_token()}"},
+                        params={
+                            "bbox": ",".join(map(str, bbox.as_list())),
+                            "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
+                            "collections": "sentinel-1-grd",
+                            "limit": max(1, min(limit, 500)),
+                        },
+                        timeout=60,
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    break
+                except requests.RequestException as exc:
+                    status = getattr(getattr(exc, "response", None), "status_code", None)
+                    if status == 401 and attempt < self._max_retries:
+                        self._get_token(force_refresh=True)
+                        continue
+                    if attempt < self._max_retries and _is_transient_error(exc):
+                        self._sleep(self._backoff * (2 ** attempt))
+                        continue
+                    return []
+
             if not isinstance(payload, Mapping):
-                raise ValueError("Catalog response must be an object")
+                return []
             features = payload.get("features", [])
             if not isinstance(features, list):
                 return []
@@ -293,7 +380,7 @@ class CopernicusImageryProvider:
                 })
 
             return results
-        except (requests.RequestException, ExternalServiceError, ValueError):
+        except Exception:
             return []
 
     def calculate_tiles(self, bbox: BoundingBox) -> list[ImageTile]:
@@ -349,17 +436,35 @@ class CopernicusImageryProvider:
             "evalscript": self._evalscript,
         }
 
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = self._http.post(
+                    PROCESS_URL,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self._get_token()}",
+                    },
+                    json=payload,
+                    timeout=300,
+                )
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 401 and attempt < self._max_retries:
+                    self._get_token(force_refresh=True)
+                    continue
+                if attempt < self._max_retries and _is_transient_error(exc):
+                    self._sleep(self._backoff * (2 ** attempt))
+                    continue
+                error_msg = _format_service_error(exc, "Copernicus imagery request failed")
+                raise ExternalServiceError(error_msg) from exc
+
+        if response is None:
+            raise ExternalServiceError("Copernicus imagery request failed")
+
         try:
-            response = self._http.post(
-                PROCESS_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self._token_provider.get()}",
-                },
-                json=payload,
-                timeout=300,
-            )
-            response.raise_for_status()
             if self._tile_cache:
                 self._tile_cache.set(cache_key, response.content)
 
@@ -374,7 +479,6 @@ class CopernicusImageryProvider:
             finally:
                 image.close()
                 temporary.unlink(missing_ok=True)
-        except requests.RequestException as exc:
-            raise ExternalServiceError("Copernicus imagery request failed") from exc
         except (OSError, ValueError) as exc:
             raise ExternalServiceError("Copernicus returned an invalid image") from exc
+

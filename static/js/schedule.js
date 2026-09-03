@@ -44,18 +44,30 @@ async function loadAoisDropdown() {
     }
 }
 
+function handleHorizonChange() {
+    const daysAheadEl = document.getElementById('filterDaysAhead');
+    const val = daysAheadEl ? parseInt(daysAheadEl.value, 10) : 7;
+    if (val > 14) {
+        loadSchedule();
+    } else {
+        applyFilters();
+    }
+}
+
 async function loadSchedule() {
     const loadingState = document.getElementById('loadingState');
     const scheduleList = document.getElementById('scheduleList');
     const emptyState = document.getElementById('emptyState');
-    const daysAhead = document.getElementById('filterDaysAhead') ? document.getElementById('filterDaysAhead').value : '14';
+    const daysAheadEl = document.getElementById('filterDaysAhead');
+    const daysAheadVal = daysAheadEl ? parseInt(daysAheadEl.value, 10) : 7;
+    const reqDays = Math.max(14, daysAheadVal);
 
     if (loadingState) loadingState.style.display = 'block';
     if (scheduleList) scheduleList.style.display = 'none';
     if (emptyState) emptyState.style.display = 'none';
 
     try {
-        const response = await fetch(`/api/schedule/upcoming?days_ahead=${daysAhead}`);
+        const response = await fetch(`/api/schedule/upcoming?days_ahead=${reqDays}`);
         const data = await response.json();
 
         if (loadingState) loadingState.style.display = 'none';
@@ -66,8 +78,9 @@ async function loadSchedule() {
             return;
         }
 
-        allEvents = data.events || [];
-        updateMetrics(data.metrics || {});
+        allEvents = data.all_events || data.events || [];
+        globalMetrics = data.metrics || {};
+        updateMetrics(globalMetrics);
         applyFilters();
     } catch (err) {
         console.error('Error fetching planned schedule:', err);
@@ -77,12 +90,55 @@ async function loadSchedule() {
     }
 }
 
-function updateMetrics(metrics) {
+let globalMetrics = {};
+
+function updateMetrics(metrics, currentEvents = null) {
     const el24h = document.getElementById('metricUpcoming24h');
     const el7d = document.getElementById('metricUpcoming7d');
     const elActive = document.getElementById('metricActiveFlypasts');
     const elAuto = document.getElementById('metricAutoCaptureAois');
     const iconActive = document.getElementById('metricActiveFlypastsIcon');
+
+    const aoiSelect = document.getElementById('filterAoiSelect');
+    const searchInput = document.getElementById('filterSearchInput');
+    const autoOnly = document.getElementById('filterAutoOnly');
+    const hasSpecificFilter = (aoiSelect && aoiSelect.value) || 
+                              (searchInput && searchInput.value.trim()) || 
+                              (autoOnly && autoOnly.checked);
+
+    if (hasSpecificFilter && allEvents.length > 0) {
+        const nowMs = Date.now();
+        const relevantEvents = allEvents.filter(e => {
+            if (aoiSelect && aoiSelect.value && e.aoi_id !== parseInt(aoiSelect.value, 10)) return false;
+            if (autoOnly && autoOnly.checked && !e.auto_capture_enabled) return false;
+            if (searchInput && searchInput.value.trim()) {
+                const q = searchInput.value.trim().toLowerCase();
+                const m = (e.aoi_name || '').toLowerCase().includes(q) ||
+                          (e.satellite || '').toLowerCase().includes(q) ||
+                          (e.contribution_label || '').toLowerCase().includes(q);
+                if (!m) return false;
+            }
+            return true;
+        });
+
+        const in24h = relevantEvents.filter(e => {
+            const diff = new Date(e.pass_time).getTime() - nowMs;
+            return diff >= -300000 && diff <= 86400000;
+        }).length;
+        const in7d = relevantEvents.filter(e => {
+            const diff = new Date(e.pass_time).getTime() - nowMs;
+            return diff >= -300000 && diff <= 7 * 86400000;
+        }).length;
+        const activeCount = relevantEvents.filter(e => e.is_active || (new Date(e.pass_time).getTime() - nowMs >= -300000 && new Date(e.pass_time).getTime() - nowMs <= 300000)).length;
+
+        if (el24h) el24h.textContent = in24h;
+        if (el7d) el7d.textContent = in7d;
+        if (elActive) elActive.textContent = activeCount;
+        if (iconActive) {
+            iconActive.className = activeCount > 0 ? 'metric-icon icon-pulse' : 'metric-icon icon-amber';
+        }
+        return;
+    }
 
     if (el24h) el24h.textContent = metrics.upcoming_24h_count ?? '-';
     if (el7d) el7d.textContent = metrics.upcoming_7d_count ?? '-';
@@ -103,10 +159,14 @@ function applyFilters() {
     const autoOnly = document.getElementById('filterAutoOnly') ? document.getElementById('filterAutoOnly').checked : false;
     const searchInput = document.getElementById('filterSearchInput');
     const sourceSelect = document.getElementById('filterSourceSelect');
+    const daysAheadEl = document.getElementById('filterDaysAhead');
 
     const selectedAoiId = aoiSelect && aoiSelect.value ? parseInt(aoiSelect.value, 10) : null;
     const selectedSource = sourceSelect ? sourceSelect.value : '';
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const horizonDays = daysAheadEl && daysAheadEl.value ? parseInt(daysAheadEl.value, 10) : 7;
+    const nowMs = Date.now();
+    const maxHorizonMs = (horizonDays * 86400 + 300) * 1000;
 
     filteredEvents = allEvents.filter(event => {
         if (selectedAoiId !== null && event.aoi_id !== selectedAoiId) {
@@ -118,6 +178,12 @@ function applyFilters() {
         if (selectedSource) {
             const contrib = event.contribution || (event.source === 'COMBINED' ? 'both' : (event.source === 'HISTORICAL_MISSION' ? 'historical' : 'n2yo'));
             if (contrib !== selectedSource) {
+                return false;
+            }
+        }
+        if (horizonDays) {
+            const diff = new Date(event.pass_time).getTime() - nowMs;
+            if (diff > maxHorizonMs) {
                 return false;
             }
         }
@@ -133,6 +199,7 @@ function applyFilters() {
         return true;
     });
 
+    updateMetrics(globalMetrics, filteredEvents);
     renderScheduleList(filteredEvents);
 }
 
@@ -160,9 +227,9 @@ function renderScheduleList(events) {
 
 function createScheduleCard(event, index) {
     const card = document.createElement('div');
-    const passDt = new Date(event.pass_time);
-    const winStart = new Date(event.window_start);
-    const winEnd = new Date(event.window_end);
+    const passDt = parseScheduleUtcDate(event.pass_time) || new Date();
+    const winStart = parseScheduleUtcDate(event.window_start) || passDt;
+    const winEnd = parseScheduleUtcDate(event.window_end) || passDt;
 
     const isLive = event.is_active;
     const statusClass = isLive ? 'status-active' : (event.auto_capture_enabled ? 'status-scheduled' : 'status-predicted');
@@ -280,6 +347,24 @@ function createScheduleCard(event, index) {
     return card;
 }
 
+function parseScheduleUtcDate(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+    if (typeof dateStr === 'string') {
+        let cleaned = dateStr.trim();
+        if (cleaned.includes(' ') && !cleaned.includes('T')) {
+            cleaned = cleaned.replace(' ', 'T');
+        }
+        if (!cleaned.endsWith('Z') && !cleaned.includes('+') && !cleaned.slice(-6).includes('-')) {
+            cleaned += 'Z';
+        }
+        const d = new Date(cleaned);
+        if (!isNaN(d.getTime())) return d;
+    }
+    const fallback = new Date(dateStr);
+    return isNaN(fallback.getTime()) ? null : fallback;
+}
+
 function updateLiveCountdowns() {
     const cards = document.querySelectorAll('.schedule-card');
     const now = new Date();
@@ -290,11 +375,10 @@ function updateLiveCountdowns() {
         const winEndStr = card.dataset.windowEnd;
         if (!passTimeStr) return;
 
-        const passTime = new Date(passTimeStr);
-        const winStart = new Date(winStartStr);
-        const winEnd = new Date(winEndStr);
+        const winStart = parseScheduleUtcDate(winStartStr);
+        const winEnd = parseScheduleUtcDate(winEndStr);
 
-        const isLive = (now >= winStart && now <= winEnd);
+        const isLive = Boolean(winStart && winEnd && now >= winStart && now <= winEnd);
         const countdownEl = card.querySelector('.event-countdown');
 
         if (countdownEl) {
@@ -315,9 +399,20 @@ function formatCountdown(passTimeStr, isLive) {
         return '🔴 LIVE FLYPAST NOW';
     }
 
+    if (!passTimeStr) {
+        return '--';
+    }
+
     const now = new Date();
-    const target = new Date(passTimeStr);
-    const diffSec = Math.floor((target - now) / 1000);
+    const target = parseScheduleUtcDate(passTimeStr);
+    if (!target) {
+        return '--';
+    }
+
+    const diffSec = Math.floor((target.getTime() - now.getTime()) / 1000);
+    if (isNaN(diffSec)) {
+        return '--';
+    }
 
     if (diffSec < -300) {
         return 'Pass Ended';

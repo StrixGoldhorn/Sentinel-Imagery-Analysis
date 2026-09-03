@@ -138,10 +138,10 @@
 
                 <div class="control-item">
                     <label for="filterDaysAhead"><strong>Horizon:</strong></label>
-                    <select id="filterDaysAhead" class="select-control" onchange="loadSchedule()">
-                        <option value="1" selected>Next 24 Hours</option>
+                    <select id="filterDaysAhead" class="select-control" onchange="handleHorizonChange()">
+                        <option value="1">Next 24 Hours</option>
                         <option value="3">Next 3 Days</option>
-                        <option value="7">Next 7 Days</option>
+                        <option value="7" selected>Next 7 Days</option>
                         <option value="14">Next 14 Days</option>
                         <option value="30">Next 30 Days</option>
                     </select>
@@ -150,8 +150,8 @@
                 <div class="control-item">
                     <label for="filterSourceSelect"><strong>Forecast Source:</strong></label>
                     <select id="filterSourceSelect" class="select-control" onchange="applyFilters()">
-                        <option value="both" selected>✨ Both (N2YO + Historical)</option>
-                        <option value="">All Planned Scrapes (Both & Historical)</option>
+                        <option value="" selected>All Planned Scrapes (Both & Historical)</option>
+                        <option value="both">✨ Both (N2YO + Historical)</option>
                         <option value="historical">🔁 Historical Cycle Only</option>
                     </select>
                 </div>

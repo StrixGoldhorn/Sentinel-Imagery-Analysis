@@ -49,7 +49,7 @@ class HybridPassPredictor:
 
         def _fetch_hist() -> list[PassPrediction]:
             try:
-                raw_hist = self._mission_analyzer.predict_from_history(bbox, days_ahead=10)
+                raw_hist = self._mission_analyzer.predict_from_history(bbox, days_ahead=10, limit=100)
                 passes: list[PassPrediction] = []
                 for item in raw_hist:
                     p = dict(item)
