@@ -10,7 +10,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     optional_string,
     required_string,
 )
-from sentinel_analysis.interfaces.web.serialization import serialize_aoi
+from sentinel_analysis.interfaces.web.serialization import scan_image_url, serialize_aoi
 
 
 blueprint = Blueprint("aois", __name__)
@@ -164,3 +164,63 @@ def force_ais_scan(aoi_id: int):
         force_now=True,
     )
     return jsonify(status="success", results=results, forced=True)
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/scan")
+def scan_aoi(aoi_id: int):
+    cnt = container()
+    repo = getattr(cnt, "aoi_repository", None)
+    aoi = repo.get(aoi_id) if repo and hasattr(repo, "get") else None
+    if aoi is None:
+        list_use_case = getattr(cnt, "list_aois", None)
+        if list_use_case and hasattr(list_use_case, "execute"):
+            for candidate in list_use_case.execute():
+                if getattr(candidate, "id", None) == aoi_id:
+                    aoi = candidate
+                    break
+    if aoi is None:
+        return jsonify(error=f"Area of Interest {aoi_id} not found"), 404
+
+    is_async = request.args.get("async", "").lower() in ("true", "1", "yes")
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if isinstance(payload, dict) and (payload.get("async") or payload.get("is_async")):
+            is_async = True
+
+    if is_async:
+        queue = cnt.task_queue
+        bbox = aoi.bbox
+        aoi_name = aoi.name
+
+        def _run_scan() -> dict[str, object]:
+            scan = cnt.create_scan.execute(bbox, aoi_name=aoi_name)
+            return {
+                "folderName": scan.folder_name,
+                "customName": scan.metadata.get("custom_name") or scan.folder_name,
+                "imageUrl": scan_image_url(scan, cnt.settings.output_root),
+                "bounds": [[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
+                "datetime": scan.acquisition.acquired_at.isoformat(),
+                "aoi_id": aoi_id,
+                "aoi_name": aoi_name,
+            }
+
+        task = queue.submit("scan", None, _run_scan)
+        return jsonify({
+            "status": "success",
+            "task_id": task.task_id,
+            "task_status": task.status,
+            "aoi_id": aoi.id,
+            "aoi_name": aoi.name,
+        }), 202
+
+    scan = cnt.create_scan.execute(aoi.bbox, aoi_name=aoi.name)
+    return jsonify(
+        status="success",
+        aoi_id=aoi.id,
+        aoi_name=aoi.name,
+        folderName=scan.folder_name,
+        customName=scan.metadata.get("custom_name") or scan.folder_name,
+        imageUrl=scan_image_url(scan, cnt.settings.output_root),
+        bounds=[[aoi.bbox.min_latitude, aoi.bbox.min_longitude], [aoi.bbox.max_latitude, aoi.bbox.max_longitude]],
+        datetime=scan.acquisition.acquired_at.isoformat(),
+    ), 201

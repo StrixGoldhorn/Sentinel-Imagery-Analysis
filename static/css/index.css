@@ -756,6 +756,21 @@ details.closing summary ~ * {
     text-decoration: underline;
 }
 
+/* AOI Layer Scan Button & Popup */
+.btn-scan-aoi {
+    transition: all 0.15s ease;
+}
+.btn-scan-aoi:hover {
+    background: #16a34a !important;
+    color: #ffffff !important;
+    border-color: #16a34a !important;
+}
+.aoi-tab-popup-content .sar-tab-popup-btn-primary:hover {
+    background: #15803d !important;
+    box-shadow: 0 3px 8px rgba(22, 163, 74, 0.35);
+    transform: translateY(-1px);
+}
+
 /* Custom CV Detection Popup on Map */
 .cv-detection-popup .leaflet-popup-content-wrapper {
     background: #ffffff;

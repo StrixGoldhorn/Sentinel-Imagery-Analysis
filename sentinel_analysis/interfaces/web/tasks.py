@@ -8,6 +8,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     RequestValidationError,
     bounding_box,
     json_object,
+    optional_string,
 )
 from sentinel_analysis.interfaces.web.serialization import scan_image_url
 
@@ -18,13 +19,15 @@ blueprint = Blueprint("tasks", __name__)
 def create_async_scan():
     payload = json_object()
     bbox = bounding_box(payload)
+    aoi_name = optional_string(payload, "aoi_name")
     queue = container().task_queue
     cnt = container()
 
     def _run_scan() -> dict[str, object]:
-        scan = cnt.create_scan.execute(bbox)
+        scan = cnt.create_scan.execute(bbox, aoi_name=aoi_name)
         return {
             "folderName": scan.folder_name,
+            "customName": scan.metadata.get("custom_name") or scan.folder_name,
             "imageUrl": scan_image_url(scan, cnt.settings.output_root),
             "bounds": [[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
             "datetime": scan.acquisition.acquired_at.isoformat(),

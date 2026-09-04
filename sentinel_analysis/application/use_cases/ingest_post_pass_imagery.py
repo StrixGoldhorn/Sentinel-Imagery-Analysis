@@ -182,7 +182,7 @@ class IngestPostPassImagery:
                     self._jobs.update(ingesting_job)
 
                     # Trigger CreateScan
-                    scan = self._create_scan.execute(aoi.bbox)
+                    scan = self._create_scan.execute(aoi.bbox, aoi_name=aoi.name)
 
                     # Optionally trigger ship detection on the new scan
                     if self._detect_ships is not None:

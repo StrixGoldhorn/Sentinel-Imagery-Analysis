@@ -199,6 +199,46 @@ def test_create_scan_does_not_delete_when_workspace_preparation_fails() -> None:
     assert repository.deleted == []
 
 
+class WorkingImageryProvider:
+    def find_latest_acquisition(self, bbox, days_ago=None):
+        return Acquisition(datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd", product_id="S1A_TEST")
+
+    def calculate_tiles(self, bbox):
+        class Tile:
+            x = 0
+            y = 0
+        return [Tile()]
+
+    def download_tile(self, tile, acquisition, output_path):
+        pass
+
+
+class WorkingStitcher:
+    def stitch(self, tiles, output_path):
+        pass
+
+
+def test_create_scan_with_aoi_name_formats_folder_and_metadata() -> None:
+    repository = TrackingScanRepository()
+    use_case = CreateScan(WorkingImageryProvider(), WorkingStitcher(), repository, NoOpLocationResolver())
+    scan = use_case.execute(BBOX, aoi_name="Port of Singapore")
+
+    assert scan.folder_name == "Port_of_Singapore_2026-08-27"
+    assert scan.metadata["custom_name"] == "Port_of_Singapore_2026-08-27"
+    assert scan.metadata["aoi_name"] == "Port of Singapore"
+    assert "Port_of_Singapore_2026-08-27_stitched_sar.png" in scan.image_path
+
+
+def test_create_scan_with_aoi_name_collision_increments_suffix() -> None:
+    repository = TrackingScanRepository()
+    use_case = CreateScan(WorkingImageryProvider(), WorkingStitcher(), repository, NoOpLocationResolver())
+    scan1 = use_case.execute(BBOX, aoi_name="Singapore")
+    scan2 = use_case.execute(BBOX, aoi_name="Singapore")
+
+    assert scan1.folder_name == "Singapore_2026-08-27"
+    assert scan2.folder_name == "Singapore_2026-08-27_1"
+
+
 def test_detect_ships_validates_threshold_and_returns_named_result() -> None:
     class Detector:
         def detect(self, image_path, dem_path=None, threshold=40):

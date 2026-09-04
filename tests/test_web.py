@@ -9,7 +9,7 @@ from PIL import Image
 from sentinel_analysis.application.exceptions import ExternalServiceError, NoImageryFoundError, ScanNotFoundError
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.bootstrap.config import Settings
-from sentinel_analysis.domain.entities import Acquisition, BackgroundTask, BoundingBox, Scan
+from sentinel_analysis.domain.entities import Acquisition, AreaOfInterest, BackgroundTask, BoundingBox, Scan
 from sentinel_analysis.interfaces.web.application import create_app
 
 
@@ -381,6 +381,40 @@ def test_force_ais_scan_route() -> None:
     assert response.json["forced"] is True
     assert container.scrape_aoi_ais.calls[-1] == (1,)
     assert container.scrape_aoi_ais.keyword_calls[-1].get("force_now") is True
+
+
+def test_scan_aoi_route_sync() -> None:
+    client, container, _, _ = make_client()
+    aoi = AreaOfInterest(name="Port of Dover", bbox=BBOX, id=1)
+    container.list_aois = StubUseCase([aoi])
+
+    response = client.post("/api/aoi/1/scan")
+    assert response.status_code == 201
+    assert response.json["status"] == "success"
+    assert response.json["aoi_name"] == "Port of Dover"
+    assert container.create_scan.calls[-1] == (BBOX,)
+    assert container.create_scan.keyword_calls[-1].get("aoi_name") == "Port of Dover"
+
+
+def test_scan_aoi_route_async() -> None:
+    client, container, _, _ = make_client()
+    aoi = AreaOfInterest(name="Singapore", bbox=BBOX, id=2)
+    container.list_aois = StubUseCase([aoi])
+
+    response = client.post("/api/aoi/2/scan?async=true")
+    assert response.status_code == 202
+    assert response.json["status"] == "success"
+    assert response.json["task_id"] == "task_123"
+    assert response.json["aoi_name"] == "Singapore"
+
+
+def test_scan_aoi_route_not_found() -> None:
+    client, container, _, _ = make_client()
+    container.list_aois = StubUseCase([])
+
+    response = client.post("/api/aoi/999/scan")
+    assert response.status_code == 404
+    assert "not found" in response.json["error"]
 
 
 def test_list_vessels_route() -> None:

@@ -1,5 +1,6 @@
 """Create and persist a stitched Sentinel-1 scan."""
 
+import re
 from datetime import datetime, timezone
 
 from sentinel_analysis.application.exceptions import NoImageryFoundError
@@ -22,7 +23,12 @@ class CreateScan:
         self._scans = scans
         self._locations = locations
 
-    def execute(self, bbox: BoundingBox, days_ago: int | None = None) -> Scan:
+    def execute(
+        self,
+        bbox: BoundingBox,
+        days_ago: int | None = None,
+        aoi_name: str | None = None,
+    ) -> Scan:
         if days_ago is not None:
             if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
                 raise ValueError("Imagery search window must be a positive number of days")
@@ -31,9 +37,21 @@ class CreateScan:
         if acquisition is None:
             raise NoImageryFoundError("No SAR coverage found for this area")
 
-
         now = datetime.now(timezone.utc)
-        folder_name = f"{acquisition.acquired_at:%Y%m%d_%H%M%S}_{now:%H%M%S%f}"
+        if aoi_name and isinstance(aoi_name, str) and aoi_name.strip():
+            clean_aoi = re.sub(r"[^\w\-.]", "_", aoi_name.strip())
+            clean_aoi = re.sub(r"_+", "_", clean_aoi).strip("_")
+            if not clean_aoi:
+                clean_aoi = "AOI"
+            date_str = f"{acquisition.acquired_at:%Y-%m-%d}"
+            base_folder = f"{clean_aoi}_{date_str}"
+            folder_name = base_folder
+            counter = 1
+            while self._scans.get(folder_name) is not None:
+                folder_name = f"{base_folder}_{counter}"
+                counter += 1
+        else:
+            folder_name = f"{acquisition.acquired_at:%Y%m%d_%H%M%S}_{now:%H%M%S%f}"
         workspace_prepared = False
 
         try:
@@ -66,6 +84,9 @@ class CreateScan:
                 "scraped_datetime": now.isoformat(),
                 "location": self._locations.resolve(latitude, longitude),
             }
+            if aoi_name and isinstance(aoi_name, str) and aoi_name.strip():
+                metadata["custom_name"] = folder_name
+                metadata["aoi_name"] = aoi_name.strip()
             if acquisition.product_id is not None:
                 metadata["product_id"] = acquisition.product_id
             scan = Scan(folder_name, bbox, acquisition, str(output_path), metadata)

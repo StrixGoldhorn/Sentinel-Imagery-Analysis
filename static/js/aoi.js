@@ -59,7 +59,7 @@ async function loadAOIs() {
         }
 
         aois.forEach(aoi => {
-            const safeAoiName = escapeHtml(aoi.name);
+            const safeAoiName = escapeHtml(aoi.name || `AOI #${aoi.id}`);
             if (aoiList) {
                 const div = document.createElement('div');
                 div.style.cssText = 'border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #fafafa;';
@@ -80,6 +80,7 @@ async function loadAOIs() {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 4px; flex-wrap: wrap;">
                         <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
                         <div style="display: flex; gap: 4px;">
+                            <button class="btn btn-sm btn-outline-success" style="padding: 2px 6px; font-size: 0.75em;" onclick="triggerAoiScan(${aoi.id})" title="Initiate SAR imagery scan for ${safeAoiName}">🛰️ Scan</button>
                             <button class="btn btn-sm btn-outline-primary" style="padding: 2px 6px; font-size: 0.75em;" onclick="teleportToAoi(${aoi.id})" title="Center map on AOI">⌖ Teleport</button>
                             <button class="btn" style="padding: 3px 6px; font-size: 0.75em;" onclick="predictAOI(${aoi.id})">Predict</button>
                         </div>
@@ -93,9 +94,28 @@ async function loadAOIs() {
             }
 
             const lBounds = L.latLngBounds([[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]]);
-            const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true });
-            const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
-                .bindTooltip(`<strong>${safeAoiName}</strong><br>Type: Area of Interest`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+            const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true })
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', minWidth: 260 });
+            const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 6, opacity: 0, fillOpacity: 0, interactive: true })
+                .bindTooltip(`<strong>${safeAoiName}</strong><br><span style="font-size:0.75rem;color:#86efac;font-weight:600;">Type: Area of Interest</span>`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET })
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', offset: [15, -5], minWidth: 260 });
+
+            tabMarker.on('click', function() {
+                this.openPopup();
+            });
+
+            const attachTooltipPointer = () => {
+                const tt = tabMarker.getTooltip();
+                if (tt && tt._container) {
+                    tt._container.style.cursor = 'pointer';
+                    tt._container.onclick = (ev) => {
+                        ev.stopPropagation();
+                        tabMarker.openPopup();
+                    };
+                }
+            };
+            tabMarker.on('tooltipopen', attachTooltipPointer);
+            tabMarker.on('add', () => setTimeout(attachTooltipPointer, 0));
             
             const aoiGroup = L.featureGroup([aoiRect]).addTo(map);
             const layerId = `aoi-layer-${aoi.id}`;
@@ -103,10 +123,16 @@ async function loadAOIs() {
             
             const controlHtml = `
                 <div id="${layerId}" class="layer-info" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
-                    <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
+                    <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                         <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
-                        <strong style="flex: 1; font-size: 0.9em; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="AOI: ${safeAoiName}">AOI: ${safeAoiName}</strong>
-                        <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map">
+                        <span style="background: rgba(40,167,69,0.15); color: #28a745; font-size: 0.72rem; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; text-transform: uppercase;">AOI</span>
+                        <strong style="flex: 1; font-size: 0.95em; color: inherit; word-break: break-word; line-height: 1.3;" title="${safeAoiName}">${safeAoiName}</strong>
+                    </div>
+                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+                        <button type="button" class="btn btn-sm btn-outline-success btn-scan-aoi" onclick="triggerAoiScan(${aoi.id})" title="Initiate SAR imagery scan for ${safeAoiName}" style="flex: 1; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 4px; background: rgba(40,167,69,0.08); border: 1px solid #28a745; color: #28a745; cursor: pointer;">
+                            🛰️ Scan SAR
+                        </button>
+                        <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map" style="padding: 4px 8px; font-size: 0.78rem;">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="22" y1="12" x2="18" y2="12"></line>
@@ -117,16 +143,20 @@ async function loadAOIs() {
                             Teleport
                         </button>
                     </div>
-                    <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
+                    <details style="border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
                         <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
-                        <div style="margin-top: 8px; font-size: 0.85em; color: #555;">
-                            <strong>Next Scan:</strong> ${zuluTime}
+                        <div style="margin-top: 8px; font-size: 0.85em; color: #555; display: flex; flex-direction: column; gap: 6px;">
+                            <div><strong>AOI Name:</strong> ${safeAoiName}</div>
+                            <div><strong>Next Scan:</strong> ${zuluTime}</div>
+                            <button type="button" class="btn btn-sm btn-success" onclick="triggerAoiScan(${aoi.id})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-weight: 600; cursor: pointer; margin-top: 4px;">
+                                🛰️ Initiate SAR Scan (Latest Imagery)
+                            </button>
                         </div>
                     </details>
                 </div>
             `;
             document.getElementById('layersList').insertAdjacentHTML('beforeend', controlHtml);
-            aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id, name: safeAoiName });
+            aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id, name: safeAoiName, aoi: aoi });
         });
         
         if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
@@ -287,4 +317,100 @@ async function forceScanAOI(aoiId) {
         });
     }
 }
+
+function getAoiTabPopupContent(aoiId) {
+    const layerObj = aoiMapLayers.find(l => l.id === aoiId);
+    if (!layerObj) return '<div style="padding:10px;">AOI not found</div>';
+    const aoi = layerObj.aoi || {};
+    const safeAoiName = escapeHtml(aoi.name || layerObj.name);
+    const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
+    const bboxStr = aoi.bbox ? aoi.bbox.map(n => Number(n).toFixed(3)).join(', ') : '';
+
+    return `
+        <div class="sar-tab-popup-content aoi-tab-popup-content">
+            <div class="sar-tab-popup-header" style="border-left: 4px solid #16a34a; padding-left: 8px; margin-bottom: 8px;">
+                <div style="font-size: 0.72rem; font-weight: 700; color: #16a34a; text-transform: uppercase; letter-spacing: 0.5px;">Area of Interest</div>
+                <h4 style="margin: 2px 0 0 0; font-size: 0.95rem; font-weight: 700; color: #0f172a;">${safeAoiName}</h4>
+            </div>
+            <div class="sar-tab-popup-meta" style="margin-bottom: 10px;">
+                <div class="meta-row"><span class="meta-lbl">BBox:</span><span class="meta-val">[${bboxStr}]</span></div>
+                <div class="meta-row"><span class="meta-lbl">Next Scan:</span><span class="meta-val">${zuluTime}</span></div>
+            </div>
+            <div class="sar-tab-popup-actions">
+                <button type="button" class="sar-tab-popup-btn-primary" style="background: #16a34a; color: white;" onclick="triggerAoiScan(${aoiId})">
+                    🛰️ Scan Latest SAR Imagery
+                </button>
+                <button type="button" class="sar-tab-popup-btn-secondary" style="margin-top: 6px;" onclick="predictAOI(${aoiId})">
+                    ⚡ Predict Next Pass
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+async function triggerAoiScan(aoiId) {
+    if (typeof isScanning !== 'undefined' && isScanning) {
+        showNotification("A scan is already in progress.", "warning");
+        return;
+    }
+    const layerObj = aoiMapLayers.find(l => l.id === aoiId);
+    const aoi = layerObj ? layerObj.aoi : null;
+    const aoiName = aoi ? aoi.name : `AOI #${aoiId}`;
+    const bbox = aoi ? aoi.bbox : null;
+
+    if (map) map.closePopup();
+
+    showNotification(`Initiating SAR scan for ${aoiName}...`, "info");
+
+    const statusText = document.getElementById('status');
+    const scanBtn = document.getElementById('scanBtn');
+    if (statusText) statusText.innerText = `Dispatching SAR acquisition for ${aoiName}...`;
+    if (scanBtn) scanBtn.disabled = true;
+    if (typeof isScanning !== 'undefined') isScanning = true;
+
+    try {
+        const asyncRes = await fetch(`/api/aoi/${aoiId}/scan?async=true`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ async: true })
+        });
+
+        if (asyncRes.ok) {
+            const taskData = await asyncRes.json();
+            const taskId = taskData.task_id;
+            if (statusText) statusText.innerText = `Processing SAR imagery for ${aoiName} in background...`;
+            if (typeof pollScanTask === 'function') {
+                pollScanTask(taskId, bbox);
+            }
+            return;
+        }
+
+        const errorData = await asyncRes.json().catch(() => null);
+        if (errorData && errorData.error) {
+            if (statusText) statusText.innerText = "Draw a rectangle to begin.";
+            if (scanBtn) scanBtn.disabled = false;
+            if (typeof isScanning !== 'undefined') isScanning = false;
+            showNotification(`Scan Error: ${errorData.error}`, "error");
+            return;
+        }
+
+        // Fallback to synchronous endpoint
+        const syncRes = await fetch(`/api/aoi/${aoiId}/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const result = await syncRes.json().catch(() => ({}));
+        if (typeof handleScanCompletion === 'function') {
+            handleScanCompletion(result);
+        }
+    } catch (err) {
+        console.error("Error triggering AOI scan:", err);
+        if (statusText) statusText.innerText = "Draw a rectangle to begin.";
+        if (scanBtn) scanBtn.disabled = false;
+        if (typeof isScanning !== 'undefined') isScanning = false;
+        showNotification(`Connection failed while fetching SAR imagery for ${aoiName}.`, "error");
+    }
+}
+
 

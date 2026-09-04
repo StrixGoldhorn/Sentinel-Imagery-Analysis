@@ -82,7 +82,8 @@ async function pollScanTask(taskId, bbox) {
                     imageUrl: scanResult.imageUrl,
                     bounds: scanResult.bounds,
                     datetime: scanResult.datetime,
-                    folderName: scanResult.folderName
+                    folderName: scanResult.folderName,
+                    customName: scanResult.customName || scanResult.folderName
                 });
             } else if (data.status === 'FAILED') {
                 clearInterval(checkInterval);
@@ -107,7 +108,7 @@ function handleScanCompletion(result) {
     const scanBtn = document.getElementById('scanBtn');
 
     if (result.status === 'success') {
-        addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, null);
+        addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, result.customName || result.folderName);
         statusText.innerText = "Scan complete!";
         
         drawnItems.clearLayers();
