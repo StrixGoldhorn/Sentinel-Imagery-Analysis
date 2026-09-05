@@ -89,9 +89,15 @@ function renderLogsTable(logs) {
 
     tbody.innerHTML = logs.map(log => {
         const isSuccess = log.status === 'SUCCESS';
-        const statusBadge = isSuccess
-            ? `<span class="status-pill status-success">SUCCESS</span>`
-            : `<span class="status-pill status-failed">FAILED</span>`;
+        const isCooldown = log.status === 'COOLDOWN_SKIPPED';
+        let statusBadge = '';
+        if (isSuccess) {
+            statusBadge = `<span class="status-pill status-success">SUCCESS</span>`;
+        } else if (isCooldown) {
+            statusBadge = `<span class="status-pill status-cooldown">COOLDOWN</span>`;
+        } else {
+            statusBadge = `<span class="status-pill status-failed">${escapeHtml(log.status || 'FAILED')}</span>`;
+        }
 
         const timeFormatted = formatUtcTime(log.timestamp);
         const recordBadge = log.records_inserted > 0
@@ -99,7 +105,9 @@ function renderLogsTable(logs) {
             : `<span class="records-badge zero">0</span>`;
 
         let detailsHtml = '';
-        if (log.error_message) {
+        if (isCooldown) {
+            detailsHtml = `<span class="cooldown-note">${escapeHtml(log.error_message || 'Skipped due to active cooldown backoff')}</span>`;
+        } else if (log.error_message) {
             detailsHtml = `<div class="error-snippet">${escapeHtml(log.error_message)}</div>`;
         } else if (isSuccess) {
             detailsHtml = `<span class="success-note">Successfully harvested ${log.records_inserted} vessel positions</span>`;

@@ -211,6 +211,12 @@
     color: #b91c1c;
 }
 
+.status-cooldown,
+.status-skipped {
+    background: #fef3c7;
+    color: #b45309;
+}
+
 .plugin-code {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.8rem;
@@ -249,6 +255,12 @@
 .success-note {
     font-size: 0.82rem;
     color: #64748b;
+}
+
+.cooldown-note {
+    font-size: 0.82rem;
+    color: #b45309;
+    font-style: italic;
 }
 
 /* Pagination */

@@ -68,8 +68,8 @@ class SQLiteAISRepository:
     ) -> None:
         if not isinstance(plugin_name, str) or not plugin_name.strip():
             raise ValueError("AIS plugin name is required")
-        if status not in {"SUCCESS", "FAILED"}:
-            raise ValueError("Invalid execution status: AIS execution status must be SUCCESS or FAILED")
+        if status not in {"SUCCESS", "FAILED", "COOLDOWN_SKIPPED"}:
+            raise ValueError("Invalid execution status: AIS execution status must be SUCCESS, FAILED, or COOLDOWN_SKIPPED")
         if isinstance(records_inserted, bool) or not isinstance(records_inserted, int) or records_inserted < 0:
             raise ValueError("Inserted record count must be a non-negative integer")
         with self._database.connection() as connection:
@@ -535,6 +535,7 @@ class SQLiteAISRepository:
                     SUM(records_inserted) as total_records,
                     SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success_runs,
                     SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_runs,
+                    SUM(CASE WHEN status = 'COOLDOWN_SKIPPED' THEN 1 ELSE 0 END) as cooldown_runs,
                     MAX(timestamp) as last_run_at
                 FROM scraper_logs
                 GROUP BY plugin_name
@@ -545,7 +546,8 @@ class SQLiteAISRepository:
                     "total_records": row[2] or 0,
                     "success_runs": row[3] or 0,
                     "failed_runs": row[4] or 0,
-                    "last_run_at": row[5],
+                    "cooldown_runs": row[5] or 0,
+                    "last_run_at": row[6],
                 }
         return stats
 

@@ -1,6 +1,7 @@
 """Authenticate, fetch, normalize, and persist AIS data by provider."""
 
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Any
 
 from sentinel_analysis.application.exceptions import PluginNotFoundError
@@ -8,6 +9,8 @@ from sentinel_analysis.application.ports.ais import AISPluginRegistry, AISTimeRa
 from sentinel_analysis.application.ports.ais_repository import AISRepository
 from sentinel_analysis.application.results import IngestionLog, IngestionResult, IngestionStatus
 from sentinel_analysis.domain.entities import BoundingBox
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_cooldown(cooldown_val: Any) -> datetime | None:
@@ -132,7 +135,10 @@ class IngestAIS:
                 cooldown_until = _parse_cooldown(detail.get("cooldown_until"))
                 if cooldown_until and cooldown_until > now:
                     skip_msg = f"Skipped: cooling down until {cooldown_until.isoformat()}"
-                    self._repository.log_execution(plugin.name, "COOLDOWN_SKIPPED", 0, skip_msg)
+                    try:
+                        self._repository.log_execution(plugin.name, "COOLDOWN_SKIPPED", 0, skip_msg)
+                    except Exception as log_exc:
+                        logger.warning("Failed to log scraper cooldown skip for %s: %s", plugin.name, log_exc)
                     results.append({
                         "plugin": plugin.name,
                         "status": "COOLDOWN_SKIPPED",
@@ -165,7 +171,10 @@ class IngestAIS:
                     if hasattr(self._repository, "record_scraper_failure"):
                         self._repository.record_scraper_failure(plugin.name, error, None, consecutive)
 
-            self._repository.log_execution(plugin.name, status, inserted, error)
+            try:
+                self._repository.log_execution(plugin.name, status, inserted, error)
+            except Exception as log_exc:
+                logger.warning("Failed to log scraper execution for %s: %s", plugin.name, log_exc)
             results.append({"plugin": plugin.name, "status": status, "records": inserted, "error": error})
             total_inserted += inserted
 

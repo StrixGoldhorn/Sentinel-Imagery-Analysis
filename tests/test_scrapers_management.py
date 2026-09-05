@@ -497,6 +497,53 @@ def test_zone_scan_delay_pacing_during_multi_zone_fetch() -> None:
         mock_sleep.assert_called_with(1.5)
 
 
+def test_sqlite_ais_repository_log_execution_cooldown_skipped() -> None:
+    from pathlib import Path
+    import os
+    from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+
+    runtime_dir = Path(__file__).resolve().parent / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_dir / "test_ais_cooldown_logs.db"
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+    repo = SQLiteAISRepository(db_path)
+
+    # 1. Log COOLDOWN_SKIPPED
+    repo.log_execution("TestCooldownPlugin", "COOLDOWN_SKIPPED", 0, "Rate limited cooldown")
+    repo.log_execution("TestCooldownPlugin", "SUCCESS", 25, None)
+
+    # 2. Query logs filtered by status
+    cooldown_logs = repo.get_scraper_logs(status="COOLDOWN_SKIPPED")
+    assert len(cooldown_logs) == 1
+    assert cooldown_logs[0]["plugin_name"] == "TestCooldownPlugin"
+    assert cooldown_logs[0]["status"] == "COOLDOWN_SKIPPED"
+    assert cooldown_logs[0]["records_inserted"] == 0
+    assert "Rate limited" in cooldown_logs[0]["error_message"]
+
+    all_logs = repo.get_scraper_logs()
+    assert len(all_logs) == 2
+
+    # 3. Check stats
+    stats = repo.get_scraper_stats()
+    assert "TestCooldownPlugin" in stats
+    plugin_stats = stats["TestCooldownPlugin"]
+    assert plugin_stats["total_runs"] == 2
+    assert plugin_stats["success_runs"] == 1
+    assert plugin_stats["cooldown_runs"] == 1
+    assert plugin_stats["total_records"] == 25
+
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+
 def load_tests(loader, standard_tests, pattern):
     suite = unittest.TestSuite()
     for name, obj in list(globals().items()):
