@@ -642,12 +642,13 @@ function renderVesselsOnMap(mapInstance) {
         // Click popup
         const zuluTime = vessel.timestamp ? new Date(vessel.timestamp).toISOString().replace('T', ' ').replace(/\..+/, '') + ' UTC' : 'Unknown';
         const localTime = vessel.timestamp ? new Date(vessel.timestamp).toLocaleTimeString() : 'Unknown';
+        const displayImo = (vessel.imo && !String(vessel.imo).startsWith('UNKNOWN-')) ? vessel.imo : 'N/A';
         const popupHtml = `
             <div class="vessel-popup-card">
                 <div class="vessel-popup-header" style="border-left: 4px solid ${color};">
                     <div>
                         <div class="vessel-popup-title">${safeName}</div>
-                        <small style="color: #6c757d;">MMSI: ${vessel.mmsi} ${vessel.imo ? '• IMO: ' + vessel.imo : ''}</small>
+                        <small style="color: #6c757d;">MMSI: ${vessel.mmsi || 'N/A'} • IMO: ${displayImo}</small>
                     </div>
                     <span class="badge" style="background-color: ${color}; color: #ffffff; white-space: nowrap;">${safeType}</span>
                 </div>

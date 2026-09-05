@@ -522,7 +522,9 @@ function openShipDetailsSidebar(vessel) {
         typeBadge.style.backgroundColor = typeColor;
     }
 
-    const speed = vessel.speed_knots !== undefined ? vessel.speed_knots : (vessel.sog !== undefined ? vessel.sog : 0);
+    const speed = (vessel.speed !== undefined && vessel.speed !== null && !isNaN(vessel.speed)) ? Number(vessel.speed) :
+                  (vessel.speed_knots !== undefined && vessel.speed_knots !== null && !isNaN(vessel.speed_knots)) ? Number(vessel.speed_knots) :
+                  (vessel.sog !== undefined && vessel.sog !== null && !isNaN(vessel.sog)) ? Number(vessel.sog) : 0;
     if (statusTag) {
         statusTag.textContent = speed > 0.5 ? 'Underway using Engine' : 'Moored / Stationary';
         statusTag.style.color = speed > 0.5 ? '#10b981' : '#f59e0b';
@@ -544,7 +546,8 @@ function openShipDetailsSidebar(vessel) {
 
     if (speedEl) speedEl.innerHTML = `${speed.toFixed(1)} <small>kn</small>`;
 
-    const heading = vessel.heading !== undefined && vessel.heading !== null ? vessel.heading : (vessel.cog !== undefined && vessel.cog !== null ? vessel.cog : null);
+    const heading = (vessel.heading !== undefined && vessel.heading !== null && !isNaN(vessel.heading) && Number(vessel.heading) <= 360) ? Number(vessel.heading) :
+                    (vessel.cog !== undefined && vessel.cog !== null && !isNaN(vessel.cog) && Number(vessel.cog) <= 360) ? Number(vessel.cog) : null;
     if (headingEl) {
         headingEl.textContent = heading !== null ? `${heading.toFixed(1)}°` : 'N/A';
     }
