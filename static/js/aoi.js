@@ -98,10 +98,10 @@ async function loadAOIs() {
 
             const lBounds = L.latLngBounds([[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]]);
             const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true })
-                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', minWidth: 260 });
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', minWidth: 200 });
             const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 6, opacity: 0, fillOpacity: 0, interactive: true })
                 .bindTooltip(`<strong>${safeAoiName}</strong><br><span style="font-size:0.75rem;color:#86efac;font-weight:600;">Type: Area of Interest</span>`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET })
-                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', offset: [15, -5], minWidth: 260 });
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', offset: [15, -5], minWidth: 200 });
 
             tabMarker.on('click', function() {
                 this.openPopup();
@@ -152,7 +152,10 @@ async function loadAOIs() {
                             <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="background: #f59e0b; border-color: #d97706; color: #ffffff;">
                                 ⚡ Force AIS Scan
                             </button>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteAOI(${aoi.id}, '${safeAoiName}')" style="background: #dc2626; border-color: #b91c1c; color: #ffffff; margin-top: 4px;">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="predictAOI(${aoi.id})" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #334155;">
+                                ⚡ Predict Next Pass
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteAOI(${aoi.id}, '${safeAoiName}')" style="background: #dc2626; border-color: #b91c1c; color: #ffffff;">
                                 🗑️ Delete AOI
                             </button>
                         </div>
@@ -349,25 +352,25 @@ function getAoiTabPopupContent(aoiId) {
 
     return `
         <div class="sar-tab-popup-content aoi-tab-popup-content">
-            <div class="sar-tab-popup-header" style="border-left: 4px solid #16a34a; padding-left: 8px; margin-bottom: 8px;">
+            <div class="sar-tab-popup-header" style="border-left: 4px solid #16a34a; padding-left: 8px; margin-bottom: 6px;">
                 <div style="font-size: 0.72rem; font-weight: 700; color: #16a34a; text-transform: uppercase; letter-spacing: 0.5px;">Area of Interest</div>
                 <h4 style="margin: 2px 0 0 0; font-size: 0.95rem; font-weight: 700; color: #0f172a;">${safeAoiName}</h4>
             </div>
-            <div class="sar-tab-popup-meta" style="margin-bottom: 10px;">
+            <div class="sar-tab-popup-meta" style="margin-bottom: 8px;">
                 <div class="meta-row"><span class="meta-lbl">BBox:</span><span class="meta-val">[${bboxStr}]</span></div>
                 <div class="meta-row"><span class="meta-lbl">Next Scan:</span><span class="meta-val">${zuluTime}</span></div>
             </div>
             <div class="sar-tab-popup-actions">
-                <button type="button" class="sar-tab-popup-btn-primary" style="background: #16a34a; color: white;" onclick="triggerAoiScan(${aoiId})">
-                    🛰️ Scan Latest SAR Imagery
+                <button type="button" class="sar-tab-popup-btn-primary" style="background: #16a34a; border-color: #15803d; color: #ffffff;" onclick="triggerAoiScan(${aoiId})">
+                    🛰️ Initiate SAR Scan (Latest Imagery)
                 </button>
-                <button type="button" class="sar-tab-popup-btn-warning" style="margin-top: 6px;" onclick="forceScanAOI(${aoiId}, this)">
+                <button type="button" class="sar-tab-popup-btn-warning" onclick="forceScanAOI(${aoiId}, this)">
                     ⚡ Force AIS Scan
                 </button>
-                <button type="button" class="sar-tab-popup-btn-secondary" style="margin-top: 6px;" onclick="predictAOI(${aoiId})">
+                <button type="button" class="sar-tab-popup-btn-secondary" onclick="predictAOI(${aoiId})">
                     ⚡ Predict Next Pass
                 </button>
-                <button type="button" class="sar-tab-popup-btn-danger" style="margin-top: 6px; background: #dc2626; border: 1px solid #b91c1c; color: #ffffff; width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 4px; cursor: pointer;" onclick="deleteAOI(${aoiId}, '${safeAoiName}')">
+                <button type="button" class="sar-tab-popup-btn-danger" style="background: #dc2626; border-color: #b91c1c; color: #ffffff;" onclick="deleteAOI(${aoiId}, '${safeAoiName}')">
                     🗑️ Delete AOI
                 </button>
             </div>
