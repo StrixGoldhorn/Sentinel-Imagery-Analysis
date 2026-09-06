@@ -16,6 +16,7 @@ from sentinel_analysis.application.ports import (
     LocationResolver,
     PassPredictor,
     ScanRepository,
+    SettingsRepository,
     ShipDetector,
     TaskQueue,
     TileCache,
@@ -95,7 +96,13 @@ class CompleteAdapter:
     def save_records(self, records, source_plugin):
         return 0
 
-    def log_execution(self, plugin_name, status, records_inserted, error_message=None):
+    def log_execution(self, plugin_name, status, records_inserted, error_message=None, trigger_reason=None):
+        return None
+
+    def log_trigger(self, plugin_name, trigger_reason, status="RUNNING"):
+        return 1
+
+    def update_execution_log(self, log_id, status, records_inserted=0, error_message=None):
         return None
 
     def get_vessel_positions(self, bbox=None, time_range=None, limit=500, latest_only=True):
@@ -167,6 +174,18 @@ class CompleteAdapter:
     def update_progress(self, task_id, progress, message=""):
         return None
 
+    def get_section(self, section):
+        return {}
+
+    def get_all(self):
+        return {}
+
+    def update_bulk(self, settings):
+        return None
+
+    def reset_section(self, section=None):
+        return None
+
 
 
 def test_ports_support_structural_runtime_checks() -> None:
@@ -184,6 +203,7 @@ def test_ports_support_structural_runtime_checks() -> None:
         LocationResolver,
         PassPredictor,
         ScanRepository,
+        SettingsRepository,
         ShipDetector,
         TaskQueue,
         TileCache,

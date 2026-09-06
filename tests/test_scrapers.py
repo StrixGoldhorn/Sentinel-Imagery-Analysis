@@ -55,7 +55,7 @@ class InMemoryAISRepository:
             })
         return len(records_list)
 
-    def log_execution(self, plugin_name: str, status: str, records_inserted: int, error_message: str | None = None) -> None:
+    def log_execution(self, plugin_name: str, status: str, records_inserted: int, error_message: str | None = None, trigger_reason: str | None = None) -> None:
         self.logs.append((plugin_name, status, records_inserted, error_message))
 
     def get_vessel_positions(

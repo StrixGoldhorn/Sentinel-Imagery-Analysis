@@ -31,7 +31,12 @@ def ingest_ais():
     else:
         time_range = (None, None)
 
-    results = container().ingest_ais.execute(bbox, time_range, plugin)
+    results = container().ingest_ais.execute(
+        bbox,
+        time_range,
+        plugin,
+        trigger_reason=f"Direct API Ingest Request{f' ({plugin})' if plugin else ''}",
+    )
     return jsonify(status="success", results=results)
 
 

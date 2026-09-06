@@ -56,7 +56,7 @@ class MockIngestAIS:
     def __init__(self):
         self.calls: list[tuple[BoundingBox, tuple[datetime, datetime]]] = []
 
-    def execute(self, bbox, time_range):
+    def execute(self, bbox, time_range, trigger_reason=None):
         self.calls.append((bbox, time_range))
         return {"total_inserted": 12, "logs": []}
 

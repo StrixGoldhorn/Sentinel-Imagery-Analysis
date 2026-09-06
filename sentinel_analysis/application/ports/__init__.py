@@ -17,6 +17,7 @@ from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryPr
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
+from sentinel_analysis.application.ports.settings_repository import SettingsRepository
 from sentinel_analysis.application.ports.task_queue import TaskQueue
 
 __all__ = [
@@ -38,6 +39,7 @@ __all__ = [
     "PassPredictor",
     "PostPassIngestionRepository",
     "ScanRepository",
+    "SettingsRepository",
     "ShipDetector",
     "TaskQueue",
     "TileCache",

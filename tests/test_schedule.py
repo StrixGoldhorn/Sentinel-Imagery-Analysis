@@ -45,14 +45,37 @@ class MemoryAISRepository:
         self._inserted_records.extend(records_list)
         return len(records_list)
 
-    def log_execution(self, plugin_name, status, records_inserted=0, error_message=None):
+    def log_execution(self, plugin_name, status, records_inserted=0, error_message=None, trigger_reason=None):
         self._logs.insert(0, {
+            "id": len(self._logs) + 1,
             "plugin_name": plugin_name,
             "status": status,
             "records_inserted": records_inserted,
             "error_message": error_message,
+            "trigger_reason": trigger_reason or "Manual / Unspecified",
             "executed_at": datetime.now(timezone.utc).isoformat(),
         })
+
+    def log_trigger(self, plugin_name, trigger_reason, status="RUNNING"):
+        log_id = len(self._logs) + 1
+        self._logs.insert(0, {
+            "id": log_id,
+            "plugin_name": plugin_name,
+            "status": status,
+            "records_inserted": 0,
+            "error_message": "In progress...",
+            "trigger_reason": trigger_reason or "Manual / Unspecified",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return log_id
+
+    def update_execution_log(self, log_id, status, records_inserted=0, error_message=None):
+        for entry in self._logs:
+            if entry.get("id") == log_id:
+                entry["status"] = status
+                entry["records_inserted"] = records_inserted
+                entry["error_message"] = error_message
+                return
 
     def get_scraper_logs(self, plugin_name=None, status=None, limit=50, offset=0):
         logs = self._logs

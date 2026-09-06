@@ -59,28 +59,94 @@ class SQLiteAISRepository:
                 inserted += 1
         return inserted
 
+    def log_trigger(
+        self,
+        plugin_name: str,
+        trigger_reason: str,
+        status: str = "RUNNING",
+    ) -> int:
+        if not isinstance(plugin_name, str) or not plugin_name.strip():
+            raise ValueError("AIS plugin name is required")
+        norm_status = status.upper().strip()
+        if norm_status not in {"RUNNING", "TRIGGERED", "SUCCESS", "FAILED", "COOLDOWN_SKIPPED", "DISABLED_SKIPPED"}:
+            norm_status = "RUNNING"
+        reason_val = trigger_reason.strip() if isinstance(trigger_reason, str) and trigger_reason.strip() else "Manual / Unspecified"
+        with self._database.connection() as connection:
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO scraper_logs
+                    (plugin_name, status, records_inserted, error_message, trigger_reason)
+                    VALUES (?, ?, 0, 'In progress...', ?)
+                    """,
+                    (plugin_name.strip(), norm_status, reason_val),
+                )
+            except sqlite3.OperationalError:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO scraper_logs
+                    (plugin_name, status, records_inserted, error_message)
+                    VALUES (?, ?, 0, 'In progress...')
+                    """,
+                    (plugin_name.strip(), norm_status),
+                )
+            return cursor.lastrowid  # type: ignore[no-any-return]
+
+    def update_execution_log(
+        self,
+        log_id: int,
+        status: str,
+        records_inserted: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        norm_status = status.upper().strip()
+        if norm_status not in {"SUCCESS", "FAILED", "COOLDOWN_SKIPPED", "DISABLED_SKIPPED", "RUNNING", "TRIGGERED"}:
+            raise ValueError(f"Invalid execution status: {status}")
+        with self._database.connection() as connection:
+            connection.execute(
+                """
+                UPDATE scraper_logs
+                SET status = ?, records_inserted = ?, error_message = ?
+                WHERE id = ?
+                """,
+                (norm_status, max(0, int(records_inserted)), error_message, log_id),
+            )
+
     def log_execution(
         self,
         plugin_name: str,
         status: str,
         records_inserted: int,
         error_message: str | None = None,
+        trigger_reason: str | None = None,
     ) -> None:
         if not isinstance(plugin_name, str) or not plugin_name.strip():
             raise ValueError("AIS plugin name is required")
-        if status not in {"SUCCESS", "FAILED", "COOLDOWN_SKIPPED"}:
-            raise ValueError("Invalid execution status: AIS execution status must be SUCCESS, FAILED, or COOLDOWN_SKIPPED")
+        norm_status = status.upper().strip()
+        if norm_status not in {"SUCCESS", "FAILED", "COOLDOWN_SKIPPED", "DISABLED_SKIPPED", "RUNNING", "TRIGGERED"}:
+            raise ValueError(f"Invalid execution status: AIS execution status must be SUCCESS, FAILED, COOLDOWN_SKIPPED, DISABLED_SKIPPED, or RUNNING (got {status})")
         if isinstance(records_inserted, bool) or not isinstance(records_inserted, int) or records_inserted < 0:
             raise ValueError("Inserted record count must be a non-negative integer")
+        reason_val = trigger_reason.strip() if isinstance(trigger_reason, str) and trigger_reason.strip() else "Manual / Unspecified"
         with self._database.connection() as connection:
-            connection.execute(
-                """
-                INSERT INTO scraper_logs
-                (plugin_name, status, records_inserted, error_message)
-                VALUES (?, ?, ?, ?)
-                """,
-                (plugin_name.strip(), status, records_inserted, error_message),
-            )
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO scraper_logs
+                    (plugin_name, status, records_inserted, error_message, trigger_reason)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (plugin_name.strip(), norm_status, records_inserted, error_message, reason_val),
+                )
+            except sqlite3.OperationalError:
+                connection.execute(
+                    """
+                    INSERT INTO scraper_logs
+                    (plugin_name, status, records_inserted, error_message)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (plugin_name.strip(), norm_status, records_inserted, error_message),
+                )
 
     def get_timeline_bounds(self) -> dict[str, object]:
         with self._database.connection() as connection:
@@ -501,9 +567,18 @@ class SQLiteAISRepository:
             where_clauses.append("status = ?")
             params.append(status.upper())
 
+        has_reason_col = False
+        try:
+            with self._database.connection() as conn:
+                cols = [r[1] for r in conn.execute("PRAGMA table_info(scraper_logs)").fetchall()]
+                has_reason_col = "trigger_reason" in cols
+        except Exception:
+            has_reason_col = False
+
+        select_cols = "id, plugin_name, status, records_inserted, timestamp, error_message" + (", trigger_reason" if has_reason_col else "")
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         query = f"""
-            SELECT id, plugin_name, status, records_inserted, timestamp, error_message
+            SELECT {select_cols}
             FROM scraper_logs
             {where_sql}
             ORDER BY timestamp DESC, id DESC
@@ -522,6 +597,7 @@ class SQLiteAISRepository:
                     "records_inserted": row[3],
                     "timestamp": row[4],
                     "error_message": row[5],
+                    "trigger_reason": row[6] if len(row) > 6 and row[6] else "Manual / Unspecified",
                 })
         return results
 
@@ -536,6 +612,8 @@ class SQLiteAISRepository:
                     SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success_runs,
                     SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_runs,
                     SUM(CASE WHEN status = 'COOLDOWN_SKIPPED' THEN 1 ELSE 0 END) as cooldown_runs,
+                    SUM(CASE WHEN status = 'DISABLED_SKIPPED' THEN 1 ELSE 0 END) as disabled_runs,
+                    SUM(CASE WHEN status IN ('RUNNING', 'TRIGGERED') THEN 1 ELSE 0 END) as running_runs,
                     MAX(timestamp) as last_run_at
                 FROM scraper_logs
                 GROUP BY plugin_name
@@ -547,7 +625,9 @@ class SQLiteAISRepository:
                     "success_runs": row[3] or 0,
                     "failed_runs": row[4] or 0,
                     "cooldown_runs": row[5] or 0,
-                    "last_run_at": row[6],
+                    "disabled_runs": row[6] or 0,
+                    "running_runs": row[7] or 0,
+                    "last_run_at": row[8],
                 }
         return stats
 

@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block title %}System Settings - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="settings-dashboard-container">
+    <!-- Header Section -->
+    <div class="settings-header">
+        <div class="header-titles">
+            <div class="header-badge">SYSTEM CONFIGURATION</div>
+            <h1>Global Platform Settings</h1>
+            <p class="header-subtitle">
+                Configure computer vision algorithms, coastal noise buffer, satellite imagery ingestion, orbit scheduler, and map defaults.
+            </p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="btnResetSection" onclick="resetCurrentSection()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="1 4 1 10 7 10"></polyline>
+                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                </svg>
+                Reset Section
+            </button>
+            <button class="btn btn-primary" id="btnSaveSettings" onclick="saveAllSettings()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                Save Changes
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Settings Body -->
+    <div class="settings-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="settings-sidebar">
+            <nav class="settings-nav">
+                <button type="button" class="nav-tab-btn active" data-section="cv" onclick="switchSection('cv')">
+                    <span class="tab-icon">🔍</span>
+                    <div class="tab-info">
+                        <span class="tab-title">Computer Vision</span>
+                        <span class="tab-desc">Detection & Coastal Buffer</span>
+                    </div>
+                    <span class="tab-badge">CV</span>
+                </button>
+
+                <button type="button" class="nav-tab-btn" data-section="imagery" onclick="switchSection('imagery')">
+                    <span class="tab-icon">🛰️</span>
+                    <div class="tab-info">
+                        <span class="tab-title">Satellite Imagery</span>
+                        <span class="tab-desc">Copernicus & Processing</span>
+                    </div>
+                    <span class="tab-badge">API</span>
+                </button>
+
+                <button type="button" class="nav-tab-btn" data-section="scheduler" onclick="switchSection('scheduler')">
+                    <span class="tab-icon">⏱️</span>
+                    <div class="tab-info">
+                        <span class="tab-title">Pass Scheduler</span>
+                        <span class="tab-desc">N2YO & Orbit Intervals</span>
+                    </div>
+                    <span class="tab-badge">ORBIT</span>
+                </button>
+
+                <button type="button" class="nav-tab-btn" data-section="map_ui" onclick="switchSection('map_ui')">
+                    <span class="tab-icon">🗺️</span>
+                    <div class="tab-info">
+                        <span class="tab-title">Tactical Map & UI</span>
+                        <span class="tab-desc">Layers, Colors, Coordinates</span>
+                    </div>
+                    <span class="tab-badge">UI</span>
+                </button>
+
+                <button type="button" class="nav-tab-btn" data-section="system" onclick="switchSection('system')">
+                    <span class="tab-icon">⚙️</span>
+                    <div class="tab-info">
+                        <span class="tab-title">System & Storage</span>
+                        <span class="tab-desc">Paths, Server, Cache</span>
+                    </div>
+                    <span class="tab-badge">CORE</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer-card">
+                <div class="footer-status-indicator">
+                    <span class="status-pulse"></span>
+                    <span>Configuration Engine Active</span>
+                </div>
+                <p class="footer-help-text">
+                    Changes take effect immediately across all background tasks and detection pipelines without needing a server restart.
+                </p>
+            </div>
+        </aside>
+
+        <!-- Form Content Container -->
+        <main class="settings-content">
+            <div id="settingsLoadingIndicator" class="loading-state">
+                <div class="spinner"></div>
+                <span>Loading configuration profiles...</span>
+            </div>
+
+            <form id="settingsForm" onsubmit="event.preventDefault(); saveAllSettings();">
+                <!-- Section: Computer Vision -->
+                <section class="settings-section active" id="section-cv">
+                    <div class="section-header">
+                        <h2>Computer Vision & Vessel Detection</h2>
+                        <p>Configure radar thresholding, oriented bounding box metrology, and DEM land-sea coastal noise suppression.</p>
+                    </div>
+
+                    <!-- Highlight Card: Coastal Noise Buffer -->
+                    <div class="settings-card card-highlight">
+                        <div class="card-badge">LAND-SEA MASKING</div>
+                        <div class="card-title-group">
+                            <label for="input_cv_coastal_buffer_pixels" class="setting-title">Coastal Noise Buffer</label>
+                            <span class="badge-value" id="badge_cv_coastal_buffer_pixels">81 px</span>
+                        </div>
+                        <p class="setting-description">
+                            Dilation kernel radius applied to the DEM land mask. Suppresses false positives caused by breaking waves, piers, harbor walls, and coastal noise. Setting to <strong>0</strong> applies the exact shoreline.
+                        </p>
+                        <div class="range-control-group">
+                            <input type="range" id="input_cv_coastal_buffer_pixels" min="0" max="300" step="1" value="81"
+                                   oninput="updateRangeDisplay('cv_coastal_buffer_pixels', this.value, ' px')">
+                            <input type="number" class="number-input-sync" id="sync_cv_coastal_buffer_pixels" min="0" max="500" value="81"
+                                   oninput="syncSlider('cv_coastal_buffer_pixels', this.value)">
+                        </div>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_cv_dem_land_mask_enabled">DEM Land Masking</label>
+                                    <p class="setting-description">Automatically zero out terrestrial and coastal radar reflections using Copernicus DEM.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_cv_dem_land_mask_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_morph_close_kernel" class="setting-title">Inland Gap Closing Kernel</label>
+                                <span class="badge-value" id="badge_cv_morph_close_kernel">27 px</span>
+                            </div>
+                            <p class="setting-description">Kernel size used to close inland rivers, bays, and lakes inside landmasses.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_morph_close_kernel" min="3" max="99" step="2" value="27"
+                                       oninput="updateRangeDisplay('cv_morph_close_kernel', this.value, ' px')">
+                                <input type="number" class="number-input-sync" id="sync_cv_morph_close_kernel" min="3" max="101" step="2" value="27"
+                                       oninput="syncSlider('cv_morph_close_kernel', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_threshold" class="setting-title">Detection Threshold</label>
+                                <span class="badge-value" id="badge_cv_threshold">40</span>
+                            </div>
+                            <p class="setting-description">SAR radar backscatter intensity threshold (1-255) for vessel hull extraction.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_threshold" min="1" max="150" step="1" value="40"
+                                       oninput="updateRangeDisplay('cv_threshold', this.value, '')">
+                                <input type="number" class="number-input-sync" id="sync_cv_threshold" min="1" max="255" value="40"
+                                       oninput="syncSlider('cv_threshold', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_filter_type" class="setting-title">Speckle Filter</label>
+                            <p class="setting-description">Radar speckle filter applied over open water before thresholding.</p>
+                            <select id="input_cv_filter_type" class="form-select">
+                                <option value="none">None (Raw Backscatter)</option>
+                                <option value="lee">Lee Filter (Adaptive Speckle)</option>
+                                <option value="frost">Frost Filter (Exponential Damping)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_minimum_area" class="setting-title">Minimum Vessel Area (Pixels)</label>
+                            <p class="setting-description">Ignore detection contours smaller than this pixel area.</p>
+                            <input type="number" id="input_cv_minimum_area" class="form-input" min="1" max="500" value="50">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_maximum_area" class="setting-title">Maximum Vessel Area (Pixels)</label>
+                            <p class="setting-description">Ignore detection contours larger than this pixel area.</p>
+                            <input type="number" id="input_cv_maximum_area" class="form-input" min="500" max="50000" value="5000">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_dilation_iterations" class="setting-title">Dilation Iterations</label>
+                            <p class="setting-description">Morphological dilation steps to merge fractured vessel returns.</p>
+                            <input type="number" id="input_cv_dilation_iterations" class="form-input" min="0" max="10" value="2">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_pixel_spacing_meters" class="setting-title">Ground Pixel Spacing (Meters)</label>
+                            <p class="setting-description">Physical resolution for converting pixel length/beam to meters.</p>
+                            <input type="number" id="input_cv_pixel_spacing_meters" class="form-input" min="1" max="100" step="0.5" value="10.0">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Satellite Imagery -->
+                <section class="settings-section" id="section-imagery">
+                    <div class="section-header">
+                        <h2>Satellite Imagery & Copernicus Provider</h2>
+                        <p>Credentials and download parameters for Copernicus Data Space Ecosystem (CDSE) Sentinel Hub API.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <label for="input_imagery_copernicus_username" class="setting-title">Copernicus Username / Email</label>
+                            <p class="setting-description">Email associated with your Copernicus Data Space account.</p>
+                            <input type="text" id="input_imagery_copernicus_username" class="form-input" placeholder="user@example.com">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_copernicus_password" class="setting-title">Copernicus Password</label>
+                            <p class="setting-description">Account password for OAuth token generation.</p>
+                            <div class="password-input-group">
+                                <input type="password" id="input_imagery_copernicus_password" class="form-input" placeholder="••••••••">
+                                <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('input_imagery_copernicus_password')">👁️</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_default_evalscript" class="setting-title">Default Evalscript</label>
+                            <p class="setting-description">Band processing algorithm for SAR visualization.</p>
+                            <select id="input_imagery_default_evalscript" class="form-select">
+                                <option value="SAR">SAR (Single-Pol Grayscale)</option>
+                                <option value="SAR_DUAL_POL">SAR Dual-Pol (RGB Composite)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_search_window_days" class="setting-title">Acquisition Search Window (Days)</label>
+                            <p class="setting-description">Max days to look back in STAC catalog for available passes.</p>
+                            <input type="number" id="input_imagery_search_window_days" class="form-input" min="1" max="365" value="30">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_resolution_meters" class="setting-title">Tile Resolution (Meters)</label>
+                            <p class="setting-description">Ground sample spacing used for tile calculation grids.</p>
+                            <input type="number" id="input_imagery_resolution_meters" class="form-input" min="5" max="100" step="1" value="10.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_max_image_size" class="setting-title">Max Tile Size (Pixels)</label>
+                            <p class="setting-description">Maximum width/height dimension per tile download.</p>
+                            <input type="number" id="input_imagery_max_image_size" class="form-input" min="500" max="2500" step="100" value="2500">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Scheduler & Orbits -->
+                <section class="settings-section" id="section-scheduler">
+                    <div class="section-header">
+                        <h2>Pass Scheduler & Orbit Prediction</h2>
+                        <p>Satellite pass forecasting, N2YO API access, and automated AOI scan triggers.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <label for="input_scheduler_n2yo_api_key" class="setting-title">N2YO API Key</label>
+                            <p class="setting-description">API key used for real-time NORAD TLE orbit calculations.</p>
+                            <div class="password-input-group">
+                                <input type="password" id="input_scheduler_n2yo_api_key" class="form-input" placeholder="API Key">
+                                <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('input_scheduler_n2yo_api_key')">👁️</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_scheduler_auto_capture_default">Auto-Capture Default</label>
+                                    <p class="setting-description">Enable automatic post-pass image ingestion when adding new AOIs.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_scheduler_auto_capture_default" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_poll_interval_seconds" class="setting-title">Scheduler Poll Interval (Seconds)</label>
+                            <p class="setting-description">Frequency at which the background worker verifies upcoming passes.</p>
+                            <input type="number" id="input_scheduler_poll_interval_seconds" class="form-input" min="10" max="3600" value="60">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_satellite_norad_ids" class="setting-title">Sentinel-1 NORAD IDs</label>
+                            <p class="setting-description">Comma-separated NORAD tracking IDs for Sentinel-1 satellites.</p>
+                            <input type="text" id="input_scheduler_satellite_norad_ids" class="form-input" value="39634, 41456, 62232">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Map & Display -->
+                <section class="settings-section" id="section-map_ui">
+                    <div class="section-header">
+                        <h2>Tactical Map & UI Display</h2>
+                        <p>Default coordinates, transparency controls, and visual detection overlay styles.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <label for="input_map_ui_default_lat" class="setting-title">Default Latitude</label>
+                            <p class="setting-description">Initial center latitude for tactical map scanning.</p>
+                            <input type="number" id="input_map_ui_default_lat" class="form-input" step="0.000001" value="1.290270">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_default_lng" class="setting-title">Default Longitude</label>
+                            <p class="setting-description">Initial center longitude for tactical map scanning.</p>
+                            <input type="number" id="input_map_ui_default_lng" class="form-input" step="0.000001" value="103.851959">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_default_zoom" class="setting-title">Default Map Zoom</label>
+                            <p class="setting-description">Initial zoom level on map load (2 to 18).</p>
+                            <input type="number" id="input_map_ui_default_zoom" class="form-input" min="2" max="18" value="10">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_sar_opacity" class="setting-title">SAR Overlay Opacity</label>
+                            <p class="setting-description">Default transparency level for rendered SAR imagery on map.</p>
+                            <input type="number" id="input_map_ui_sar_opacity" class="form-input" min="0.1" max="1.0" step="0.05" value="1.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_color_cv_detection" class="setting-title">Standard Box Color</label>
+                            <p class="setting-description">Border color for standard bounding box ship detections.</p>
+                            <div class="color-picker-group">
+                                <input type="color" id="input_map_ui_color_cv_detection" value="#ff3333">
+                                <input type="text" class="form-input hex-input" id="hex_map_ui_color_cv_detection" value="#ff3333"
+                                       oninput="document.getElementById('input_map_ui_color_cv_detection').value = this.value">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_color_obb_detection" class="setting-title">OBB Oriented Box Color</label>
+                            <p class="setting-description">Border color for oriented bounding box ship detections.</p>
+                            <div class="color-picker-group">
+                                <input type="color" id="input_map_ui_color_obb_detection" value="#e67e22">
+                                <input type="text" class="form-input hex-input" id="hex_map_ui_color_obb_detection" value="#e67e22"
+                                       oninput="document.getElementById('input_map_ui_color_obb_detection').value = this.value">
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: System & Core -->
+                <section class="settings-section" id="section-system">
+                    <div class="section-header">
+                        <h2>System & Storage Architecture</h2>
+                        <p>Core directories, network ports, database files, and system diagnostics.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <label for="input_system_port" class="setting-title">Server Port</label>
+                            <p class="setting-description">Local HTTP port for the web dashboard.</p>
+                            <input type="number" id="input_system_port" class="form-input" min="1" max="65535" value="5050">
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_system_debug">Flask Debug Mode</label>
+                                    <p class="setting-description">Enables auto-reloading and detailed error diagnostics.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_system_debug">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_system_database_path" class="setting-title">Database Path</label>
+                            <p class="setting-description">File path to the SQLite persistence database.</p>
+                            <input type="text" id="input_system_database_path" class="form-input" value="data.db">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_system_output_root" class="setting-title">Scan Output Root</label>
+                            <p class="setting-description">Directory where stitched SAR & DEM imagery is stored.</p>
+                            <input type="text" id="input_system_output_root" class="form-input" value="static/output">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_system_cache_root" class="setting-title">Tile Cache Root</label>
+                            <p class="setting-description">Directory where downloaded image tiles are cached for fast reuse.</p>
+                            <input type="text" id="input_system_cache_root" class="form-input" value=".cache">
+                        </div>
+                    </div>
+                </section>
+            </form>
+        </main>
+    </div>
+</div>
+
+<!-- Toast Feedback Notification -->
+<div id="settingsToast" class="settings-toast" style="display: none;">
+    <div class="toast-icon">✓</div>
+    <div class="toast-message" id="toastMessage">Settings updated successfully</div>
+</div>
+
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}
+
+{% block extra_scripts %}
+    <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}

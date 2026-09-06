@@ -17,6 +17,24 @@ class AISRepository(Protocol):
         status: str,
         records_inserted: int,
         error_message: str | None = None,
+        trigger_reason: str | None = None,
+    ) -> None:
+        ...
+
+    def log_trigger(
+        self,
+        plugin_name: str,
+        trigger_reason: str,
+        status: str = "RUNNING",
+    ) -> int:
+        ...
+
+    def update_execution_log(
+        self,
+        log_id: int,
+        status: str,
+        records_inserted: int = 0,
+        error_message: str | None = None,
     ) -> None:
         ...
 

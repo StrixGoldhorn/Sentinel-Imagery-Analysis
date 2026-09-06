@@ -53,15 +53,20 @@ class ScrapeAreaOfInterestAIS:
             # Immediate live force-scan regardless of flyby / satellite pass
             now = datetime.now(timezone.utc)
             time_range = (now - timedelta(minutes=max(15, window_minutes)), now + timedelta(minutes=5))
+            reason = f"Manual Force AIS Scan ({aoi.name})"
         elif pass_time is not None:
             time_range = calculate_pass_window(pass_time, window_minutes=window_minutes)
+            reason = f"Manual Pass Scrape ({aoi.name})"
         elif aoi.next_scan is not None:
             time_range = calculate_pass_window(aoi.next_scan, window_minutes=window_minutes)
+            reason = f"Manual Pass Scrape ({aoi.name})"
         else:
             time_range = (None, None)
+            reason = f"Manual AOI Scrape ({aoi.name})"
 
         return self._ingest_ais.execute(
             aoi.bbox,
             time_range,
             plugin_name=plugin_name,
+            trigger_reason=reason,
         )

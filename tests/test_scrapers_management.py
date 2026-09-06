@@ -120,14 +120,37 @@ class MemoryAISRepository:
     def get_all_scraper_configs(self):
         return dict(self._configs)
 
-    def log_execution(self, plugin_name: str, status: str, records_inserted: int = 0, error_message: str | None = None):
+    def log_execution(self, plugin_name: str, status: str, records_inserted: int = 0, error_message: str | None = None, trigger_reason: str | None = None):
         self._logs.insert(0, {
+            "id": len(self._logs) + 1,
             "plugin_name": plugin_name,
             "status": status,
             "records_inserted": records_inserted,
             "error_message": error_message,
+            "trigger_reason": trigger_reason or "Manual / Unspecified",
             "executed_at": datetime.now(timezone.utc).isoformat(),
         })
+
+    def log_trigger(self, plugin_name: str, trigger_reason: str, status: str = "RUNNING") -> int:
+        log_id = len(self._logs) + 1
+        self._logs.insert(0, {
+            "id": log_id,
+            "plugin_name": plugin_name,
+            "status": status,
+            "records_inserted": 0,
+            "error_message": "In progress...",
+            "trigger_reason": trigger_reason or "Manual / Unspecified",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return log_id
+
+    def update_execution_log(self, log_id: int, status: str, records_inserted: int = 0, error_message: str | None = None) -> None:
+        for entry in self._logs:
+            if entry.get("id") == log_id:
+                entry["status"] = status
+                entry["records_inserted"] = records_inserted
+                entry["error_message"] = error_message
+                return
 
     def get_scraper_logs(self, plugin_name: str | None = None, status: str | None = None, limit: int = 100, offset: int = 0):
         logs = self._logs
@@ -542,6 +565,110 @@ def test_sqlite_ais_repository_log_execution_cooldown_skipped() -> None:
             os.remove(db_path)
         except OSError:
             pass
+
+
+def test_sqlite_ais_repository_trigger_logging_and_reason() -> None:
+    from pathlib import Path
+    import os
+    from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+
+    runtime_dir = Path(__file__).resolve().parent / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_dir / "test_ais_trigger_reason.db"
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+    repo = SQLiteAISRepository(db_path)
+
+    # 1. Log upfront trigger (status RUNNING)
+    log_id = repo.log_trigger("TestTriggerPlugin", trigger_reason="Satellite Flypast (Singapore Strait)", status="RUNNING")
+    assert isinstance(log_id, int)
+    assert log_id > 0
+
+    running_logs = repo.get_scraper_logs(status="RUNNING")
+    assert len(running_logs) == 1
+    assert running_logs[0]["plugin_name"] == "TestTriggerPlugin"
+    assert running_logs[0]["status"] == "RUNNING"
+    assert running_logs[0]["trigger_reason"] == "Satellite Flypast (Singapore Strait)"
+
+    # 2. Update to SUCCESS
+    repo.update_execution_log(log_id, status="SUCCESS", records_inserted=42, error_message=None)
+    success_logs = repo.get_scraper_logs(status="SUCCESS")
+    assert len(success_logs) == 1
+    assert success_logs[0]["plugin_name"] == "TestTriggerPlugin"
+    assert success_logs[0]["status"] == "SUCCESS"
+    assert success_logs[0]["records_inserted"] == 42
+    assert success_logs[0]["trigger_reason"] == "Satellite Flypast (Singapore Strait)"
+
+    # 3. Log DISABLED_SKIPPED with trigger_reason
+    repo.log_execution("DisabledPlugin", "DISABLED_SKIPPED", 0, "Skipped: disabled", trigger_reason="Satellite Flypast (Singapore Strait)")
+    disabled_logs = repo.get_scraper_logs(status="DISABLED_SKIPPED")
+    assert len(disabled_logs) == 1
+    assert disabled_logs[0]["plugin_name"] == "DisabledPlugin"
+    assert disabled_logs[0]["status"] == "DISABLED_SKIPPED"
+    assert disabled_logs[0]["trigger_reason"] == "Satellite Flypast (Singapore Strait)"
+
+    stats = repo.get_scraper_stats()
+    assert "TestTriggerPlugin" in stats
+    assert stats["TestTriggerPlugin"]["success_runs"] == 1
+    assert "DisabledPlugin" in stats
+    assert stats["DisabledPlugin"]["disabled_runs"] == 1
+
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+
+def test_ingest_ais_logs_on_trigger_and_records_reason() -> None:
+    from unittest.mock import MagicMock
+    from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
+    from sentinel_analysis.domain.entities import BoundingBox
+
+    repo = MemoryAISRepository()
+    # Configure PluginA as enabled, PluginB as disabled
+    repo.set_scraper_config("PluginA", enabled=True)
+    repo.set_scraper_config("PluginB", enabled=False)
+
+    plugin_a = MagicMock()
+    plugin_a.name = "PluginA"
+    plugin_a.fetch.return_value = []
+
+    plugin_b = MagicMock()
+    plugin_b.name = "PluginB"
+    plugin_b.fetch.return_value = []
+
+    registry = MagicMock()
+    registry.get_plugins.return_value = [plugin_a, plugin_b]
+
+    ingest_use_case = IngestAIS(registry=registry, repository=repo)
+    bbox = BoundingBox(103.8, 1.2, 103.9, 1.3)
+
+    result = ingest_use_case.execute(
+        bbox=bbox,
+        time_range=(None, None),
+        trigger_reason="Satellite Flypast (Malacca Strait)",
+    )
+
+    logs = repo.get_scraper_logs()
+    # Both plugins should have an execution log entry! (None should be silently dropped)
+    assert len(logs) == 2
+
+    # Plugin A was triggered, executed, and completed with SUCCESS
+    plugin_a_logs = [l for l in logs if l["plugin_name"] == "PluginA"]
+    assert len(plugin_a_logs) == 1
+    assert plugin_a_logs[0]["status"] == "SUCCESS"
+    assert plugin_a_logs[0]["trigger_reason"] == "Satellite Flypast (Malacca Strait)"
+
+    # Plugin B was disabled, so it logged DISABLED_SKIPPED with trigger_reason
+    plugin_b_logs = [l for l in logs if l["plugin_name"] == "PluginB"]
+    assert len(plugin_b_logs) == 1
+    assert plugin_b_logs[0]["status"] == "DISABLED_SKIPPED"
+    assert plugin_b_logs[0]["trigger_reason"] == "Satellite Flypast (Malacca Strait)"
 
 
 def load_tests(loader, standard_tests, pattern):

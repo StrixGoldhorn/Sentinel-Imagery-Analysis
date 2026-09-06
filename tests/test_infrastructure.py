@@ -24,6 +24,7 @@ from sentinel_analysis.application.ports import (
     LocationResolver,
     PassPredictor,
     ScanRepository,
+    SettingsRepository,
     ShipDetector,
     TaskQueue,
     TileCache,
@@ -44,6 +45,7 @@ from sentinel_analysis.infrastructure.imagery.tiling import TileGridCalculator
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
 
@@ -231,6 +233,7 @@ def test_concrete_adapters_satisfy_application_ports() -> None:
             (ClassicalShipDetector(), ShipDetector),
             (FilesystemTileCache(RUNTIME / "port_cache"), TileCache),
             (ThreadedTaskQueue(), TaskQueue),
+            (SQLiteSettingsRepository("virtual_port.db"), SettingsRepository),
         )
 
         for adapter, port in adapters_and_ports:

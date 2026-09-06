@@ -88,6 +88,11 @@
                             </a>
                         </div>
                     </li>
+                    <li class="nav-item">
+                        <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}" title="Platform & Feature Configuration">
+                            Settings
+                        </a>
+                    </li>
                 </ul>
             </div>
 
@@ -318,5 +323,6 @@
             setInterval(updateNavTelemetry, 30000);
         });
     </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -30,6 +30,11 @@ from sentinel_analysis.application.use_cases.manage_vessels import (
     GetVesselDetails,
     UpdateVesselDetails,
 )
+from sentinel_analysis.application.use_cases.manage_settings import (
+    GetSettings,
+    ResetSettings,
+    UpdateSettings,
+)
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
@@ -49,6 +54,7 @@ __all__ = [
     "GetScan",
     "GetScraperDetail",
     "GetScraperLogsUseCase",
+    "GetSettings",
     "GetUpcomingScrapes",
     "GetVesselDetails",
     "GetVesselPositions",
@@ -61,10 +67,12 @@ __all__ = [
     "PredictPasses",
     "RenameScan",
     "ResetScraperCooldown",
+    "ResetSettings",
     "ScrapeAreaOfInterestAIS",
     "ToggleScraper",
     "UpdateScraper",
     "UpdateScraperConfig",
+    "UpdateSettings",
     "UpdateVesselDetails",
     "calculate_pass_window",
 ]

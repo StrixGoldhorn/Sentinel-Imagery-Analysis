@@ -132,6 +132,7 @@ def test_scraper_api(name: str):
             bbox=bbox,
             time_range=(None, None),
             plugin_name=name,
+            trigger_reason=f"Manual Provider Test ({name})",
         )
         total_inserted = result.get("total_inserted", 0) if isinstance(result, dict) else getattr(result, "total_inserted", 0)
         logs = result.get("logs", []) if isinstance(result, dict) else getattr(result, "logs", [])

@@ -58,6 +58,7 @@ class IngestCommand(CLICommand):
             BoundingBox.from_sequence(args.bbox),
             (start, end),
             args.plugin,
+            trigger_reason=f"CLI Ingest Command{f' ({args.plugin})' if args.plugin else ''}",
         )
 
         print(f"Total records inserted: {result['total_inserted']}", file=stdout)

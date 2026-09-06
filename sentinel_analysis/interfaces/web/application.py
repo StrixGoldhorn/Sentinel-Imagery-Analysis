@@ -6,6 +6,7 @@ from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.bootstrap.container import ApplicationContainer
 from sentinel_analysis.interfaces.web import ais, aois, scans, schedule, scrapers, tasks
 from sentinel_analysis.interfaces.web.errors import register_error_handlers
+from sentinel_analysis.interfaces.web.settings import blueprint as settings_blueprint
 
 
 def create_app(
@@ -36,6 +37,7 @@ def create_app(
     app.register_blueprint(schedule.blueprint)
     app.register_blueprint(scrapers.blueprint)
     app.register_blueprint(tasks.blueprint)
+    app.register_blueprint(settings_blueprint)
 
 
 

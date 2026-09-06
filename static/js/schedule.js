@@ -518,7 +518,7 @@ async function loadLogs() {
         if (logs.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" style="text-align: center; color: #6c757d; padding: 20px;">
+                    <td colspan="6" style="text-align: center; color: #6c757d; padding: 20px;">
                         No AIS scraper execution logs recorded yet.
                     </td>
                 </tr>
@@ -529,14 +529,24 @@ async function loadLogs() {
         tbody.innerHTML = logs.map(log => {
             const dt = log.timestamp ? new Date(log.timestamp.replace(' ', 'T') + 'Z') : new Date();
             const timeStr = dt.toLocaleString();
-            const statusBadge = log.status === 'SUCCESS' 
-                ? '<span class="badge badge-success">SUCCESS</span>' 
-                : '<span class="badge badge-live">FAILED</span>';
+            let statusBadge = '';
+            if (log.status === 'SUCCESS') {
+                statusBadge = '<span class="badge badge-success">SUCCESS</span>';
+            } else if (log.status === 'COOLDOWN_SKIPPED') {
+                statusBadge = '<span class="badge" style="background:#fef3c7;color:#b45309;">COOLDOWN</span>';
+            } else if (log.status === 'DISABLED_SKIPPED') {
+                statusBadge = '<span class="badge" style="background:#f1f5f9;color:#64748b;">DISABLED</span>';
+            } else if (log.status === 'RUNNING' || log.status === 'TRIGGERED') {
+                statusBadge = '<span class="badge" style="background:#e0f2fe;color:#0369a1;">RUNNING</span>';
+            } else {
+                statusBadge = '<span class="badge badge-live">FAILED</span>';
+            }
 
             return `
                 <tr>
                     <td><strong>${timeStr}</strong></td>
                     <td><code>${escapeHtml(log.plugin_name || 'AIS Ingestion')}</code></td>
+                    <td><span style="font-size:0.8rem;color:#475569;">${escapeHtml(log.trigger_reason || 'Manual / Unspecified')}</span></td>
                     <td>${statusBadge}</td>
                     <td><strong>${log.records_inserted || 0}</strong> records</td>
                     <td style="color: ${log.error_message ? '#dc3545' : '#6c757d'};">

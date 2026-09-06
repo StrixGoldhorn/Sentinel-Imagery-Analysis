@@ -125,7 +125,12 @@ class SQLiteVesselRepositoryTests(unittest.TestCase):
         self.repo.save_records([AISRecord(vessel=vessel, position=pos)], source_plugin="MockPlugin")
 
     def tearDown(self):
-        self.temp_dir.cleanup()
+        import gc
+        gc.collect()
+        try:
+            self.temp_dir.cleanup()
+        except OSError:
+            pass
 
     def test_get_and_update_vessel_sqlite(self):
         # Query existing vessel from DB

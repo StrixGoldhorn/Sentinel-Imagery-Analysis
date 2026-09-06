@@ -79,12 +79,19 @@ class IngestAIS:
         bbox: BoundingBox,
         time_range: AISTimeRange,
         plugin_name: str | None = None,
+        trigger_reason: str | None = None,
     ) -> IngestionResult:
         normalized_time_range = self._normalize_time_range(time_range)
         if plugin_name is not None:
             if not isinstance(plugin_name, str) or not plugin_name.strip():
                 raise ValueError("AIS plugin name must be a non-empty string")
             plugin_name = plugin_name.strip()
+
+        effective_reason = (
+            trigger_reason.strip()
+            if isinstance(trigger_reason, str) and trigger_reason.strip()
+            else ("Manual Scrape" if plugin_name else "Automated / Scheduled Scrape")
+        )
 
         results: list[IngestionLog] = []
         total_inserted = 0
@@ -126,8 +133,25 @@ class IngestAIS:
                 except Exception:
                     pass
 
-            # If multi-provider automated ingestion and plugin is disabled, skip
+            # If multi-provider automated ingestion and plugin is disabled, log skip and continue
             if plugin_name is None and detail and detail.get("enabled") is False:
+                skip_msg = "Skipped: scraper is disabled in configuration"
+                try:
+                    self._repository.log_execution(
+                        plugin.name,
+                        "DISABLED_SKIPPED",
+                        0,
+                        skip_msg,
+                        trigger_reason=effective_reason,
+                    )
+                except Exception as log_exc:
+                    logger.warning("Failed to log scraper disabled skip for %s: %s", plugin.name, log_exc)
+                results.append({
+                    "plugin": plugin.name,
+                    "status": "DISABLED_SKIPPED",
+                    "records": 0,
+                    "error": skip_msg,
+                })
                 continue
 
             # Check cooldown status for automated runs (allow manual single-target test to bypass)
@@ -136,7 +160,13 @@ class IngestAIS:
                 if cooldown_until and cooldown_until > now:
                     skip_msg = f"Skipped: cooling down until {cooldown_until.isoformat()}"
                     try:
-                        self._repository.log_execution(plugin.name, "COOLDOWN_SKIPPED", 0, skip_msg)
+                        self._repository.log_execution(
+                            plugin.name,
+                            "COOLDOWN_SKIPPED",
+                            0,
+                            skip_msg,
+                            trigger_reason=effective_reason,
+                        )
                     except Exception as log_exc:
                         logger.warning("Failed to log scraper cooldown skip for %s: %s", plugin.name, log_exc)
                     results.append({
@@ -146,6 +176,18 @@ class IngestAIS:
                         "error": skip_msg,
                     })
                     continue
+
+            # Once scraper is triggered: write to scraper log immediately (status RUNNING)
+            log_id: int | None = None
+            if hasattr(self._repository, "log_trigger"):
+                try:
+                    log_id = self._repository.log_trigger(
+                        plugin.name,
+                        trigger_reason=effective_reason,
+                        status="RUNNING",
+                    )
+                except Exception as trigger_exc:
+                    logger.warning("Failed to log scraper trigger for %s: %s", plugin.name, trigger_exc)
 
             inserted = 0
             try:
@@ -172,9 +214,24 @@ class IngestAIS:
                         self._repository.record_scraper_failure(plugin.name, error, None, consecutive)
 
             try:
-                self._repository.log_execution(plugin.name, status, inserted, error)
+                if log_id is not None and hasattr(self._repository, "update_execution_log"):
+                    self._repository.update_execution_log(
+                        log_id,
+                        status=status,
+                        records_inserted=inserted,
+                        error_message=error,
+                    )
+                else:
+                    self._repository.log_execution(
+                        plugin.name,
+                        status,
+                        inserted,
+                        error,
+                        trigger_reason=effective_reason,
+                    )
             except Exception as log_exc:
                 logger.warning("Failed to log scraper execution for %s: %s", plugin.name, log_exc)
+
             results.append({"plugin": plugin.name, "status": status, "records": inserted, "error": error})
             total_inserted += inserted
 

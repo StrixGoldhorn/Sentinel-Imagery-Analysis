@@ -96,7 +96,7 @@ class InMemoryAISRepository:
         self.locations.extend(recs)
         return len(recs)
 
-    def log_execution(self, plugin_name, status, count, err=None):
+    def log_execution(self, plugin_name, status, count, err=None, trigger_reason=None):
         pass
 
 

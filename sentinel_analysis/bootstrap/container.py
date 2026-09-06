@@ -10,6 +10,7 @@ from sentinel_analysis.application.use_cases import (
     GetScan,
     GetScraperDetail,
     GetScraperLogsUseCase,
+    GetSettings,
     GetUpcomingScrapes,
     GetVesselDetails,
     GetVesselPositions,
@@ -21,10 +22,12 @@ from sentinel_analysis.application.use_cases import (
     PredictAreaOfInterest,
     RenameScan,
     ResetScraperCooldown,
+    ResetSettings,
     ScrapeAreaOfInterestAIS,
     ToggleScraper,
     UpdateScraper,
     UpdateScraperConfig,
+    UpdateSettings,
     UpdateVesselDetails,
 )
 
@@ -39,6 +42,7 @@ from sentinel_analysis.infrastructure.persistence.filesystem_scans import Filesy
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
@@ -54,6 +58,7 @@ class ApplicationContainer:
         self.aoi_repository = SQLiteAreaOfInterestRepository(settings.database_path)
         self.ais_repository = SQLiteAISRepository(settings.database_path)
         self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
+        self.settings_repository = SQLiteSettingsRepository(settings.database_path)
         self.tile_cache = FilesystemTileCache(settings.cache_root)
         self.task_queue = ThreadedTaskQueue()
 
@@ -128,6 +133,10 @@ class ApplicationContainer:
             poll_interval_seconds=60.0,
             post_pass_repo=self.post_pass_repository,
         )
+
+        self.get_settings = GetSettings(self.settings_repository)
+        self.update_settings = UpdateSettings(self.settings_repository)
+        self.reset_settings = ResetSettings(self.settings_repository)
 
 
 

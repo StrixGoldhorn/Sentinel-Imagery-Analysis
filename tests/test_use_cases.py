@@ -169,7 +169,7 @@ class MemoryAISRepository:
     def save_records(self, records, source_plugin):
         return len(list(records))
 
-    def log_execution(self, plugin_name, status, records_inserted, error_message=None):
+    def log_execution(self, plugin_name, status, records_inserted, error_message=None, trigger_reason=None):
         self.logs.append((plugin_name, status, records_inserted, error_message))
 
 

@@ -69,6 +69,32 @@ function updateSummaryMetrics(metrics) {
     if (recordsEl) recordsEl.textContent = (metrics.total_records || 0).toLocaleString();
 }
 
+function getReasonBadge(reason) {
+    const r = (reason || 'Manual / Unspecified').trim();
+    let icon = '⚡';
+    let cls = 'reason-general';
+    if (/satellite|flypast/i.test(r)) {
+        icon = '🛰️';
+        cls = 'reason-satellite';
+    } else if (/test/i.test(r)) {
+        icon = '🧪';
+        cls = 'reason-test';
+    } else if (/api/i.test(r)) {
+        icon = '🔌';
+        cls = 'reason-api';
+    } else if (/force/i.test(r)) {
+        icon = '🎯';
+        cls = 'reason-force';
+    } else if (/scheduled/i.test(r)) {
+        icon = '⏱️';
+        cls = 'reason-scheduled';
+    } else if (/manual/i.test(r)) {
+        icon = '👤';
+        cls = 'reason-manual';
+    }
+    return `<span class="reason-pill ${cls}" title="${escapeHtml(r)}">${icon} ${escapeHtml(r)}</span>`;
+}
+
 /**
  * Render log rows into the table
  */
@@ -79,7 +105,7 @@ function renderLogsTable(logs) {
     if (logs.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="5" style="text-align: center; padding: 40px; color: #64748b;">
+                <td colspan="6" style="text-align: center; padding: 40px; color: #64748b;">
                     No execution logs match the selected filters.
                 </td>
             </tr>
@@ -90,22 +116,34 @@ function renderLogsTable(logs) {
     tbody.innerHTML = logs.map(log => {
         const isSuccess = log.status === 'SUCCESS';
         const isCooldown = log.status === 'COOLDOWN_SKIPPED';
+        const isDisabled = log.status === 'DISABLED_SKIPPED';
+        const isRunning = log.status === 'RUNNING' || log.status === 'TRIGGERED';
+
         let statusBadge = '';
         if (isSuccess) {
             statusBadge = `<span class="status-pill status-success">SUCCESS</span>`;
         } else if (isCooldown) {
             statusBadge = `<span class="status-pill status-cooldown">COOLDOWN</span>`;
+        } else if (isDisabled) {
+            statusBadge = `<span class="status-pill status-disabled">DISABLED</span>`;
+        } else if (isRunning) {
+            statusBadge = `<span class="status-pill status-running"><span class="pulse-dot"></span> RUNNING</span>`;
         } else {
             statusBadge = `<span class="status-pill status-failed">${escapeHtml(log.status || 'FAILED')}</span>`;
         }
 
         const timeFormatted = formatUtcTime(log.timestamp);
+        const reasonBadge = getReasonBadge(log.trigger_reason);
         const recordBadge = log.records_inserted > 0
             ? `<span class="records-badge">+${log.records_inserted}</span>`
             : `<span class="records-badge zero">0</span>`;
 
         let detailsHtml = '';
-        if (isCooldown) {
+        if (isRunning) {
+            detailsHtml = `<span class="running-note"><span class="spinner-sm-inline"></span> In progress / fetching vessel records...</span>`;
+        } else if (isDisabled) {
+            detailsHtml = `<span class="disabled-note">${escapeHtml(log.error_message || 'Skipped: provider disabled in configuration')}</span>`;
+        } else if (isCooldown) {
             detailsHtml = `<span class="cooldown-note">${escapeHtml(log.error_message || 'Skipped due to active cooldown backoff')}</span>`;
         } else if (log.error_message) {
             detailsHtml = `<div class="error-snippet">${escapeHtml(log.error_message)}</div>`;
@@ -120,6 +158,7 @@ function renderLogsTable(logs) {
                 <td>${statusBadge}</td>
                 <td style="font-size: 0.82rem; color: #475569;">${timeFormatted}</td>
                 <td><span class="plugin-code">${escapeHtml(log.plugin_name)}</span></td>
+                <td>${reasonBadge}</td>
                 <td>${recordBadge}</td>
                 <td>${detailsHtml}</td>
             </tr>
@@ -139,6 +178,7 @@ function filterLocalRows() {
     const filtered = currentLogs.filter(log => {
         return (log.plugin_name || '').toLowerCase().includes(q) ||
                (log.status || '').toLowerCase().includes(q) ||
+               (log.trigger_reason || '').toLowerCase().includes(q) ||
                (log.error_message || '').toLowerCase().includes(q) ||
                (log.timestamp || '').toLowerCase().includes(q);
     });
