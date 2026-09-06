@@ -132,6 +132,9 @@ async function loadAOIs() {
                         <button type="button" class="btn btn-sm btn-outline-success btn-scan-aoi" onclick="triggerAoiScan(${aoi.id})" title="Initiate SAR imagery scan for ${safeAoiName}" style="flex: 1; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 4px; background: rgba(40,167,69,0.08); border: 1px solid #28a745; color: #28a745; cursor: pointer;">
                             🛰️ Scan SAR
                         </button>
+                        <button type="button" class="btn btn-sm btn-outline-warning btn-force-ais" onclick="forceScanAOI(${aoi.id}, this)" title="Force immediate AIS vessel scan for ${safeAoiName}" style="flex: 1; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 4px; background: rgba(245,158,11,0.08); border: 1px solid #f59e0b; color: #d97706; cursor: pointer;">
+                            ⚡ Force AIS
+                        </button>
                         <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map" style="padding: 4px 8px; font-size: 0.78rem;">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
@@ -150,6 +153,9 @@ async function loadAOIs() {
                             <div><strong>Next Scan:</strong> ${zuluTime}</div>
                             <button type="button" class="btn btn-sm btn-success" onclick="triggerAoiScan(${aoi.id})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-weight: 600; cursor: pointer; margin-top: 4px;">
                                 🛰️ Initiate SAR Scan (Latest Imagery)
+                            </button>
+                            <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-weight: 600; cursor: pointer; margin-top: 2px; background: #f59e0b; border: 1px solid #d97706; color: #ffffff;">
+                                ⚡ Force AIS Scan
                             </button>
                         </div>
                     </details>
@@ -262,10 +268,20 @@ function initAoiHandlers() {
     });
 }
 
-async function forceScanAOI(aoiId) {
+async function forceScanAOI(aoiId, btnElement = null) {
     let startPopup = null;
+    let originalBtnHtml = null;
+    if (btnElement) {
+        originalBtnHtml = btnElement.innerHTML;
+        btnElement.disabled = true;
+        btnElement.innerHTML = '<span class="loading-spinner" style="display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;"></span> Scanning...';
+    }
+
+    const layerObj = aoiMapLayers.find(l => l.id === aoiId);
+    const safeAoiName = layerObj && (layerObj.name || (layerObj.aoi && layerObj.aoi.name)) ? escapeHtml(layerObj.name || layerObj.aoi.name) : `AOI #${aoiId}`;
+
     try {
-        startPopup = showNotification(`Initiating immediate AIS vessel scan for AOI #${aoiId}...`, "info", {
+        startPopup = showNotification(`Initiating immediate AIS vessel scan for ${safeAoiName}...`, "info", {
             autoClose: false,
             closable: true,
             title: "⚡ Force AIS Scan Started"
@@ -284,7 +300,7 @@ async function forceScanAOI(aoiId) {
 
         if (res.ok && data.status === 'success') {
             const count = (data.results && data.results.total_inserted) || 0;
-            showNotification(`Force AIS scan complete: ${count} vessel records ingested into database.`, "success", {
+            showNotification(`Force AIS scan complete for ${safeAoiName}: ${count} vessel records ingested into database.`, "success", {
                 autoClose: false,
                 closable: true,
                 showAckButton: true,
@@ -295,7 +311,7 @@ async function forceScanAOI(aoiId) {
                 refreshAISVessels(map);
             }
         } else {
-            showNotification(`Force AIS scan failed: ${data.error || 'Unknown error'}`, "error", {
+            showNotification(`Force AIS scan failed for ${safeAoiName}: ${data.error || 'Unknown error'}`, "error", {
                 autoClose: false,
                 closable: true,
                 showAckButton: true,
@@ -308,15 +324,22 @@ async function forceScanAOI(aoiId) {
         if (startPopup && typeof startPopup.close === 'function') {
             startPopup.close();
         }
-        showNotification(`Failed to trigger force AIS scan: ${err.message || 'Connection error'}`, "error", {
+        showNotification(`Failed to trigger force AIS scan for ${safeAoiName}: ${err.message || 'Connection error'}`, "error", {
             autoClose: false,
             closable: true,
             showAckButton: true,
             ackText: "Dismiss",
             title: "❌ Force Scan Error"
         });
+    } finally {
+        if (btnElement && originalBtnHtml !== null) {
+            btnElement.disabled = false;
+            btnElement.innerHTML = originalBtnHtml;
+        }
     }
 }
+window.forceScanAOI = forceScanAOI;
+window.forceScanAOIAIS = forceScanAOI;
 
 function getAoiTabPopupContent(aoiId) {
     const layerObj = aoiMapLayers.find(l => l.id === aoiId);
@@ -339,6 +362,9 @@ function getAoiTabPopupContent(aoiId) {
             <div class="sar-tab-popup-actions">
                 <button type="button" class="sar-tab-popup-btn-primary" style="background: #16a34a; color: white;" onclick="triggerAoiScan(${aoiId})">
                     🛰️ Scan Latest SAR Imagery
+                </button>
+                <button type="button" class="sar-tab-popup-btn-warning" style="margin-top: 6px;" onclick="forceScanAOI(${aoiId}, this)">
+                    ⚡ Force AIS Scan
                 </button>
                 <button type="button" class="sar-tab-popup-btn-secondary" style="margin-top: 6px;" onclick="predictAOI(${aoiId})">
                     ⚡ Predict Next Pass
