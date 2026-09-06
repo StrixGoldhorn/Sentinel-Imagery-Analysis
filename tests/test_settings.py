@@ -67,6 +67,33 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["value"], 81)
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["type"], "integer")
 
+    def test_copernicus_credentials_excluded_from_repository(self):
+        # Credentials must not be present in definitions
+        defs = self.repo.get_all_definitions()
+        self.assertNotIn("copernicus_username", defs.get("imagery", {}))
+        self.assertNotIn("copernicus_password", defs.get("imagery", {}))
+
+        # Credentials must not be present in imagery section
+        imagery_sec = self.repo.get_section("imagery")
+        self.assertNotIn("copernicus_username", imagery_sec)
+        self.assertNotIn("copernicus_password", imagery_sec)
+
+        # Credentials query returns None
+        self.assertIsNone(self.repo.get("copernicus_username"))
+        self.assertIsNone(self.repo.get("copernicus_password"))
+
+        # Bulk update ignores credentials
+        self.repo.update_bulk({
+            "imagery": {
+                "copernicus_username": "should_be_ignored",
+                "copernicus_password": "should_be_ignored",
+                "search_window_days": 14,
+            }
+        })
+        self.assertIsNone(self.repo.get("copernicus_username"))
+        self.assertIsNone(self.repo.get("copernicus_password"))
+        self.assertEqual(self.repo.get("search_window_days"), 14)
+
     def test_reset_section(self):
         self.repo.set("cv", "coastal_buffer_pixels", 200)
         self.assertEqual(self.repo.get("coastal_buffer_pixels"), 200)
@@ -117,6 +144,36 @@ class TestSettingsUseCases(unittest.TestCase):
                 "cv": {"threshold": 300}
             })
 
+    def test_update_imagery_ignores_credentials(self):
+        self.update_settings.execute({
+            "imagery": {
+                "copernicus_username": "ignored_user",
+                "copernicus_password": "ignored_password",
+                "search_window_days": 10,
+            }
+        })
+        imagery = self.get_settings.execute("imagery")
+        self.assertNotIn("copernicus_username", imagery)
+        self.assertNotIn("copernicus_password", imagery)
+        self.assertEqual(imagery["search_window_days"], 10)
+
+    def test_validation_ranges(self):
+        # Invalid search window
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"imagery": {"search_window_days": 0}})
+
+        # Invalid zoom
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"map_ui": {"default_zoom": 25}})
+
+        # Invalid opacity
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"map_ui": {"sar_opacity": 1.5}})
+
+        # Invalid filter type
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"filter_type": "invalid_filter"}})
+
 
 class TestSettingsWebAPI(unittest.TestCase):
     def setUp(self):
@@ -149,6 +206,10 @@ class TestSettingsWebAPI(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Global Platform Settings", resp.data)
         self.assertIn(b"Coastal Noise Buffer", resp.data)
+        # Verify credentials inputs are NOT rendered
+        self.assertNotIn(b"input_imagery_copernicus_username", resp.data)
+        self.assertNotIn(b"input_imagery_copernicus_password", resp.data)
+        self.assertIn(b"Managed via .env", resp.data)
 
     def test_api_get_settings(self):
         resp = self.client.get("/api/settings?definitions=true")
@@ -157,6 +218,8 @@ class TestSettingsWebAPI(unittest.TestCase):
         self.assertEqual(data["status"], "success")
         self.assertIn("cv", data["settings"])
         self.assertEqual(data["settings"]["cv"]["coastal_buffer_pixels"]["value"], 81)
+        self.assertNotIn("copernicus_username", data["settings"].get("imagery", {}))
+        self.assertNotIn("copernicus_password", data["settings"].get("imagery", {}))
 
     def test_api_update_settings(self):
         payload = {
@@ -195,6 +258,19 @@ class TestCoastalBufferCV(unittest.TestCase):
             ClassicalShipDetector(coastal_buffer_pixels=-1)
         with self.assertRaises(ValueError):
             ClassicalShipDetector(morph_close_kernel=-5)
+
+    def test_detector_with_settings_repo(self):
+        from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
+
+        class FakeSettingsRepo:
+            def __init__(self, settings_dict):
+                self._dict = settings_dict
+            def get(self, key, default=None):
+                return self._dict.get(key, default)
+
+        repo = FakeSettingsRepo({"minimum_area": 80.0, "maximum_area": 4000.0})
+        detector = ClassicalShipDetector(settings_repo=repo)
+        self.assertIsNotNone(detector._settings_repo)
 
     def test_detect_ships_use_case_coastal_buffer(self):
         from sentinel_analysis.application.use_cases.detect_ships import DetectShips

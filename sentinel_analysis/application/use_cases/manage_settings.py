@@ -42,6 +42,8 @@ class UpdateSettings:
 
             validated[section] = {}
             for key, val in key_values.items():
+                if key in ("copernicus_username", "copernicus_password"):
+                    continue
                 validated_val = self._validate_field(section, key, val)
                 validated[section][key] = validated_val
 
@@ -103,7 +105,79 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("Pixel spacing meters must be a positive number")
 
-        if key == "dem_land_mask_enabled" or key == "auto_capture_default" or key == "debug":
+        if key == "resolution_meters":
+            try:
+                fval = float(value)
+                if fval <= 0:
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Resolution must be a positive number of meters")
+
+        if key == "search_window_days":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 365):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("Acquisition Search Window must be an integer between 1 and 365 days")
+
+        if key == "max_image_size":
+            try:
+                ival = int(value)
+                if not (100 <= ival <= 10000):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("Max Tile Image Size must be between 100 and 10000 pixels")
+
+        if key == "poll_interval_seconds":
+            try:
+                fval = float(value)
+                if fval < 1.0:
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Poll interval must be at least 1.0 second")
+
+        if key == "default_zoom":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 22):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("Default Map Zoom must be between 1 and 22")
+
+        if key == "sar_opacity":
+            try:
+                fval = float(value)
+                if not (0.0 <= fval <= 1.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("SAR Opacity must be between 0.0 and 1.0")
+
+        if key == "default_lat":
+            try:
+                fval = float(value)
+                if not (-90.0 <= fval <= 90.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Default Latitude must be between -90 and 90 degrees")
+
+        if key == "default_lng":
+            try:
+                fval = float(value)
+                if not (-180.0 <= fval <= 180.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Default Longitude must be between -180 and 180 degrees")
+
+        if key in ("dem_land_mask_enabled", "auto_capture_default", "debug"):
             if isinstance(value, str):
                 return value.lower() in ("true", "1", "yes")
             return bool(value)
@@ -116,6 +190,21 @@ class UpdateSettings:
                 return ival
             except (TypeError, ValueError):
                 raise ValueError("Port must be between 1 and 65535")
+
+        if key == "filter_type":
+            sval = str(value).lower()
+            if sval not in ("none", "lee", "frost"):
+                raise ValueError("Filter type must be one of: none, lee, frost")
+            return sval
+
+        if key == "default_evalscript":
+            sval = str(value).upper()
+            if sval not in ("SAR", "SAR_DUAL_POL"):
+                raise ValueError("Default Evalscript must be one of: SAR, SAR_DUAL_POL")
+            return sval
+
+        if isinstance(value, str):
+            return value.strip()
 
         return value
 

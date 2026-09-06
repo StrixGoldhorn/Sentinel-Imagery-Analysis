@@ -1,7 +1,7 @@
 """OpenCV implementation of the ship-detector port with Oriented Bounding Box (OBB) support."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import cv2
 import numpy as np
@@ -25,6 +25,7 @@ class ClassicalShipDetector:
         pixel_spacing_m: float | None = None,
         coastal_buffer_pixels: int = 81,
         morph_close_kernel: int = 27,
+        settings_repo: Any = None,
     ) -> None:
         if min_area is not None:
             minimum_area = min_area
@@ -47,6 +48,7 @@ class ClassicalShipDetector:
         self._filter_type = filter_type
         self._coastal_buffer_pixels = coastal_buffer_pixels
         self._morph_close_kernel = morph_close_kernel
+        self._settings_repo = settings_repo
 
 
     def detect(
@@ -63,29 +65,36 @@ class ClassicalShipDetector:
                 raise ValueError("Coastal buffer must be a non-negative integer")
             buffer_px = coastal_buffer
         else:
-            buffer_px = self._coastal_buffer_pixels
+            buffer_px = self._settings_repo.get("coastal_buffer_pixels", self._coastal_buffer_pixels) if self._settings_repo else self._coastal_buffer_pixels
+
+        morph_close_kernel = self._settings_repo.get("morph_close_kernel", self._morph_close_kernel) if self._settings_repo else self._morph_close_kernel
+        filter_type = self._settings_repo.get("filter_type", self._filter_type) if self._settings_repo else self._filter_type
+        dilation_iterations = self._settings_repo.get("dilation_iterations", self._dilation_iterations) if self._settings_repo else self._dilation_iterations
+        minimum_area = self._settings_repo.get("minimum_area", self._minimum_area) if self._settings_repo else self._minimum_area
+        maximum_area = self._settings_repo.get("maximum_area", self._maximum_area) if self._settings_repo else self._maximum_area
+        pixel_spacing = self._settings_repo.get("pixel_spacing_meters", self._pixel_spacing_meters) if self._settings_repo else self._pixel_spacing_meters
 
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
             raise FileNotFoundError(f"Unable to read SAR image: {image_path}")
 
         if dem_path is not None:
-            image = self._mask_land(image, dem_path, coastal_buffer_pixels=buffer_px, morph_close_kernel=self._morph_close_kernel)
+            image = self._mask_land(image, dem_path, coastal_buffer_pixels=buffer_px, morph_close_kernel=morph_close_kernel)
 
-        if self._filter_type != "none":
-            filtered_image = preprocess_sar(image, filter_type=self._filter_type)
+        if filter_type != "none":
+            filtered_image = preprocess_sar(image, filter_type=filter_type)
         else:
             filtered_image = image
 
         _, binary = cv2.threshold(filtered_image, threshold, 255, cv2.THRESH_BINARY)
         kernel = np.ones((5, 5), np.uint8)
-        dilated = cv2.dilate(binary, kernel, iterations=self._dilation_iterations)
+        dilated = cv2.dilate(binary, kernel, iterations=dilation_iterations)
         contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         detections: list[ShipDetection] = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if self._minimum_area <= area <= self._maximum_area:
+            if minimum_area <= area <= maximum_area:
                 x, y, width, height = cv2.boundingRect(contour)
 
                 # Oriented Bounding Box (OBB)
@@ -103,8 +112,8 @@ class ClassicalShipDetector:
                 while angle < -90.0:
                     angle += 180.0
 
-                length_m = max(1.0, length_px * self._pixel_spacing_meters)
-                beam_m = max(1.0, beam_px * self._pixel_spacing_meters)
+                length_m = max(1.0, length_px * pixel_spacing)
+                beam_m = max(1.0, beam_px * pixel_spacing)
 
                 # 4 corner vertices
                 box_pts = cv2.boxPoints(((cx, cy), (dim1, dim2), raw_angle))

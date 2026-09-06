@@ -34,7 +34,15 @@ def create_scan():
     payload = json_object()
     bbox = bounding_box(payload)
     aoi_name = optional_string(payload, "aoi_name")
-    scan = container().create_scan.execute(bbox, aoi_name=aoi_name)
+    days_ago = payload.get("days_ago")
+    if days_ago is None:
+        days_ago = container().settings_repository.get("search_window_days", 30)
+    else:
+        try:
+            days_ago = int(days_ago)
+        except (TypeError, ValueError):
+            days_ago = 30
+    scan = container().create_scan.execute(bbox, days_ago=days_ago, aoi_name=aoi_name)
     return jsonify(
         status="success",
         folderName=scan.folder_name,
@@ -58,7 +66,8 @@ def update_metadata(folder_name: str):
 @blueprint.post("/api/run_cv/<folder_name>")
 def run_cv(folder_name: str):
     payload = json_object()
-    threshold = integer(payload, "threshold", 40)
+    default_threshold = container().settings_repository.get("threshold", 40)
+    threshold = integer(payload, "threshold", default_threshold)
     if not 0 <= threshold <= 255:
         raise RequestValidationError("threshold must be between 0 and 255")
 

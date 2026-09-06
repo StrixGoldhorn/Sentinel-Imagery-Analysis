@@ -36,3 +36,31 @@ const CONFIG = {
     API_AIS_TIMELINE: '/api/ais/timeline',
     NOTIFICATION_DURATION_MS: 3000
 };
+
+async function loadSystemSettings() {
+    try {
+        const res = await fetch('/api/settings?definitions=false');
+        if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'success' && data.settings) {
+                const s = data.settings;
+                if (s.map_ui) {
+                    if (typeof s.map_ui.default_lat === 'number') CONFIG.MAP_DEFAULT_LAT = s.map_ui.default_lat;
+                    if (typeof s.map_ui.default_lng === 'number') CONFIG.MAP_DEFAULT_LNG = s.map_ui.default_lng;
+                    if (typeof s.map_ui.default_zoom === 'number') CONFIG.MAP_DEFAULT_ZOOM = s.map_ui.default_zoom;
+                    if (typeof s.map_ui.sar_opacity === 'number') CONFIG.SAR_DEFAULT_OPACITY = s.map_ui.sar_opacity;
+                    if (s.map_ui.color_cv_detection) CONFIG.COLOR_CV_DETECTION = s.map_ui.color_cv_detection;
+                    if (s.map_ui.color_obb_detection) CONFIG.COLOR_OBB_DETECTION = s.map_ui.color_obb_detection;
+                }
+                if (s.cv) {
+                    if (typeof s.cv.threshold === 'number') CONFIG.CV_DEFAULT_THRESHOLD = s.cv.threshold;
+                }
+            }
+        }
+    } catch (e) {
+        // Fallback to default CONFIG silently
+    }
+}
+
+// Auto-hydrate system settings immediately upon script evaluation
+loadSystemSettings();

@@ -121,47 +121,77 @@ function togglePasswordVisibility(inputId) {
     input.type = input.type === 'password' ? 'text' : 'password';
 }
 
+function getInputValue(id, fallback = '') {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    return el.value !== undefined ? el.value : fallback;
+}
+
+function getInt(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const v = parseInt(el.value, 10);
+    return isNaN(v) ? fallback : v;
+}
+
+function getFloat(id, fallback) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    const v = parseFloat(el.value);
+    return isNaN(v) ? fallback : v;
+}
+
+function getString(id, fallback = '') {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    return typeof el.value === 'string' ? el.value.trim() : fallback;
+}
+
+function getBool(id, fallback = false) {
+    const el = document.getElementById(id);
+    if (!el) return fallback;
+    return Boolean(el.checked);
+}
+
 function collectFormData() {
     const payload = {
         cv: {
-            coastal_buffer_pixels: parseInt(document.getElementById('input_cv_coastal_buffer_pixels').value, 10),
-            morph_close_kernel: parseInt(document.getElementById('input_cv_morph_close_kernel').value, 10),
-            dem_land_mask_enabled: document.getElementById('input_cv_dem_land_mask_enabled').checked,
-            threshold: parseInt(document.getElementById('input_cv_threshold').value, 10),
-            filter_type: document.getElementById('input_cv_filter_type').value,
-            minimum_area: parseFloat(document.getElementById('input_cv_minimum_area').value),
-            maximum_area: parseFloat(document.getElementById('input_cv_maximum_area').value),
-            dilation_iterations: parseInt(document.getElementById('input_cv_dilation_iterations').value, 10),
-            pixel_spacing_meters: parseFloat(document.getElementById('input_cv_pixel_spacing_meters').value),
+            coastal_buffer_pixels: getInt('input_cv_coastal_buffer_pixels', 81),
+            morph_close_kernel: getInt('input_cv_morph_close_kernel', 27),
+            dem_land_mask_enabled: getBool('input_cv_dem_land_mask_enabled', true),
+            threshold: getInt('input_cv_threshold', 40),
+            filter_type: getString('input_cv_filter_type', 'none'),
+            minimum_area: getFloat('input_cv_minimum_area', 50.0),
+            maximum_area: getFloat('input_cv_maximum_area', 5000.0),
+            dilation_iterations: getInt('input_cv_dilation_iterations', 2),
+            pixel_spacing_meters: getFloat('input_cv_pixel_spacing_meters', 10.0),
         },
         imagery: {
-            copernicus_username: document.getElementById('input_imagery_copernicus_username').value.trim(),
-            copernicus_password: document.getElementById('input_imagery_copernicus_password').value,
-            default_evalscript: document.getElementById('input_imagery_default_evalscript').value,
-            search_window_days: parseInt(document.getElementById('input_imagery_search_window_days').value, 10),
-            resolution_meters: parseFloat(document.getElementById('input_imagery_resolution_meters').value),
-            max_image_size: parseInt(document.getElementById('input_imagery_max_image_size').value, 10),
+            default_evalscript: getString('input_imagery_default_evalscript', 'SAR'),
+            search_window_days: getInt('input_imagery_search_window_days', 30),
+            resolution_meters: getFloat('input_imagery_resolution_meters', 10.0),
+            max_image_size: getInt('input_imagery_max_image_size', 2500),
         },
         scheduler: {
-            n2yo_api_key: document.getElementById('input_scheduler_n2yo_api_key').value.trim(),
-            auto_capture_default: document.getElementById('input_scheduler_auto_capture_default').checked,
-            poll_interval_seconds: parseFloat(document.getElementById('input_scheduler_poll_interval_seconds').value),
-            satellite_norad_ids: document.getElementById('input_scheduler_satellite_norad_ids').value.trim(),
+            n2yo_api_key: getString('input_scheduler_n2yo_api_key', ''),
+            auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
+            poll_interval_seconds: getFloat('input_scheduler_poll_interval_seconds', 60.0),
+            satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
         },
         map_ui: {
-            default_lat: parseFloat(document.getElementById('input_map_ui_default_lat').value),
-            default_lng: parseFloat(document.getElementById('input_map_ui_default_lng').value),
-            default_zoom: parseInt(document.getElementById('input_map_ui_default_zoom').value, 10),
-            sar_opacity: parseFloat(document.getElementById('input_map_ui_sar_opacity').value),
-            color_cv_detection: document.getElementById('input_map_ui_color_cv_detection').value,
-            color_obb_detection: document.getElementById('input_map_ui_color_obb_detection').value,
+            default_lat: getFloat('input_map_ui_default_lat', 1.290270),
+            default_lng: getFloat('input_map_ui_default_lng', 103.851959),
+            default_zoom: getInt('input_map_ui_default_zoom', 10),
+            sar_opacity: getFloat('input_map_ui_sar_opacity', 1.0),
+            color_cv_detection: getString('input_map_ui_color_cv_detection', '#ff3333'),
+            color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
         },
         system: {
-            port: parseInt(document.getElementById('input_system_port').value, 10),
-            debug: document.getElementById('input_system_debug').checked,
-            database_path: document.getElementById('input_system_database_path').value.trim(),
-            output_root: document.getElementById('input_system_output_root').value.trim(),
-            cache_root: document.getElementById('input_system_cache_root').value.trim(),
+            port: getInt('input_system_port', 5000),
+            debug: getBool('input_system_debug', false),
+            database_path: getString('input_system_database_path', 'instance/sentinel_analysis.db'),
+            output_root: getString('input_system_output_root', 'scans'),
+            cache_root: getString('input_system_cache_root', '.cache'),
         }
     };
     return payload;

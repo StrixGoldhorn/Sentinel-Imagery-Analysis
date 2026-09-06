@@ -81,7 +81,7 @@ class ApplicationContainer:
             self.scan_repository,
             NominatimLocationResolver(),
         )
-        self.detect_ships = DetectShips(ClassicalShipDetector())
+        self.detect_ships = DetectShips(ClassicalShipDetector(settings_repo=self.settings_repository))
         self.get_scan = GetScan(self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)

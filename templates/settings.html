@@ -124,7 +124,7 @@
                             Dilation kernel radius applied to the DEM land mask. Suppresses false positives caused by breaking waves, piers, harbor walls, and coastal noise. Setting to <strong>0</strong> applies the exact shoreline.
                         </p>
                         <div class="range-control-group">
-                            <input type="range" id="input_cv_coastal_buffer_pixels" min="0" max="300" step="1" value="81"
+                            <input type="range" id="input_cv_coastal_buffer_pixels" min="0" max="500" step="1" value="81"
                                    oninput="updateRangeDisplay('cv_coastal_buffer_pixels', this.value, ' px')">
                             <input type="number" class="number-input-sync" id="sync_cv_coastal_buffer_pixels" min="0" max="500" value="81"
                                    oninput="syncSlider('cv_coastal_buffer_pixels', this.value)">
@@ -152,7 +152,7 @@
                             </div>
                             <p class="setting-description">Kernel size used to close inland rivers, bays, and lakes inside landmasses.</p>
                             <div class="range-control-group">
-                                <input type="range" id="input_cv_morph_close_kernel" min="3" max="99" step="2" value="27"
+                                <input type="range" id="input_cv_morph_close_kernel" min="3" max="101" step="2" value="27"
                                        oninput="updateRangeDisplay('cv_morph_close_kernel', this.value, ' px')">
                                 <input type="number" class="number-input-sync" id="sync_cv_morph_close_kernel" min="3" max="101" step="2" value="27"
                                        oninput="syncSlider('cv_morph_close_kernel', this.value)">
@@ -166,7 +166,7 @@
                             </div>
                             <p class="setting-description">SAR radar backscatter intensity threshold (1-255) for vessel hull extraction.</p>
                             <div class="range-control-group">
-                                <input type="range" id="input_cv_threshold" min="1" max="150" step="1" value="40"
+                                <input type="range" id="input_cv_threshold" min="1" max="255" step="1" value="40"
                                        oninput="updateRangeDisplay('cv_threshold', this.value, '')">
                                 <input type="number" class="number-input-sync" id="sync_cv_threshold" min="1" max="255" value="40"
                                        oninput="syncSlider('cv_threshold', this.value)">
@@ -217,19 +217,15 @@
                     </div>
 
                     <div class="settings-grid">
-                        <div class="settings-card">
-                            <label for="input_imagery_copernicus_username" class="setting-title">Copernicus Username / Email</label>
-                            <p class="setting-description">Email associated with your Copernicus Data Space account.</p>
-                            <input type="text" id="input_imagery_copernicus_username" class="form-input" placeholder="user@example.com">
-                        </div>
-
-                        <div class="settings-card">
-                            <label for="input_imagery_copernicus_password" class="setting-title">Copernicus Password</label>
-                            <p class="setting-description">Account password for OAuth token generation.</p>
-                            <div class="password-input-group">
-                                <input type="password" id="input_imagery_copernicus_password" class="form-input" placeholder="••••••••">
-                                <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('input_imagery_copernicus_password')">👁️</button>
+                        <div class="settings-card card-highlight">
+                            <div class="card-badge">ENVIRONMENT SECRETS</div>
+                            <div class="card-title-group">
+                                <span class="setting-title">Copernicus Authentication</span>
+                                <span class="badge-value">Managed via .env</span>
                             </div>
+                            <p class="setting-description">
+                                Copernicus Data Space Ecosystem (CDSE) credentials (<code>COP_USERNAME</code> and <code>COP_PASSWORD</code>) are kept strictly in your local <code>.env</code> file to ensure account secrets are never exposed or stored in the database.
+                            </p>
                         </div>
 
                         <div class="settings-card">
@@ -415,8 +411,6 @@
     <div class="toast-icon">✓</div>
     <div class="toast-message" id="toastMessage">Settings updated successfully</div>
 </div>
-
-<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 {% endblock %}
 
 {% block extra_scripts %}

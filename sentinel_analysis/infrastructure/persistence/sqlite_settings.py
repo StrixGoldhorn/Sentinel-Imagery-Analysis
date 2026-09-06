@@ -79,19 +79,6 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
         },
     },
     "imagery": {
-        "copernicus_username": {
-            "value": "",
-            "type": "string",
-            "label": "Copernicus Username",
-            "description": "Copernicus Data Space Ecosystem (CDSE) account email/username.",
-        },
-        "copernicus_password": {
-            "value": "",
-            "type": "password",
-            "label": "Copernicus Password",
-            "description": "Copernicus Data Space Ecosystem (CDSE) account password.",
-            "secret": True,
-        },
         "default_evalscript": {
             "value": "SAR",
             "type": "select",
@@ -250,16 +237,15 @@ class SQLiteSettingsRepository:
                 for row in connection.execute("SELECT key, section, value_json FROM system_settings").fetchall()
             }
 
+            # Ensure credentials are kept strictly in .env and never persisted in database
+            connection.execute("DELETE FROM system_settings WHERE key IN ('copernicus_username', 'copernicus_password')")
+
             for section, keys in DEFAULT_SETTINGS_DEFINITIONS.items():
                 for key, definition in keys.items():
                     if key not in existing:
                         default_val = definition["value"]
                         # Fallback to environment variables if available
-                        if key == "copernicus_username":
-                            default_val = os.getenv("COP_USERNAME", default_val)
-                        elif key == "copernicus_password":
-                            default_val = os.getenv("COP_PASSWORD", default_val)
-                        elif key == "n2yo_api_key":
+                        if key == "n2yo_api_key":
                             default_val = os.getenv("N2YO_API_KEY", default_val)
                         elif key == "port":
                             try:
@@ -351,6 +337,9 @@ class SQLiteSettingsRepository:
         with self._database.connection(rows=True) as connection:
             for section, key_values in settings.items():
                 for key, value in key_values.items():
+                    # Copernicus credentials must remain strictly in .env, never in the database
+                    if key in ("copernicus_username", "copernicus_password"):
+                        continue
                     # If this is a secret and hasn't changed (passed as masked), don't overwrite
                     field_def = DEFAULT_SETTINGS_DEFINITIONS.get(section, {}).get(key, {})
                     if field_def.get("secret") and value == "********":
