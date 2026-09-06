@@ -9,6 +9,7 @@ from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
 from sentinel_analysis.application.use_cases.manage_aois import (
     AddAreaOfInterest,
+    DeleteAreaOfInterest,
     ListAreasOfInterest,
     PredictAreaOfInterest,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",
     "CreateScan",
+    "DeleteAreaOfInterest",
     "DeleteScan",
     "DetectShips",
     "GenerateDEM",

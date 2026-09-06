@@ -30,7 +30,7 @@ from sentinel_analysis.application.ports import (
     TileCache,
 )
 from sentinel_analysis.application.exceptions import ExternalServiceError
-from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile, Scan
+from sentinel_analysis.domain.entities import Acquisition, AreaOfInterest, BoundingBox, ImageTile, Scan
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.ais.plugins.mock import MockAISPlugin
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
@@ -460,6 +460,42 @@ def test_classical_detector_resizes_mismatched_dem() -> None:
         assert result.shape == (100, 100)
     finally:
         dem_path.unlink(missing_ok=True)
+
+
+def test_sqlite_aoi_repository_crud_and_delete() -> None:
+    db_file = RUNTIME / "test_aoi_crud.db"
+    if db_file.exists():
+        db_file.unlink()
+    try:
+        repo = SQLiteAreaOfInterestRepository(db_file)
+        aoi_id = repo.add(AreaOfInterest("Test AOI", BBOX))
+        assert aoi_id > 0
+
+        aoi = repo.get(aoi_id)
+        assert aoi is not None
+        assert aoi.name == "Test AOI"
+
+        # Save forecast to verify cascade delete
+        repo.save_cached_forecast(aoi_id, {"predictions": []})
+        assert repo.get_cached_forecast(aoi_id) is not None
+
+        # Delete AOI
+        repo.delete(aoi_id)
+
+        # Verify AOI is removed
+        assert repo.get(aoi_id) is None
+        assert not any(a.id == aoi_id for a in repo.list())
+        assert repo.get_cached_forecast(aoi_id) is None
+
+        # Deleting non-existent AOI raises LookupError
+        try:
+            repo.delete(aoi_id)
+            assert False, "Expected LookupError"
+        except LookupError:
+            pass
+    finally:
+        if db_file.exists():
+            db_file.unlink()
 
 
 def load_tests(loader, standard_tests, pattern):

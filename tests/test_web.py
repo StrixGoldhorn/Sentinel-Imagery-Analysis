@@ -6,7 +6,12 @@ from pathlib import Path
 
 from PIL import Image
 
-from sentinel_analysis.application.exceptions import ExternalServiceError, NoImageryFoundError, ScanNotFoundError
+from sentinel_analysis.application.exceptions import (
+    AreaOfInterestNotFoundError,
+    ExternalServiceError,
+    NoImageryFoundError,
+    ScanNotFoundError,
+)
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.domain.entities import Acquisition, AreaOfInterest, BackgroundTask, BoundingBox, Scan
@@ -73,6 +78,7 @@ class StubContainer:
         self.delete_scan = StubUseCase(None)
         self.list_aois = StubUseCase([])
         self.add_aoi = StubUseCase(1)
+        self.delete_aoi = StubUseCase(None)
         self.predict_aoi = StubUseCase([])
         self.ingest_ais = StubUseCase({"total_inserted": 0, "logs": []})
         self.get_vessels = StubUseCase([
@@ -637,6 +643,30 @@ def test_reset_scraper_cooldown_api_route() -> None:
     assert response.status_code == 200
     assert response.json["status"] == "success"
     assert response.json["plugin_name"] == "VesselFinderPlugin"
+
+
+def test_delete_aoi_api_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.delete("/api/aoi/42")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert container.delete_aoi.calls == [(42,)]
+
+
+def test_delete_aoi_not_found_returns_404() -> None:
+    client, container, _, _ = make_client()
+    container.delete_aoi.error = AreaOfInterestNotFoundError("Area of interest not found: 99")
+    response = client.delete("/api/aoi/99")
+    assert response.status_code == 404
+    assert "Area of interest not found: 99" in response.json["error"]
+
+
+def test_delete_aoi_post_fallback_api_route() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/aoi/42/delete")
+    assert response.status_code == 200
+    assert response.json["status"] == "success"
+    assert container.delete_aoi.calls == [(42,)]
 
 
 def load_tests(loader, standard_tests, pattern):

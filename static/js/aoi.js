@@ -46,7 +46,8 @@ async function loadAOIs() {
         
         // Remove existing AOI layers and controls
         aoiMapLayers.forEach(l => {
-            if (map.hasLayer(l.leafletLayer)) map.removeLayer(l.leafletLayer);
+            if (l.leafletLayer && map.hasLayer(l.leafletLayer)) map.removeLayer(l.leafletLayer);
+            if (l.tabMarker && map && map.hasLayer(l.tabMarker)) map.removeLayer(l.tabMarker);
             const el = document.getElementById(l.uiId);
             if (el) el.remove();
         });
@@ -80,10 +81,11 @@ async function loadAOIs() {
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 4px; flex-wrap: wrap;">
                         <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
-                        <div style="display: flex; gap: 4px;">
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                             <button class="btn btn-sm btn-outline-success" style="padding: 2px 6px; font-size: 0.75em;" onclick="triggerAoiScan(${aoi.id})" title="Initiate SAR imagery scan for ${safeAoiName}">🛰️ Scan</button>
                             <button class="btn btn-sm btn-outline-primary" style="padding: 2px 6px; font-size: 0.75em;" onclick="teleportToAoi(${aoi.id})" title="Center map on AOI">⌖ Teleport</button>
                             <button class="btn" style="padding: 3px 6px; font-size: 0.75em;" onclick="predictAOI(${aoi.id})">Predict</button>
+                            <button class="btn btn-sm btn-outline-danger" style="padding: 2px 6px; font-size: 0.75em; border: 1px solid #dc3545; color: #dc3545; background: transparent;" onclick="deleteAOI(${aoi.id}, '${safeAoiName}')" title="Delete Area of Interest ${safeAoiName}">🗑️ Delete</button>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 6px; font-size: 0.8em; color: #444;">
@@ -149,6 +151,9 @@ async function loadAOIs() {
                             </button>
                             <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="background: #f59e0b; border-color: #d97706; color: #ffffff;">
                                 ⚡ Force AIS Scan
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteAOI(${aoi.id}, '${safeAoiName}')" style="background: #dc2626; border-color: #b91c1c; color: #ffffff; margin-top: 4px;">
+                                🗑️ Delete AOI
                             </button>
                         </div>
                     </details>
@@ -362,6 +367,9 @@ function getAoiTabPopupContent(aoiId) {
                 <button type="button" class="sar-tab-popup-btn-secondary" style="margin-top: 6px;" onclick="predictAOI(${aoiId})">
                     ⚡ Predict Next Pass
                 </button>
+                <button type="button" class="sar-tab-popup-btn-danger" style="margin-top: 6px; background: #dc2626; border: 1px solid #b91c1c; color: #ffffff; width: 100%; padding: 6px; font-size: 0.8rem; border-radius: 4px; cursor: pointer;" onclick="deleteAOI(${aoiId}, '${safeAoiName}')">
+                    🗑️ Delete AOI
+                </button>
             </div>
         </div>
     `;
@@ -431,5 +439,60 @@ async function triggerAoiScan(aoiId) {
         showNotification(`Connection failed while fetching SAR imagery for ${aoiName}.`, "error");
     }
 }
+
+async function deleteAOI(aoiId, aoiName) {
+    const displayName = aoiName || `AOI #${aoiId}`;
+    if (!confirm(`Are you sure you want to delete Area of Interest "${displayName}"?\nThis will remove the AOI and any associated flypast forecasts and scheduled jobs.`)) {
+        return;
+    }
+
+    if (map) map.closePopup();
+
+    try {
+        const response = await fetch(`${CONFIG.API_AOI}/${aoiId}`, { method: 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.status === 'success') {
+            // Remove Leaflet layers and tab marker from map
+            const idx = aoiMapLayers.findIndex(l => l.id === aoiId);
+            if (idx !== -1) {
+                const layerObj = aoiMapLayers[idx];
+                if (map) {
+                    if (layerObj.leafletLayer && map.hasLayer(layerObj.leafletLayer)) {
+                        map.removeLayer(layerObj.leafletLayer);
+                    }
+                    if (layerObj.tabMarker && map.hasLayer(layerObj.tabMarker)) {
+                        map.removeLayer(layerObj.tabMarker);
+                    }
+                }
+                aoiMapLayers.splice(idx, 1);
+            }
+
+            // Remove layer card from sidebar
+            const layerEl = document.getElementById(`aoi-layer-${aoiId}`);
+            if (layerEl) layerEl.remove();
+
+            // Refresh the AOIs list
+            loadAOIs();
+
+            // Refresh schedule dropdown if available
+            if (typeof loadAoisDropdown === 'function') {
+                loadAoisDropdown();
+            }
+
+            if (typeof updateTabsVisibility === 'function') {
+                updateTabsVisibility();
+            }
+
+            showNotification(`Area of Interest "${displayName}" deleted successfully.`, "success");
+        } else {
+            showNotification(data.error || 'Failed to delete Area of Interest.', "error");
+        }
+    } catch (err) {
+        console.error("Error deleting AOI:", err);
+        showNotification("Connection error while deleting Area of Interest.", "error");
+    }
+}
+window.deleteAOI = deleteAOI;
 
 

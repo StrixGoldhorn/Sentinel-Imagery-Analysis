@@ -188,3 +188,11 @@ class SQLiteAreaOfInterestRepository:
         with self._database.connection(rows=True) as connection:
             connection.execute("DELETE FROM aoi_forecasts WHERE aoi_id = ?", (aoi_id,))
 
+    def delete(self, aoi_id: int) -> None:
+        with self._database.connection(rows=True) as connection:
+            connection.execute("DELETE FROM aoi_forecasts WHERE aoi_id = ?", (aoi_id,))
+            connection.execute("DELETE FROM post_pass_ingestions WHERE aoi_id = ?", (aoi_id,))
+            cursor = connection.execute("DELETE FROM aoi WHERE id = ?", (aoi_id,))
+            if cursor.rowcount == 0:
+                raise LookupError(f"Area of interest not found: {aoi_id}")
+

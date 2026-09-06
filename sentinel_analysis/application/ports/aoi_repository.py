@@ -39,3 +39,6 @@ class AreaOfInterestRepository(Protocol):
     def clear_cached_forecast(self, aoi_id: int) -> None:
         ...
 
+    def delete(self, aoi_id: int) -> None:
+        ...
+

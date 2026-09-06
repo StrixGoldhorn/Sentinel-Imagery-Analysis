@@ -5,6 +5,7 @@ from sentinel_analysis.application.use_cases import (
     AnalyzeMissionPasses,
     CheckAndScheduleAOIs,
     CreateScan,
+    DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
     GenerateDEM,
@@ -87,6 +88,7 @@ class ApplicationContainer:
         self.delete_scan = DeleteScan(self.scan_repository)
         self.list_aois = ListAreasOfInterest(self.aoi_repository)
         self.add_aoi = AddAreaOfInterest(self.aoi_repository)
+        self.delete_aoi = DeleteAreaOfInterest(self.aoi_repository)
         self.predict_aoi = PredictAreaOfInterest(
             self.aoi_repository,
             self.hybrid_predictor,

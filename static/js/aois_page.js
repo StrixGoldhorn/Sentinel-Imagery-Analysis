@@ -101,6 +101,15 @@ function createAoiCard(aoi) {
                         </svg>
                         Force AIS Scan Now
                     </button>
+                    <button class="btn btn-outline-danger" id="btn-delete-${aoi.id}" onclick="deleteAOI(${aoi.id}, '${safeName}')" title="Delete Area of Interest">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                        Delete
+                    </button>
                 </div>
             </div>
 
@@ -495,6 +504,60 @@ async function forceScanAOIAIS(aoiId) {
         }
     }
 }
+
+async function deleteAOI(aoiId, aoiName) {
+    const displayName = aoiName || `AOI #${aoiId}`;
+    if (!confirm(`Are you sure you want to delete Area of Interest "${displayName}"?\nThis will remove the AOI and any associated flypast forecasts and scheduled jobs.`)) {
+        return;
+    }
+
+    const btn = document.getElementById(`btn-delete-${aoiId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="loading-spinner"></span> Deleting...';
+    }
+
+    try {
+        const response = await fetch(`/api/aoi/${aoiId}`, { method: 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data.status === 'success') {
+            delete aoiPredictionsCache[aoiId];
+            showToast(`Area of Interest "${displayName}" deleted successfully`, 'success');
+            await loadAOIs();
+        } else {
+            showToast(data.error || 'Failed to delete Area of Interest', 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                    Delete
+                `;
+            }
+        }
+    } catch (err) {
+        console.error('Error deleting AOI:', err);
+        showToast('Connection error while deleting Area of Interest', 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+                Delete
+            `;
+        }
+    }
+}
+window.deleteAOI = deleteAOI;
 
 function escapeHtml(text) {
     if (typeof text !== 'string') return String(text ?? '');

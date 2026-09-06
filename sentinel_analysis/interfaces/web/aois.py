@@ -35,6 +35,13 @@ def add_aoi():
     return jsonify(status="success", id=aoi_id), 201
 
 
+@blueprint.delete("/api/aoi/<int:aoi_id>")
+@blueprint.post("/api/aoi/<int:aoi_id>/delete")
+def delete_aoi(aoi_id: int):
+    container().delete_aoi.execute(aoi_id)
+    return jsonify(status="success", message=f"Area of interest #{aoi_id} deleted successfully")
+
+
 @blueprint.post("/api/aoi/<int:aoi_id>/predict")
 def predict_aoi(aoi_id: int):
     force_refresh = request.args.get("refresh", "").lower() in ("true", "1", "yes")

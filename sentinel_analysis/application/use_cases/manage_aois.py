@@ -28,6 +28,18 @@ class AddAreaOfInterest:
         return self._repository.add(AreaOfInterest(name, bbox))
 
 
+class DeleteAreaOfInterest:
+    def __init__(self, repository: AreaOfInterestRepository) -> None:
+        self._repository = repository
+
+    def execute(self, aoi_id: int) -> None:
+        if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
+            raise ValueError("Area-of-interest ID must be a positive integer")
+        if self._repository.get(aoi_id) is None:
+            raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
+        self._repository.delete(aoi_id)
+
+
 from datetime import datetime, timedelta, timezone
 
 

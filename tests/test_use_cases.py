@@ -14,7 +14,7 @@ from sentinel_analysis.application.exceptions import (
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
-from sentinel_analysis.application.use_cases.manage_aois import PredictAreaOfInterest
+from sentinel_analysis.application.use_cases.manage_aois import DeleteAreaOfInterest, PredictAreaOfInterest
 from sentinel_analysis.application.use_cases.manage_scans import DeleteScan, GetScan, RenameScan
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.domain.entities import (
@@ -123,6 +123,11 @@ class MemoryAOIRepository:
 
     def clear_cached_forecast(self, aoi_id):
         self.cached_forecast = None
+
+    def delete(self, aoi_id):
+        self.deleted_id = aoi_id
+        if self.aoi and getattr(self.aoi, "id", None) == aoi_id:
+            self.aoi = None
 
 
 
@@ -303,6 +308,32 @@ def test_predict_aoi_updates_repository_with_earliest_pass() -> None:
         assert False, "Expected AreaOfInterestNotFoundError"
     except AreaOfInterestNotFoundError:
         pass
+
+
+def test_delete_aoi_removes_from_repository() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Harbour", BBOX, id=1))
+    DeleteAreaOfInterest(repository).execute(1)
+    assert repository.deleted_id == 1
+    assert repository.get(1) is None
+
+
+def test_delete_aoi_raises_not_found_for_missing_aoi() -> None:
+    repository = MemoryAOIRepository()
+    try:
+        DeleteAreaOfInterest(repository).execute(999)
+        assert False, "Expected AreaOfInterestNotFoundError"
+    except AreaOfInterestNotFoundError:
+        pass
+
+
+def test_delete_aoi_validates_aoi_id() -> None:
+    repository = MemoryAOIRepository(AreaOfInterest("Harbour", BBOX, id=1))
+    for invalid_id in (0, -1, "1", None, True, False):
+        try:
+            DeleteAreaOfInterest(repository).execute(invalid_id)
+            assert False, f"Expected ValueError for {invalid_id}"
+        except ValueError:
+            pass
 
 
 def test_ais_ingestion_isolates_plugins_and_normalizes_time_range() -> None:

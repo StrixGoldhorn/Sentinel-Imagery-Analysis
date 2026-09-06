@@ -87,6 +87,9 @@ class InMemoryAOIRepository:
     def list_all(self):
         return list(self._aois.values())
 
+    def delete(self, aoi_id):
+        self._aois.pop(aoi_id, None)
+
 
 class InMemoryAISRepository:
     def __init__(self):
