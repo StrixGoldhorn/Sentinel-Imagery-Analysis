@@ -179,6 +179,7 @@ class StubContainer:
         self.aoi_repository = None
         self.ais_repository = None
         self.pass_scheduler = None
+        self.settings_repository = None
 
 
 

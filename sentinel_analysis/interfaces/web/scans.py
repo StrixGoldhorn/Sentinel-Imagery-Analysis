@@ -3,6 +3,7 @@
 import base64
 import io
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -24,6 +25,14 @@ from sentinel_analysis.interfaces.web.serialization import scan_image_url
 blueprint = Blueprint("scans", __name__)
 
 
+def _get_setting(key: str, default: Any) -> Any:
+    cnt = container()
+    repo = getattr(cnt, "settings_repository", None)
+    if repo is not None and hasattr(repo, "get"):
+        return repo.get(key, default)
+    return default
+
+
 @blueprint.get("/")
 def index():
     return render_template("index.html")
@@ -36,7 +45,7 @@ def create_scan():
     aoi_name = optional_string(payload, "aoi_name")
     days_ago = payload.get("days_ago")
     if days_ago is None:
-        days_ago = container().settings_repository.get("search_window_days", 30)
+        days_ago = _get_setting("search_window_days", 30)
     else:
         try:
             days_ago = int(days_ago)
@@ -66,7 +75,7 @@ def update_metadata(folder_name: str):
 @blueprint.post("/api/run_cv/<folder_name>")
 def run_cv(folder_name: str):
     payload = json_object()
-    default_threshold = container().settings_repository.get("threshold", 40)
+    default_threshold = _get_setting("threshold", 40)
     threshold = integer(payload, "threshold", default_threshold)
     if not 0 <= threshold <= 255:
         raise RequestValidationError("threshold must be between 0 and 255")
@@ -80,11 +89,11 @@ def run_cv(folder_name: str):
         except (TypeError, ValueError) as exc:
             raise RequestValidationError("coastal_buffer must be a non-negative integer") from exc
     else:
-        coastal_buffer = container().settings_repository.get("coastal_buffer_pixels", 81)
+        coastal_buffer = _get_setting("coastal_buffer_pixels", 81)
 
     dem_enabled = payload.get("dem_land_mask_enabled")
     if dem_enabled is None:
-        dem_enabled = container().settings_repository.get("dem_land_mask_enabled", True)
+        dem_enabled = _get_setting("dem_land_mask_enabled", True)
     else:
         dem_enabled = bool(dem_enabled)
 
