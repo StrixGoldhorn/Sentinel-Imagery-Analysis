@@ -12,6 +12,8 @@ _TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
 _TMP_DIR.mkdir(parents=True, exist_ok=True)
 tempfile.tempdir = str(_TMP_DIR)
 
+import cv2
+import numpy as np
 from PIL import Image
 
 from sentinel_analysis.application.ports import (

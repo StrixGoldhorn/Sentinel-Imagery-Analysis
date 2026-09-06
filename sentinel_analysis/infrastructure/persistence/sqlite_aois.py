@@ -111,9 +111,6 @@ class SQLiteAreaOfInterestRepository:
         hist_filtered = _filter_upcoming(hist_preds)
         comb_filtered = _filter_upcoming(comb_preds)
 
-        if not n2yo_filtered and not hist_filtered and not comb_filtered:
-            return None
-
         next_scan_val = None
         if comb_filtered:
             next_scan_val = comb_filtered[0]["time"]
