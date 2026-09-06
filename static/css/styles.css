@@ -10,13 +10,99 @@
     --theme-nav-text: #ecf0f1;
     --theme-nav-text-muted: #bdc3c7;
     --theme-nav-border: #34495e;
+
+    /* --- Theme & Typography Variables --- */
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+    /* Typographic Scale */
+    --font-size-xs: 0.75rem;    /* 12px */
+    --font-size-sm: 0.8125rem;  /* 13px */
+    --font-size-base: 0.875rem; /* 14px */
+    --font-size-md: 0.9375rem;  /* 15px */
+    --font-size-lg: 1.0625rem;  /* 17px */
+    --font-size-xl: 1.2rem;     /* 19.2px */
+    --font-size-2xl: 1.5rem;    /* 24px */
+    --font-size-3xl: 1.75rem;   /* 28px */
+
+    /* Color Palette */
+    --text-primary: #0f172a;       /* Slate 900 - Headings & High Emphasis */
+    --text-secondary: #334155;     /* Slate 700 - Body text */
+    --text-muted: #64748b;         /* Slate 500 - Labels, Subtitles, Meta */
+    --text-subtle: #94a3b8;        /* Slate 400 - Placeholders, Icons */
+    --text-inverse: #ffffff;
+
+    --bg-page: #f8fafc;            /* Slate 50 - Standard Page Background */
+    --bg-card: #ffffff;            /* Pure White Card Surface */
+    --bg-card-header: #fafbfc;     /* Subtle Card Header Tint */
+    --bg-subtle: #f1f5f9;          /* Slate 100 - Badges, Pills, Toolbars */
+    --bg-input: #ffffff;
+    --bg-disabled: #e2e8f0;
+
+    --border-color: #e2e8f0;        /* Slate 200 - Standard Borders */
+    --border-color-subtle: #f1f5f9; /* Slate 100 - Sub-dividers */
+    --border-color-strong: #cbd5e1; /* Slate 300 - Input borders */
+    --border-color-focus: #38bdf8;  /* Sky 400 - Focus Rings */
+
+    /* Primary Maritime Accent */
+    --color-primary: #0284c7;          /* Sky 600 */
+    --color-primary-hover: #0369a1;    /* Sky 700 */
+    --color-primary-light: rgba(2, 132, 199, 0.08);
+    --color-primary-border: #bae6fd;   /* Sky 200 */
+
+    /* Semantic Status Colors */
+    --color-success: #10b981;          /* Emerald 500 */
+    --color-success-hover: #059669;    /* Emerald 600 */
+    --color-success-light: #ecfdf5;    /* Emerald 50 */
+    --color-success-border: #a7f3d0;   /* Emerald 200 */
+    --color-success-text: #065f46;     /* Emerald 800 */
+
+    --color-warning: #f59e0b;          /* Amber 500 */
+    --color-warning-hover: #d97706;    /* Amber 600 */
+    --color-warning-light: #fffbeb;    /* Amber 50 */
+    --color-warning-border: #fde68a;   /* Amber 200 */
+    --color-warning-text: #92400e;     /* Amber 800 */
+
+    --color-danger: #ef4444;           /* Red 500 */
+    --color-danger-hover: #dc2626;     /* Red 600 */
+    --color-danger-light: #fef2f2;     /* Red 50 */
+    --color-danger-border: #fecaca;    /* Red 200 */
+    --color-danger-text: #991b1b;      /* Red 800 */
+
+    --color-purple: #8b5cf6;           /* Violet 500 */
+    --color-purple-light: #f5f3ff;     /* Violet 50 */
+    --color-purple-border: #ddd6fe;    /* Violet 200 */
+    --color-purple-text: #6d28d9;      /* Violet 800 */
+
+    --color-info: #0891b2;             /* Cyan 600 */
+    --color-info-light: #ecfeff;       /* Cyan 50 */
+    --color-info-border: #a5f3fc;      /* Cyan 200 */
+    --color-info-text: #155e75;        /* Cyan 800 */
+
+    /* Unified Card System */
+    --card-bg: var(--bg-card);
+    --card-border: 1px solid var(--border-color);
+    --card-radius: 10px;
+    --card-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+    --card-shadow-hover: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    --card-padding: 20px;
+    --card-header-bg: var(--bg-card-header);
+    --card-header-border: 1px solid var(--border-color-subtle);
+
+    /* Buttons */
+    --btn-radius: 6px;
+    --btn-font-size: var(--font-size-base);
+    --btn-font-weight: 600;
 }
 
 body { 
     margin: 0; 
     padding: 0; 
     padding-top: var(--navbar-total-h); 
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+    font-family: var(--font-sans);
+    background-color: var(--bg-page);
+    color: var(--text-secondary);
+    line-height: 1.5;
 }
 
 /* Dual-Tier Header Container */
@@ -497,3 +583,221 @@ body {
 .notification-ack-btn:hover {
     background: rgba(255, 255, 255, 0.38);
 }
+
+/* ==========================================================================
+   Global Standardized UI Foundation
+   ========================================================================== */
+
+/* Universal Page Headers */
+.page-header, .scrapers-header, .settings-header, .logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.page-header h1, .scrapers-header h1, .settings-header h1, .logs-header h1 {
+    font-size: var(--font-size-3xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    line-height: 1.25;
+}
+
+.page-header p, .header-subtitle {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--font-size-md);
+    line-height: 1.5;
+}
+
+.header-badge {
+    display: inline-block;
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-primary);
+    background: var(--color-primary-light);
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Universal Button Styles */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-size: var(--btn-font-size);
+    font-weight: var(--btn-font-weight);
+    border-radius: var(--btn-radius);
+    cursor: pointer;
+    border: 1px solid transparent;
+    text-decoration: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    box-sizing: border-box;
+    line-height: 1.4;
+    font-family: inherit;
+    white-space: nowrap;
+}
+
+.btn:disabled, .btn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed !important;
+    pointer-events: none;
+}
+
+.btn-primary {
+    background-color: var(--color-primary);
+    color: #ffffff;
+    border-color: var(--color-primary);
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: var(--color-primary-hover);
+    border-color: var(--color-primary-hover);
+    color: #ffffff;
+}
+
+.btn-secondary {
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
+    border-color: var(--border-color-strong);
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: var(--bg-subtle);
+    color: var(--text-primary);
+    border-color: var(--text-subtle);
+}
+
+.btn-outline-primary {
+    background-color: transparent;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.btn-outline-primary:hover:not(:disabled) {
+    background-color: var(--color-primary);
+    color: #ffffff;
+}
+
+.btn-outline-secondary {
+    background-color: transparent;
+    border-color: var(--border-color-strong);
+    color: var(--text-muted);
+}
+
+.btn-outline-secondary:hover:not(:disabled) {
+    background-color: var(--bg-subtle);
+    color: var(--text-primary);
+    border-color: var(--text-subtle);
+}
+
+.btn-danger {
+    background-color: var(--color-danger);
+    color: #ffffff;
+    border-color: var(--color-danger);
+}
+
+.btn-danger:hover:not(:disabled) {
+    background-color: var(--color-danger-hover);
+    border-color: var(--color-danger-hover);
+    color: #ffffff;
+}
+
+.btn-outline-danger {
+    background-color: transparent;
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.btn-outline-danger:hover:not(:disabled) {
+    background-color: var(--color-danger);
+    color: #ffffff;
+}
+
+.btn-sm {
+    padding: 5px 10px;
+    font-size: var(--font-size-sm);
+    gap: 6px;
+    border-radius: 4px;
+}
+
+/* Universal Metric / KPI Cards */
+.metric-card {
+    background: var(--card-bg);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 16px 20px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-sizing: border-box;
+}
+
+.metric-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--card-shadow-hover);
+}
+
+.metric-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.metric-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.metric-value {
+    font-size: var(--font-size-2xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.metric-label {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 2px;
+}
+
+/* Universal Cards & Containers */
+.ui-card {
+    background: var(--card-bg);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    padding: var(--card-padding);
+    box-sizing: border-box;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.ui-card:hover {
+    box-shadow: var(--card-shadow-hover);
+}

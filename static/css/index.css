@@ -276,40 +276,42 @@ body.drawer-collapsed .c2-drawer {
 }
 
 .c2-card {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
     padding: 12px;
     margin-bottom: 14px;
+    box-shadow: var(--card-shadow);
 }
 
 .c2-card-header {
-    font-size: 0.8rem;
+    font-size: var(--font-size-xs);
     font-weight: 700;
-    color: #475569;
+    color: var(--text-secondary);
     margin-bottom: 6px;
     text-transform: uppercase;
-    letter-spacing: 0.4px;
+    letter-spacing: 0.04em;
 }
 
 .c2-card-body .status-msg {
     margin: 0;
-    font-size: 0.88rem;
-    color: #334155;
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
     font-weight: 500;
 }
 
 .bbox-readout {
     margin-top: 8px;
     padding: 6px 8px;
-    background: #ffffff;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    font-size: 0.78rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color-strong);
+    border-radius: var(--btn-radius);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
 }
 
 .bbox-label {
-    color: #64748b;
+    color: var(--text-muted);
     font-weight: 600;
     margin-right: 4px;
 }
@@ -1733,22 +1735,22 @@ body.drawer-collapsed.ship-sidebar-open .ais-floating-timeline {
 }
 
 .c2-ship-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--card-radius);
     padding: 12px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--card-shadow);
 }
 
 .c2-card-title {
-    font-size: 0.78rem;
+    font-size: var(--font-size-xs);
     font-weight: 700;
-    color: #334155;
+    color: var(--text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.04em;
     margin: 0 0 10px 0;
     padding-bottom: 6px;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--border-color-subtle);
 }
 
 .c2-ship-grid-2 {
@@ -1770,21 +1772,22 @@ body.drawer-collapsed.ship-sidebar-open .ais-floating-timeline {
 }
 
 .c2-ship-field .c2-label {
-    font-size: 0.7rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
     text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .c2-ship-field .c2-value {
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
     font-weight: 600;
-    color: #1e293b;
+    color: var(--text-primary);
     word-break: break-word;
 }
 
 .c2-ship-field .font-mono {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: var(--font-mono);
 }
 
 .c2-ship-kpi-row {
@@ -1794,8 +1797,9 @@ body.drawer-collapsed.ship-sidebar-open .ais-floating-timeline {
 }
 
 .c2-kpi-box {
-    background: #f1f5f9;
-    border-radius: 6px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: var(--btn-radius);
     padding: 8px 10px;
     display: flex;
     flex-direction: column;
@@ -1803,22 +1807,23 @@ body.drawer-collapsed.ship-sidebar-open .ais-floating-timeline {
 }
 
 .c2-kpi-label {
-    font-size: 0.68rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
-    color: #64748b;
+    color: var(--text-muted);
     text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .c2-kpi-val {
-    font-size: 1.15rem;
+    font-size: var(--font-size-lg);
     font-weight: 700;
-    color: #0f172a;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
 }
 
 .c2-kpi-val small {
-    font-size: 0.72rem;
-    color: #64748b;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     font-weight: 600;
 }
 

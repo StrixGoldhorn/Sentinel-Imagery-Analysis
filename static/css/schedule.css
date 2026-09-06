@@ -1,46 +1,17 @@
 /* Planned Scrapes (schedule.html) Stylesheet */
 
 body {
-    background-color: #f8f9fa;
-    color: #333;
-    padding-top: 80px;
+    background-color: var(--bg-page);
+    color: var(--text-secondary);
+    padding-top: calc(var(--navbar-total-h) + 16px);
 }
 
 .schedule-dashboard-container {
     max-width: 1400px;
     width: 100%;
     margin: 0 auto;
-    padding: 20px 24px 60px 24px;
-}
-
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 15px;
-}
-
-.page-header h1 {
-    margin: 0;
-    font-size: 1.8rem;
-    color: #2c3e50;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.page-header p {
-    margin: 5px 0 0 0;
-    color: #6c757d;
-    font-size: 0.95rem;
-}
-
-.header-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+    padding: 16px 24px 60px 24px;
+    box-sizing: border-box;
 }
 
 /* KPI Summary Stat Cards */
@@ -52,11 +23,11 @@ body {
 }
 
 .metric-card {
-    background: #ffffff;
-    border-radius: 10px;
-    border: 1px solid #e1e4e8;
+    background: var(--card-bg);
+    border-radius: var(--card-radius);
+    border: var(--card-border);
     padding: 16px 20px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--card-shadow);
     display: flex;
     align-items: center;
     gap: 16px;
@@ -65,7 +36,7 @@ body {
 
 .metric-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.07);
+    box-shadow: var(--card-shadow-hover);
 }
 
 .metric-icon {
@@ -78,13 +49,13 @@ body {
     flex-shrink: 0;
 }
 
-.icon-blue { background: #e7f1ff; color: #007bff; }
-.icon-green { background: #e6f9ed; color: #28a745; }
-.icon-amber { background: #fff8e6; color: #f39c12; }
-.icon-purple { background: #f3ebfc; color: #6f42c1; }
+.icon-blue { background: var(--color-primary-light); color: var(--color-primary); }
+.icon-green { background: var(--color-success-light); color: var(--color-success); }
+.icon-amber { background: var(--color-warning-light); color: var(--color-warning); }
+.icon-purple { background: var(--color-purple-light); color: var(--color-purple); }
 .icon-pulse {
-    background: #fde8e8;
-    color: #dc3545;
+    background: var(--color-danger-light);
+    color: var(--color-danger);
     animation: pulse-border 1.5s infinite;
 }
 
@@ -100,22 +71,22 @@ body {
 }
 
 .metric-value {
-    font-size: 1.6rem;
+    font-size: var(--font-size-2xl);
     font-weight: 700;
-    color: #2c3e50;
+    color: var(--text-primary);
     line-height: 1.2;
 }
 
 .metric-label {
-    font-size: 0.82rem;
-    color: #6c757d;
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
     font-weight: 500;
 }
 
 /* Scheduler Daemon Status Bar */
 .scheduler-status-banner {
-    background: #ffffff;
-    border: 1px solid #e1e4e8;
+    background: var(--card-bg);
+    border: var(--card-border);
     border-radius: 8px;
     padding: 12px 18px;
     margin-bottom: 20px;
@@ -131,7 +102,7 @@ body {
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
-    font-size: 0.88rem;
+    font-size: var(--font-size-sm);
 }
 
 .scheduler-badge {
@@ -140,13 +111,14 @@ body {
     gap: 6px;
     padding: 4px 10px;
     border-radius: 20px;
-    font-size: 0.8rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
 }
 
 .scheduler-running {
-    background: #e6f9ed;
-    color: #28a745;
+    background: var(--color-success-light);
+    color: var(--color-success-text);
+    border: 1px solid var(--color-success-border);
 }
 
 .scheduler-dot {
@@ -167,14 +139,15 @@ body {
 }
 
 .scheduler-stopped {
-    background: #f8d7da;
-    color: #dc3545;
+    background: var(--color-danger-light);
+    color: var(--color-danger-text);
+    border: 1px solid var(--color-danger-border);
 }
 
 /* Filter and Controls Toolbar */
 .controls-toolbar {
-    background: #ffffff;
-    border: 1px solid #e1e4e8;
+    background: var(--card-bg);
+    border: var(--card-border);
     border-radius: 8px;
     padding: 14px 18px;
     margin-bottom: 20px;
@@ -196,36 +169,42 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.88rem;
-    color: #495057;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
 }
 
 .select-control {
     padding: 6px 12px;
-    border: 1px solid #ced4da;
-    border-radius: 6px;
-    font-size: 0.88rem;
-    background-color: #fff;
-    color: #495057;
+    border: 1px solid var(--border-color-strong);
+    border-radius: var(--btn-radius);
+    font-size: var(--font-size-sm);
+    background-color: var(--bg-card);
+    color: var(--text-secondary);
     cursor: pointer;
+    transition: border-color 0.15s;
 }
 
 .select-control:focus {
     outline: none;
-    border-color: #007bff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 .search-input {
     padding: 6px 12px;
-    border: 1px solid #ced4da;
-    border-radius: 6px;
-    font-size: 0.88rem;
+    border: 1px solid var(--border-color-strong);
+    border-radius: var(--btn-radius);
+    font-size: var(--font-size-sm);
+    background-color: var(--bg-card);
+    color: var(--text-primary);
     width: 200px;
+    transition: border-color 0.15s;
 }
 
 .search-input:focus {
     outline: none;
-    border-color: #007bff;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary-light);
 }
 
 /* Schedule Event Cards */
@@ -237,33 +216,34 @@ body {
 }
 
 .schedule-card {
-    background: #ffffff;
-    border-radius: 10px;
-    border: 1px solid #e1e4e8;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
-    padding: 16px 20px;
+    background: var(--card-bg);
+    border-radius: var(--card-radius);
+    border: var(--card-border);
+    box-shadow: var(--card-shadow);
+    padding: var(--card-padding);
     display: flex;
     flex-direction: column;
     gap: 12px;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
-    border-left: 4px solid #ced4da;
+    border-left: 4px solid var(--border-color-strong);
 }
 
 .schedule-card.status-active {
-    border-left-color: #dc3545;
-    background: #fffafa;
+    border-left-color: var(--color-danger);
+    background: var(--bg-card);
 }
 
 .schedule-card.status-scheduled {
-    border-left-color: #28a745;
+    border-left-color: var(--color-success);
 }
 
 .schedule-card.status-predicted {
-    border-left-color: #007bff;
+    border-left-color: var(--color-primary);
 }
 
 .schedule-card:hover {
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+    transform: translateY(-2px);
+    box-shadow: var(--card-shadow-hover);
 }
 
 .card-top-row {
@@ -282,16 +262,16 @@ body {
 }
 
 .event-countdown {
-    font-size: 1.15rem;
+    font-size: var(--font-size-lg);
     font-weight: 700;
-    color: #2c3e50;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
 .event-countdown.countdown-live {
-    color: #dc3545;
+    color: var(--color-danger);
     animation: pulse-text 1.5s infinite;
 }
 
@@ -304,8 +284,8 @@ body {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    font-size: 0.82rem;
-    color: #6c757d;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
 }
 
 .event-badges {
@@ -321,8 +301,8 @@ body {
     align-items: center;
     flex-wrap: wrap;
     gap: 14px;
-    padding-top: 8px;
-    border-top: 1px solid #f1f3f5;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color-subtle);
 }
 
 .aoi-info-block {
@@ -333,19 +313,19 @@ body {
 }
 
 .aoi-name-tag {
-    font-size: 1.05rem;
+    font-size: var(--font-size-lg);
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--text-primary);
 }
 
 .scrape-window-tag {
-    background: #f1f3f5;
-    border: 1px solid #dee2e6;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 3px 8px;
-    font-size: 0.8rem;
-    color: #495057;
-    font-family: 'Courier New', Courier, monospace;
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
 }
 
 .card-actions {
@@ -358,50 +338,58 @@ body {
 /* Badges */
 .badge {
     display: inline-block;
-    padding: 4px 8px;
+    padding: 3px 8px;
     border-radius: 4px;
-    font-size: 0.76rem;
+    font-size: var(--font-size-xs);
     font-weight: 600;
 }
 
 .badge-live {
-    background-color: #dc3545;
-    color: #ffffff;
+    background-color: var(--color-danger-light);
+    color: var(--color-danger-text);
+    border: 1px solid var(--color-danger-border);
 }
 
 .badge-scheduled {
-    background-color: #28a745;
-    color: #ffffff;
+    background-color: var(--color-success-light);
+    color: var(--color-success-text);
+    border: 1px solid var(--color-success-border);
 }
 
 .badge-predicted {
-    background-color: #007bff;
-    color: #ffffff;
+    background-color: var(--color-primary-light);
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary-border);
 }
 
 .badge-ascending {
-    background-color: #007bff;
-    color: #ffffff;
+    background-color: var(--color-info-light);
+    color: var(--color-info-text);
+    border: 1px solid var(--color-info-border);
 }
 
 .badge-descending {
-    background-color: #6f42c1;
-    color: #ffffff;
+    background-color: var(--color-purple-light);
+    color: var(--color-purple-text);
+    border: 1px solid var(--color-purple-border);
 }
 
 .badge-track {
-    background-color: #17a2b8;
-    color: #ffffff;
+    background-color: var(--color-info-light);
+    color: var(--color-info-text);
+    border: 1px solid var(--color-info-border);
 }
 
 .badge-conf {
-    background-color: #f39c12;
-    color: #ffffff;
+    background-color: var(--color-warning-light);
+    color: var(--color-warning-text);
+    border: 1px solid var(--color-warning-border);
 }
 
 .badge-elevation {
-    background-color: #6c757d;
-    color: #ffffff;
+    background-color: var(--bg-subtle);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
 }
 
 .badge-contrib-both {
@@ -412,92 +400,65 @@ body {
 }
 
 .badge-contrib-n2yo {
-    background-color: #0284c7;
-    color: #ffffff;
+    background-color: var(--color-primary-light);
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary-border);
     font-weight: 600;
 }
 
 .badge-contrib-hist {
-    background-color: #059669;
-    color: #ffffff;
+    background-color: var(--color-success-light);
+    color: var(--color-success-text);
+    border: 1px solid var(--color-success-border);
     font-weight: 600;
 }
 
 .contrib-detail-text {
-    font-size: 0.78rem;
-    color: #475569;
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
     padding: 2px 7px;
     border-radius: 4px;
 }
 
-/* Buttons */
-.btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid transparent;
-    text-decoration: none;
-    transition: all 0.2s ease;
+.btn-success {
+    background-color: var(--color-success);
+    color: #ffffff;
+    border-color: var(--color-success);
+}
+.btn-success:hover {
+    background-color: var(--color-success-hover);
+    border-color: var(--color-success-hover);
 }
 
-.btn-primary { background-color: #007bff; color: #fff; }
-.btn-primary:hover { background-color: #0069d9; }
-
-.btn-outline-primary {
-    background-color: transparent;
-    border-color: #007bff;
-    color: #007bff;
+.btn-warning {
+    background-color: var(--color-warning);
+    color: #ffffff;
+    border-color: var(--color-warning);
 }
-.btn-outline-primary:hover {
-    background-color: #007bff;
-    color: #fff;
-}
-
-.btn-outline-secondary {
-    background-color: transparent;
-    border-color: #6c757d;
-    color: #6c757d;
-}
-.btn-outline-secondary:hover {
-    background-color: #6c757d;
-    color: #fff;
-}
-
-.btn-success { background-color: #28a745; color: #fff; }
-.btn-success:hover { background-color: #218838; }
-
-.btn-warning { background-color: #f39c12; color: #fff; }
-.btn-warning:hover { background-color: #d68910; }
-
-.btn-sm {
-    padding: 4px 8px;
-    font-size: 0.78rem;
+.btn-warning:hover {
+    background-color: var(--color-warning-hover);
+    border-color: var(--color-warning-hover);
 }
 
 /* Execution Audit Logs Section */
 .logs-section {
     margin-top: 36px;
-    background: #ffffff;
-    border: 1px solid #e1e4e8;
-    border-radius: 10px;
+    background: var(--card-bg);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
     overflow: hidden;
+    box-shadow: var(--card-shadow);
 }
 
 .logs-header {
     padding: 14px 20px;
-    background: #fdfdfd;
-    border-bottom: 1px solid #e1e4e8;
+    background: var(--card-header-bg);
+    border-bottom: var(--card-header-border);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -506,8 +467,8 @@ body {
 
 .logs-header h3 {
     margin: 0;
-    font-size: 1.05rem;
-    color: #2c3e50;
+    font-size: var(--font-size-lg);
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -521,41 +482,44 @@ body {
 .logs-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.85rem;
+    font-size: var(--font-size-sm);
 }
 
 .logs-table th {
-    background: #f8f9fa;
+    background: var(--bg-subtle);
     padding: 10px 16px;
     text-align: left;
     font-weight: 600;
-    color: #495057;
-    border-bottom: 1px solid #dee2e6;
+    font-size: var(--font-size-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .logs-table td {
     padding: 10px 16px;
-    border-bottom: 1px solid #f1f3f5;
-    color: #212529;
+    border-bottom: 1px solid var(--border-color-subtle);
+    color: var(--text-secondary);
 }
 
 .logs-table tr:hover {
-    background-color: #fcfcfd;
+    background-color: var(--bg-subtle);
 }
 
 /* Empty and Loading States */
 .empty-state {
     text-align: center;
     padding: 60px 20px;
-    background: #ffffff;
-    border-radius: 12px;
-    border: 1px dashed #ced4da;
-    color: #6c757d;
+    background: var(--card-bg);
+    border-radius: var(--card-radius);
+    border: 1px dashed var(--border-color-strong);
+    color: var(--text-muted);
 }
 
 .empty-state svg {
     margin-bottom: 15px;
-    color: #adb5bd;
+    color: var(--text-subtle);
 }
 
 .loading-spinner {
@@ -564,7 +528,7 @@ body {
     height: 16px;
     border: 2px solid rgba(0, 0, 0, 0.1);
     border-radius: 50%;
-    border-top-color: #007bff;
+    border-top-color: var(--color-primary);
     animation: spin 0.8s linear infinite;
 }
 

@@ -8,6 +8,29 @@
 
 {% block content %}
     <div class="gallery-container">
+        <!-- Standardized Page Header -->
+        <div class="page-header">
+            <div>
+                <h1>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--color-primary);">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                        <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    Imagery Gallery &amp; Scan History
+                </h1>
+                <p>Browse previously captured Sentinel-1 SAR scenes, inspect radar products, and toggle layers on the map.</p>
+            </div>
+            <div class="header-actions">
+                <a href="/" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                    </svg>
+                    New Map Scan
+                </a>
+            </div>
+        </div>
+
         {% for scan in scans %}
         <div class="scan-card" id="card-{{ scan.folder }}" data-folder="{{ scan.folder }}" data-custom-name="{{ scan.metadata.custom_name or '' }}">
             <div class="image-section" onclick='window.location.href={{ ("/?load=" ~ scan.folder)|tojson }}'>
@@ -18,7 +41,7 @@
             <div class="details-section">
                 <div class="meta-group">
                     <span class="label">Layer Identity</span>
-                    <input type="text" class="custom-name-input" value="{{ scan.metadata.custom_name or scan.folder }}" onchange="saveScanName('{{ scan.folder }}', this.value)" style="padding: 4px 8px; border: 1px solid #ced4da; border-radius: 4px; font-weight: bold; color: #007bff; width: 100%; max-width: 320px;" placeholder="Custom Layer Label">
+                    <input type="text" class="custom-name-input" value="{{ scan.metadata.custom_name or scan.folder }}" onchange="saveScanName('{{ scan.folder }}', this.value)" placeholder="Custom Layer Label">
                 </div>
                 <div class="meta-group">
                     <span class="label">Location</span>
