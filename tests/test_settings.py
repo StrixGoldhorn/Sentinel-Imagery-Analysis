@@ -183,6 +183,42 @@ class TestSettingsWebAPI(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data["settings"]["cv"]["coastal_buffer_pixels"], 81)
 
+    def test_api_generate_dem_endpoint_missing_scan(self):
+        resp = self.client.post("/api/scan/nonexistent_scan/generate_dem")
+        self.assertEqual(resp.status_code, 404)
+
+
+class TestCoastalBufferCV(unittest.TestCase):
+    def test_detector_coastal_buffer_validation(self):
+        from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
+        with self.assertRaises(ValueError):
+            ClassicalShipDetector(coastal_buffer_pixels=-1)
+        with self.assertRaises(ValueError):
+            ClassicalShipDetector(morph_close_kernel=-5)
+
+    def test_detect_ships_use_case_coastal_buffer(self):
+        from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+        from sentinel_analysis.domain.entities import ShipDetection
+        from sentinel_analysis.application.ports.detection import DetectionResult
+
+        class MockDetector:
+            def __init__(self):
+                self.received_buffer = None
+            def detect(self, image_path, dem_path=None, threshold=40, coastal_buffer=None):
+                self.received_buffer = coastal_buffer
+                return DetectionResult([], 100, 100)
+
+        mock = MockDetector()
+        use_case = DetectShips(mock)
+        
+        # Valid execution with buffer
+        res = use_case.execute(Path("dummy_sar.png"), coastal_buffer=55)
+        self.assertEqual(mock.received_buffer, 55)
+
+        # Invalid buffer
+        with self.assertRaises(ValueError):
+            use_case.execute(Path("dummy_sar.png"), coastal_buffer=-10)
+
 
 if __name__ == "__main__":
     unittest.main()

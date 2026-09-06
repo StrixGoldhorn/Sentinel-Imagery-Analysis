@@ -32,6 +32,9 @@ async function loadAoisDropdown() {
         if (!select) return;
 
         select.innerHTML = '<option value="">All Areas of Interest</option>';
+        if (Array.isArray(aois)) {
+            aois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+        }
         aois.forEach(aoi => {
             aoisMap[aoi.id] = aoi;
             const opt = document.createElement('option');

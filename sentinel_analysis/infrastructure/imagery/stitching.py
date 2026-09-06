@@ -11,7 +11,7 @@ from sentinel_analysis.application.ports.imagery import TileImage
 
 
 class PillowImageStitcher:
-    def stitch(self, tiles: Sequence[TileImage], output_path: Path) -> None:
+    def stitch(self, tiles: Sequence[TileImage], output_path: Path, allow_empty: bool = False) -> None:
         if not tiles:
             raise ValueError("At least one tile is required")
 
@@ -48,7 +48,7 @@ class PillowImageStitcher:
                         y_offset = sum(heights[index] for index in range(tile.y + 1, maximum_y + 1))
                         canvas.paste(image, (x_offset, y_offset))
 
-            if not canvas.getbbox():
+            if not allow_empty and not canvas.getbbox():
                 raise NoImageryFoundError("No valid imagery coverage returned for this bounding box")
 
             output_path.parent.mkdir(parents=True, exist_ok=True)

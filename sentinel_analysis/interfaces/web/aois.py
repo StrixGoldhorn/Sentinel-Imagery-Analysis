@@ -23,7 +23,8 @@ def aois_page():
 
 @blueprint.get("/api/aoi")
 def list_aois():
-    return jsonify([serialize_aoi(aoi) for aoi in container().list_aois.execute()])
+    aois = sorted(container().list_aois.execute(), key=lambda a: (a.name or "").lower())
+    return jsonify([serialize_aoi(aoi) for aoi in aois])
 
 
 @blueprint.post("/api/aoi")

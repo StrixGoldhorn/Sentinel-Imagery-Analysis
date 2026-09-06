@@ -406,6 +406,62 @@ def test_sqlite_adapter_validates_log_status_without_db() -> None:
             assert "invalid execution status" in str(e).lower()
 
 
+def test_classical_detector_mask_land_with_coastal_buffer() -> None:
+    sar_img = np.full((200, 200), 100, dtype=np.uint8)
+    dem_img = np.zeros((200, 200), dtype=np.uint8)
+    dem_img[80:120, 80:120] = 50
+
+    sar_path = RUNTIME / "test_sar.png"
+    dem_path = RUNTIME / "test_dem.png"
+    cv2.imwrite(str(sar_path), sar_img)
+    cv2.imwrite(str(dem_path), dem_img)
+
+    try:
+        masked_0 = ClassicalShipDetector._mask_land(sar_img.copy(), dem_path, coastal_buffer_pixels=0)
+        assert np.all(masked_0[80:120, 80:120] == 0)
+        assert masked_0[10, 10] == 100
+        assert masked_0[75, 100] == 100
+
+        masked_40 = ClassicalShipDetector._mask_land(sar_img.copy(), dem_path, coastal_buffer_pixels=40)
+        assert np.all(masked_40[80:120, 80:120] == 0)
+        assert masked_40[75, 100] == 0
+        assert masked_40[10, 10] == 100
+
+        zeros_0 = np.count_nonzero(masked_0 == 0)
+        zeros_40 = np.count_nonzero(masked_40 == 0)
+        assert zeros_40 > zeros_0
+    finally:
+        sar_path.unlink(missing_ok=True)
+        dem_path.unlink(missing_ok=True)
+
+
+def test_classical_detector_pure_ocean_preserves_sar() -> None:
+    sar_img = np.full((100, 100), 120, dtype=np.uint8)
+    dem_img = np.zeros((100, 100), dtype=np.uint8)
+
+    dem_path = RUNTIME / "ocean_dem.png"
+    cv2.imwrite(str(dem_path), dem_img)
+    try:
+        result = ClassicalShipDetector._mask_land(sar_img.copy(), dem_path, coastal_buffer_pixels=81)
+        assert np.array_equal(result, sar_img)
+    finally:
+        dem_path.unlink(missing_ok=True)
+
+
+def test_classical_detector_resizes_mismatched_dem() -> None:
+    sar_img = np.full((100, 100), 100, dtype=np.uint8)
+    dem_img = np.zeros((80, 80), dtype=np.uint8)
+    dem_img[30:50, 30:50] = 50
+
+    dem_path = RUNTIME / "mismatch_dem.png"
+    cv2.imwrite(str(dem_path), dem_img)
+    try:
+        result = ClassicalShipDetector._mask_land(sar_img.copy(), dem_path, coastal_buffer_pixels=0)
+        assert result.shape == (100, 100)
+    finally:
+        dem_path.unlink(missing_ok=True)
+
+
 def load_tests(loader, standard_tests, pattern):
     import inspect
     suite = unittest.TestSuite()

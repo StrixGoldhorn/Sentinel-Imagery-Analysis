@@ -28,6 +28,8 @@ async function loadAOIs() {
             return;
         }
 
+        aois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+
         aois.forEach(aoi => {
             const card = createAoiCard(aoi);
             grid.appendChild(card);

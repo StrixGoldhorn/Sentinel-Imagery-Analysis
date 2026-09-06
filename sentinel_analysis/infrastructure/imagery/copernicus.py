@@ -13,7 +13,7 @@ from PIL import Image
 from sentinel_analysis.application.exceptions import AuthenticationError, ExternalServiceError
 from sentinel_analysis.application.ports.cache import TileCache
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile
-from sentinel_analysis.infrastructure.imagery.evalscripts import SAR, SAR_DUAL_POL
+from sentinel_analysis.infrastructure.imagery.evalscripts import DEM, SAR, SAR_DUAL_POL
 from sentinel_analysis.infrastructure.imagery.tiling import TileGridCalculator
 
 
@@ -481,4 +481,94 @@ class CopernicusImageryProvider:
                 temporary.unlink(missing_ok=True)
         except (OSError, ValueError) as exc:
             raise ExternalServiceError("Copernicus returned an invalid image") from exc
+
+    def download_dem_tile(self, tile: ImageTile, output_path: Path) -> None:
+        cache_key = f"dem_{tile.bbox.as_list()}_{tile.width}_{tile.height}_{hash(DEM)}"
+        if self._tile_cache and self._tile_cache.has(cache_key):
+            cached_data = self._tile_cache.get(cache_key)
+            if cached_data is not None:
+                try:
+                    with Image.open(io.BytesIO(cached_data)) as source:
+                        source.load()
+                        image = source.convert("RGBA")
+                    temporary = output_path.with_name(f"{output_path.name}.tmp")
+                    try:
+                        output_path.parent.mkdir(parents=True, exist_ok=True)
+                        image.save(temporary, format="PNG")
+                        temporary.replace(output_path)
+                        return
+                    finally:
+                        image.close()
+                        temporary.unlink(missing_ok=True)
+                except (OSError, ValueError):
+                    pass
+
+        payload = {
+            "input": {
+                "bounds": {
+                    "bbox": tile.bbox.as_list(),
+                    "properties": {
+                        "crs": "http://www.opengis.net/def/crs/OGC/1.3/CRS84"
+                    },
+                },
+                "data": [{
+                    "type": "dem",
+                    "processing": {
+                        "demInstance": "COPERNICUS_30",
+                    },
+                }],
+            },
+            "output": {
+                "width": tile.width,
+                "height": tile.height,
+                "responses": [{"identifier": "default", "format": {"type": "image/png"}}],
+            },
+            "evalscript": DEM,
+        }
+
+        response = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = self._http.post(
+                    PROCESS_URL,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self._get_token()}",
+                    },
+                    json=payload,
+                    timeout=300,
+                )
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                status = getattr(getattr(exc, "response", None), "status_code", None)
+                if status == 401 and attempt < self._max_retries:
+                    self._get_token(force_refresh=True)
+                    continue
+                if attempt < self._max_retries and _is_transient_error(exc):
+                    self._sleep(self._backoff * (2 ** attempt))
+                    continue
+                error_msg = _format_service_error(exc, "Copernicus DEM request failed")
+                raise ExternalServiceError(error_msg) from exc
+
+        if response is None:
+            raise ExternalServiceError("Copernicus DEM request failed")
+
+        try:
+            if self._tile_cache:
+                self._tile_cache.set(cache_key, response.content)
+
+            with Image.open(io.BytesIO(response.content)) as source:
+                source.load()
+                image = source.convert("RGBA")
+            temporary = output_path.with_name(f"{output_path.name}.tmp")
+            try:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                image.save(temporary, format="PNG")
+                temporary.replace(output_path)
+            finally:
+                image.close()
+                temporary.unlink(missing_ok=True)
+        except (OSError, ValueError) as exc:
+            raise ExternalServiceError("Copernicus returned an invalid DEM image") from exc
 

@@ -2,6 +2,7 @@ from sentinel_analysis.application.use_cases.analyze_mission_passes import Analy
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
@@ -51,6 +52,7 @@ __all__ = [
     "CreateScan",
     "DeleteScan",
     "DetectShips",
+    "GenerateDEM",
     "GetScan",
     "GetScraperDetail",
     "GetScraperLogsUseCase",

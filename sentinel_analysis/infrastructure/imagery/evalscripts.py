@@ -18,15 +18,15 @@ DEM = """//VERSION=3
 function setup() {
   return {
     input: ["DEM", "dataMask"],
-    output: {bands: 4, sampleType: SampleType.UINT8}
+    output: {bands: 4, sampleType: "UINT8"}
   };
 }
 function evaluatePixel(sample) {
-  let alpha = sample.dataMask === 1 ? 255 : 0;
-  if (alpha === 0) return [0, 0, 0, 0];
-  let shifted = Math.max(0, sample.DEM + 50);
-  let grayValue = Math.round(Math.sqrt(shifted / 200) * 255);
-  return [grayValue, grayValue, grayValue, alpha];
+  if (sample.dataMask === 0 || sample.DEM <= 0) {
+    return [0, 0, 0, 255];
+  }
+  let grayValue = Math.min(255, Math.max(20, Math.round(Math.sqrt(sample.DEM) * 16)));
+  return [grayValue, grayValue, grayValue, 255];
 }"""
 
 SAR_DUAL_POL = """//VERSION=3

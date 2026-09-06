@@ -35,7 +35,8 @@ function teleportToAoi(aoiId) {
 async function loadAOIs() {
     try {
         const response = await fetch(CONFIG.API_AOI);
-        const aois = await response.json();
+        let aois = await response.json();
+        aois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
         const aoiList = document.getElementById('aoiList');
         
         // Clear UI list
@@ -122,21 +123,13 @@ async function loadAOIs() {
             const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
             
             const controlHtml = `
-                <div id="${layerId}" class="layer-info" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
-                    <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                        <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility">
-                        <span style="background: rgba(40,167,69,0.15); color: #28a745; font-size: 0.72rem; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.5px; text-transform: uppercase;">AOI</span>
-                        <strong style="flex: 1; font-size: 0.95em; color: inherit; word-break: break-word; line-height: 1.3;" title="${safeAoiName}">${safeAoiName}</strong>
-                    </div>
-                    <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                        <button type="button" class="btn btn-sm btn-outline-success btn-scan-aoi" onclick="triggerAoiScan(${aoi.id})" title="Initiate SAR imagery scan for ${safeAoiName}" style="flex: 1; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 4px; background: rgba(40,167,69,0.08); border: 1px solid #28a745; color: #28a745; cursor: pointer;">
-                            🛰️ Scan SAR
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-warning btn-force-ais" onclick="forceScanAOI(${aoi.id}, this)" title="Force immediate AIS vessel scan for ${safeAoiName}" style="flex: 1; padding: 4px 8px; font-size: 0.78rem; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px; border-radius: 4px; background: rgba(245,158,11,0.08); border: 1px solid #f59e0b; color: #d97706; cursor: pointer;">
-                            ⚡ Force AIS
-                        </button>
-                        <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map" style="padding: 4px 8px; font-size: 0.78rem;">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <div id="${layerId}" class="layer-info aoi-layer-card" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
+                    <div class="layer-info-header">
+                        <input type="checkbox" checked onchange="toggleAoiLayer('${layerId}')" title="Toggle Visibility" style="margin: 0; cursor: pointer;">
+                        <span class="aoi-badge">AOI</span>
+                        <strong class="aoi-name" title="${safeAoiName}">${safeAoiName}</strong>
+                        <button type="button" class="btn-teleport-aoi" onclick="teleportToAoi(${aoi.id})" title="Teleport to ${safeAoiName} on map">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="22" y1="12" x2="18" y2="12"></line>
                                 <line x1="6" y1="12" x2="2" y2="12"></line>
@@ -146,15 +139,15 @@ async function loadAOIs() {
                             Teleport
                         </button>
                     </div>
-                    <details style="border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
-                        <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
-                        <div style="margin-top: 8px; font-size: 0.85em; color: #555; display: flex; flex-direction: column; gap: 6px;">
+                    <details>
+                        <summary>Layer Controls & Info</summary>
+                        <div class="aoi-drawer-content">
                             <div><strong>AOI Name:</strong> ${safeAoiName}</div>
                             <div><strong>Next Scan:</strong> ${zuluTime}</div>
-                            <button type="button" class="btn btn-sm btn-success" onclick="triggerAoiScan(${aoi.id})" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-weight: 600; cursor: pointer; margin-top: 4px;">
+                            <button type="button" class="btn btn-sm btn-success" onclick="triggerAoiScan(${aoi.id})" style="background: #16a34a; border-color: #15803d; color: #ffffff;">
                                 🛰️ Initiate SAR Scan (Latest Imagery)
                             </button>
-                            <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; font-weight: 600; cursor: pointer; margin-top: 2px; background: #f59e0b; border: 1px solid #d97706; color: #ffffff;">
+                            <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="background: #f59e0b; border-color: #d97706; color: #ffffff;">
                                 ⚡ Force AIS Scan
                             </button>
                         </div>

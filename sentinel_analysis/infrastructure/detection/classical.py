@@ -23,6 +23,8 @@ class ClassicalShipDetector:
         filter_type: str = "none",
         min_area: float | None = None,
         pixel_spacing_m: float | None = None,
+        coastal_buffer_pixels: int = 81,
+        morph_close_kernel: int = 27,
     ) -> None:
         if min_area is not None:
             minimum_area = min_area
@@ -34,11 +36,17 @@ class ClassicalShipDetector:
             raise ValueError("Dilation iterations must be a non-negative integer")
         if pixel_spacing_meters <= 0:
             raise ValueError("Pixel spacing meters must be positive")
+        if isinstance(coastal_buffer_pixels, bool) or not isinstance(coastal_buffer_pixels, int) or coastal_buffer_pixels < 0:
+            raise ValueError("Coastal buffer pixels must be a non-negative integer")
+        if isinstance(morph_close_kernel, bool) or not isinstance(morph_close_kernel, int) or morph_close_kernel < 0:
+            raise ValueError("Morph close kernel must be a non-negative integer")
         self._minimum_area = minimum_area
         self._maximum_area = maximum_area
         self._dilation_iterations = dilation_iterations
         self._pixel_spacing_meters = pixel_spacing_meters
         self._filter_type = filter_type
+        self._coastal_buffer_pixels = coastal_buffer_pixels
+        self._morph_close_kernel = morph_close_kernel
 
 
     def detect(
@@ -46,15 +54,23 @@ class ClassicalShipDetector:
         image_path: Path,
         dem_path: Path | None = None,
         threshold: int = 40,
+        coastal_buffer: int | None = None,
     ) -> DetectionResult:
         if isinstance(threshold, bool) or not isinstance(threshold, int) or not 0 <= threshold <= 255:
             raise ValueError("Detection threshold must be an integer between 0 and 255")
+        if coastal_buffer is not None:
+            if isinstance(coastal_buffer, bool) or not isinstance(coastal_buffer, int) or coastal_buffer < 0:
+                raise ValueError("Coastal buffer must be a non-negative integer")
+            buffer_px = coastal_buffer
+        else:
+            buffer_px = self._coastal_buffer_pixels
+
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
             raise FileNotFoundError(f"Unable to read SAR image: {image_path}")
 
         if dem_path is not None:
-            image = self._mask_land(image, dem_path)
+            image = self._mask_land(image, dem_path, coastal_buffer_pixels=buffer_px, morph_close_kernel=self._morph_close_kernel)
 
         if self._filter_type != "none":
             filtered_image = preprocess_sar(image, filter_type=self._filter_type)
@@ -120,14 +136,26 @@ class ClassicalShipDetector:
         return DetectionResult(detections, width, height)
 
     @staticmethod
-    def _mask_land(image: np.ndarray, dem_path: Path) -> np.ndarray:
+    def _mask_land(
+        image: np.ndarray,
+        dem_path: Path,
+        coastal_buffer_pixels: int = 81,
+        morph_close_kernel: int = 27,
+    ) -> np.ndarray:
         dem = cv2.imread(str(dem_path), cv2.IMREAD_GRAYSCALE)
         if dem is None:
             raise FileNotFoundError(f"Unable to read DEM image: {dem_path}")
-        if dem.shape != image.shape:
-            raise ValueError("SAR and DEM images must have identical dimensions")
+        if dem.shape[:2] != image.shape[:2]:
+            dem = cv2.resize(dem, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
+
+        if np.max(dem) <= 0:
+            return image
 
         _, mask = cv2.threshold(dem, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((27, 27), np.uint8), iterations=2)
-        mask = cv2.dilate(mask, np.ones((81, 81), np.uint8), iterations=2)
+        if morph_close_kernel > 1:
+            k_close = morph_close_kernel if morph_close_kernel % 2 != 0 else morph_close_kernel + 1
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((k_close, k_close), np.uint8), iterations=2)
+        if coastal_buffer_pixels > 0:
+            k_buf = coastal_buffer_pixels if coastal_buffer_pixels % 2 != 0 else coastal_buffer_pixels + 1
+            mask = cv2.dilate(mask, np.ones((k_buf, k_buf), np.uint8), iterations=1)
         return cv2.bitwise_and(image, image, mask=cv2.bitwise_not(mask))

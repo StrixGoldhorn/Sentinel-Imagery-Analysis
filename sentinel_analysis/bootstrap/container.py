@@ -7,6 +7,7 @@ from sentinel_analysis.application.use_cases import (
     CreateScan,
     DeleteScan,
     DetectShips,
+    GenerateDEM,
     GetScan,
     GetScraperDetail,
     GetScraperLogsUseCase,
@@ -66,14 +67,16 @@ class ApplicationContainer:
             settings.copernicus_username,
             settings.copernicus_password,
         )
-        imagery = CopernicusImageryProvider(token_provider, tile_cache=self.tile_cache)
+        self.imagery = CopernicusImageryProvider(token_provider, tile_cache=self.tile_cache)
+        self.stitcher = PillowImageStitcher()
         self.n2yo_predictor = N2YOPassPredictor()
-        self.mission_analyzer = Sentinel1MissionAnalyzer(imagery)
+        self.mission_analyzer = Sentinel1MissionAnalyzer(self.imagery)
         self.hybrid_predictor = HybridPassPredictor(self.n2yo_predictor, self.mission_analyzer)
 
+        self.generate_dem = GenerateDEM(self.imagery, self.stitcher)
         self.create_scan = CreateScan(
-            imagery,
-            PillowImageStitcher(),
+            self.imagery,
+            self.stitcher,
             self.scan_repository,
             NominatimLocationResolver(),
         )
@@ -111,7 +114,7 @@ class ApplicationContainer:
         self.ingest_post_pass = IngestPostPassImagery(
             self.post_pass_repository,
             self.aoi_repository,
-            imagery,
+            self.imagery,
             self.create_scan,
             self.detect_ships,
         )

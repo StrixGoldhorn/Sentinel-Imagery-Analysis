@@ -43,6 +43,9 @@ class EmptyImageryProvider:
     def download_tile(self, tile, acquisition, output_path):
         raise AssertionError("No tile should be downloaded")
 
+    def download_dem_tile(self, tile, output_path):
+        raise AssertionError("No DEM tile should be downloaded")
+
 
 class TrackingScanRepository:
     def __init__(self, prepare_error=None):
@@ -212,9 +215,12 @@ class WorkingImageryProvider:
     def download_tile(self, tile, acquisition, output_path):
         pass
 
+    def download_dem_tile(self, tile, output_path):
+        pass
+
 
 class WorkingStitcher:
-    def stitch(self, tiles, output_path):
+    def stitch(self, tiles, output_path, allow_empty=False):
         pass
 
 
@@ -553,6 +559,31 @@ def test_predict_aoi_custom_cache_ttl_override() -> None:
     expires_dt = datetime.fromisoformat(result["expires_at"].replace("Z", "+00:00"))
     delta_seconds = (expires_dt - fetched_dt).total_seconds()
     assert abs(delta_seconds - 21600) < 5
+
+
+def test_generate_dem_use_case(tmp_path: Path | None = None) -> None:
+    from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        out_path = Path(tmp_dir) / "test_stitched_dem.png"
+
+        class DEMWorkingImagery(WorkingImageryProvider):
+            def download_dem_tile(self, tile, output_path):
+                output_path.write_text("fake_dem_tile")
+
+        class DEMWorkingStitcher(WorkingStitcher):
+            def stitch(self, tiles, output_path, allow_empty=False):
+                output_path.write_text("stitched_dem_data")
+
+        use_case = GenerateDEM(DEMWorkingImagery(), DEMWorkingStitcher())
+        ok = use_case.execute(BBOX, out_path)
+        assert ok is True
+        assert out_path.is_file()
+
+        # Imagery without download_dem_tile returns False
+        empty_case = GenerateDEM(EmptyImageryProvider(), DEMWorkingStitcher())
+        assert empty_case.execute(BBOX, out_path) is False
+
 
 
 

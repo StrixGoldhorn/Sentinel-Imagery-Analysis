@@ -449,6 +449,96 @@ body.ship-sidebar-open .search-group {
     align-items: center;
     margin-bottom: 10px;
 }
+
+/* Ultra-compact AOI card */
+.aoi-layer-card {
+    margin-bottom: 6px !important;
+    padding: 6px 8px !important;
+    border-radius: 6px !important;
+    font-size: 0.85em !important;
+}
+.aoi-layer-card .layer-info-header {
+    margin-bottom: 0 !important;
+    gap: 6px !important;
+    display: flex;
+    align-items: center;
+}
+.aoi-layer-card .aoi-badge {
+    background: rgba(40,167,69,0.15);
+    color: #28a745;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+}
+.aoi-layer-card .aoi-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+.aoi-layer-card .btn-teleport-aoi {
+    padding: 2px 6px !important;
+    font-size: 0.72rem !important;
+    line-height: 1.2 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: all 0.15s ease;
+}
+.aoi-layer-card .btn-teleport-aoi:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+}
+.aoi-layer-card details {
+    margin-top: 3px !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 4px !important;
+    padding: 3px 6px !important;
+    background: #ffffff !important;
+}
+.aoi-layer-card details summary {
+    cursor: pointer !important;
+    font-size: 0.75rem !important;
+    color: #0284c7 !important;
+    outline: none !important;
+    font-weight: 500 !important;
+    user-select: none !important;
+}
+.aoi-layer-card details .aoi-drawer-content {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.aoi-layer-card details .aoi-drawer-content button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+}
 .c2-drawer button.remove-layer-btn,
 .sidebar .accordion-content button.remove-layer-btn {
     background-color: #dc3545;

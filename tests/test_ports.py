@@ -38,13 +38,16 @@ class CompleteAdapter:
     def download_tile(self, tile, acquisition, output_path):
         return None
 
+    def download_dem_tile(self, tile, output_path):
+        return None
+
     def detect(self, image_path, dem_path=None, threshold=40):
         return [], 0, 0
 
     def predict(self, bbox, api_key):
         return []
 
-    def stitch(self, tiles, output_path):
+    def stitch(self, tiles, output_path, allow_empty=False):
         return None
 
     def resolve(self, latitude, longitude):

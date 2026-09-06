@@ -42,8 +42,13 @@ async function loadAois() {
     try {
         const response = await fetch('/api/aoi');
         const data = await response.json();
-        if (data.status === 'success') {
+        if (Array.isArray(data)) {
+            availableAois = data;
+            availableAois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
+            populateAoiDropdowns();
+        } else if (data && data.status === 'success') {
             availableAois = data.aois || [];
+            availableAois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
             populateAoiDropdowns();
         }
     } catch (err) {

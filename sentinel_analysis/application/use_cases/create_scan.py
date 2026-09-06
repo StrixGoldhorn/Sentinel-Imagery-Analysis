@@ -1,5 +1,4 @@
-"""Create and persist a stitched Sentinel-1 scan."""
-
+import logging
 import re
 from datetime import datetime, timezone
 
@@ -8,6 +7,8 @@ from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.domain.entities import BoundingBox, Scan
+
+logger = logging.getLogger(__name__)
 
 
 class CreateScan:
@@ -72,6 +73,29 @@ class CreateScan:
             self._stitcher.stitch(downloaded, output_path)
             for _, tile_path in downloaded:
                 tile_path.unlink(missing_ok=True)
+
+            dem_available = False
+            dem_output_path = image_dir / f"{folder_name}_stitched_dem.png"
+            if hasattr(self._imagery, "download_dem_tile"):
+                downloaded_dem: list[TileImage] = []
+                try:
+                    for tile in tiles:
+                        dem_tile_path = image_dir / f"dem_tile_{tile.x}_{tile.y}.png"
+                        self._imagery.download_dem_tile(tile, dem_tile_path)
+                        downloaded_dem.append((tile, dem_tile_path))
+
+                    try:
+                        self._stitcher.stitch(downloaded_dem, dem_output_path, allow_empty=True)
+                    except TypeError:
+                        self._stitcher.stitch(downloaded_dem, dem_output_path)
+                    dem_available = dem_output_path.is_file()
+                except Exception as exc:
+                    logger.warning("Failed to generate DEM for scan %s: %s", folder_name, exc, exc_info=True)
+                    dem_available = False
+                finally:
+                    for _, dem_tile_path in downloaded_dem:
+                        dem_tile_path.unlink(missing_ok=True)
+
             latitude, longitude = bbox.center
             metadata: dict[str, object] = {
                 "acquisition_datetime": acquisition.acquired_at.isoformat(),
@@ -83,6 +107,7 @@ class CreateScan:
                 },
                 "scraped_datetime": now.isoformat(),
                 "location": self._locations.resolve(latitude, longitude),
+                "dem_available": dem_available,
             }
             if aoi_name and isinstance(aoi_name, str) and aoi_name.strip():
                 metadata["custom_name"] = folder_name

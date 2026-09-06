@@ -32,10 +32,17 @@ class ImageryProvider(Protocol):
     ) -> None:
         ...
 
+    def download_dem_tile(
+        self,
+        tile: ImageTile,
+        output_path: Path,
+    ) -> None:
+        ...
+
 
 @runtime_checkable
 class ImageStitcher(Protocol):
     """Combine ordered tile artifacts into one output image."""
 
-    def stitch(self, tiles: Sequence[TileImage], output_path: Path) -> None:
+    def stitch(self, tiles: Sequence[TileImage], output_path: Path, allow_empty: bool = False) -> None:
         ...

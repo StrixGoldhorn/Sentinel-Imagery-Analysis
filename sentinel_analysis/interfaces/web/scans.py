@@ -61,16 +61,47 @@ def run_cv(folder_name: str):
     threshold = integer(payload, "threshold", 40)
     if not 0 <= threshold <= 255:
         raise RequestValidationError("threshold must be between 0 and 255")
+
+    raw_buffer = payload.get("coastal_buffer")
+    if raw_buffer is not None:
+        try:
+            coastal_buffer = int(raw_buffer)
+            if coastal_buffer < 0:
+                raise ValueError()
+        except (TypeError, ValueError) as exc:
+            raise RequestValidationError("coastal_buffer must be a non-negative integer") from exc
+    else:
+        coastal_buffer = container().settings_repository.get("coastal_buffer_pixels", 81)
+
+    dem_enabled = payload.get("dem_land_mask_enabled")
+    if dem_enabled is None:
+        dem_enabled = container().settings_repository.get("dem_land_mask_enabled", True)
+    else:
+        dem_enabled = bool(dem_enabled)
+
     scan = container().get_scan.execute(safe_folder_name(folder_name))
     image_path = Path(scan.image_path)
     dem_candidates = list(image_path.parent.glob("*_stitched_dem.png")) or list(image_path.parent.glob("*_dem.png"))
+
+    if dem_enabled and not dem_candidates:
+        cnt = container()
+        if hasattr(cnt, "generate_dem"):
+            dem_target = image_path.parent / f"{scan.folder_name}_stitched_dem.png"
+            if cnt.generate_dem.execute(scan.bbox, dem_target):
+                dem_candidates = [dem_target]
+
+    dem_path = dem_candidates[0] if (dem_enabled and dem_candidates) else None
+
     result = container().detect_ships.execute(
         image_path,
-        dem_candidates[0] if dem_candidates else None,
+        dem_path,
         threshold,
+        coastal_buffer=coastal_buffer,
     )
     return jsonify(
         status="success",
+        land_masked=bool(dem_path is not None),
+        coastal_buffer=coastal_buffer,
         boxes=[(item.x, item.y, item.width, item.height) for item in result.detections],
         detections=[
             {
@@ -184,6 +215,17 @@ def get_scan(folder_name: str):
 def delete_scan(folder_name: str):
     container().delete_scan.execute(safe_folder_name(folder_name))
     return jsonify(status="success", message="Scan deleted successfully")
+
+
+@blueprint.post("/api/scan/<folder_name>/generate_dem")
+def generate_scan_dem(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    image_path = Path(scan.image_path)
+    dem_target = image_path.parent / f"{scan.folder_name}_stitched_dem.png"
+    success = container().generate_dem.execute(scan.bbox, dem_target)
+    if not success:
+        return jsonify(status="error", message="Failed to generate DEM imagery"), 500
+    return jsonify(status="success", dem_path=str(dem_target))
 
 
 

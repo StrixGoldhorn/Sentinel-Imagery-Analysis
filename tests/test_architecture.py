@@ -46,6 +46,9 @@ class FakeImageryProvider:
         color = (255, 0, 0, 255) if tile.x == 0 else (0, 255, 0, 255)
         Image.new("RGBA", (tile.width, tile.height), color).save(output_path)
 
+    def download_dem_tile(self, tile, output_path):
+        Image.new("RGBA", (tile.width, tile.height), (0, 0, 0, 255)).save(output_path)
+
 
 class FakeLocationResolver:
     def resolve(self, latitude, longitude):
