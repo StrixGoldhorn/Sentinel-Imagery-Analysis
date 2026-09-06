@@ -79,6 +79,8 @@ class CheckAndScheduleAOIs:
                     if pass_time_raw:
                         try:
                             p_time = datetime.fromisoformat(str(pass_time_raw).replace("Z", "+00:00"))
+                            if p_time.utcoffset() is None:
+                                p_time = p_time.replace(tzinfo=timezone.utc)
                             p_time_utc = p_time.astimezone(timezone.utc)
                             parsed_passes.append({
                                 "time": p_time_utc,

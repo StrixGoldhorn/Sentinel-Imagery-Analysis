@@ -130,6 +130,16 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
             <div class="layer-info-header" style="display: flex; align-items: center; gap: 8px;">
                 <input type="checkbox" checked onchange="toggleMapLayerVisibility('${layerId}')" title="Toggle Visibility">
                 <input type="text" class="name-input" value="${escapeHtml(captureName)}" placeholder="Layer Name" style="flex: 1; min-width: 0;">
+                <button type="button" class="btn-teleport-sar" onclick="teleportToSarLayer('${layerId}')" title="Teleport to ${escapeHtml(captureName)} on map">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="22" y1="12" x2="18" y2="12"></line>
+                        <line x1="6" y1="12" x2="2" y2="12"></line>
+                        <line x1="12" y1="6" x2="12" y2="2"></line>
+                        <line x1="12" y1="22" x2="12" y2="18"></line>
+                    </svg>
+                    Teleport
+                </button>
                 <button class="remove-layer-btn" onclick="removeSpecificLayer('${folderName}', '${layerId}')" title="Remove Layer">&times;</button>
             </div>
             <details style="margin-top: 8px; border: 1px solid #dee2e6; border-radius: 5px; padding: 8px; background: #f8f9fa;">
@@ -234,6 +244,22 @@ function removeSpecificLayer(folderName, uiId) {
         if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
     }
 }
+
+function teleportToSarLayer(uiId) {
+    const item = activeLayers.find(l => l.uiId === uiId);
+    if (item && item.bounds) {
+        if (!map.hasLayer(item.leafletLayer)) {
+            map.addLayer(item.leafletLayer);
+            const cb = document.querySelector(`#${uiId} > .layer-info-header input[type="checkbox"]`);
+            if (cb) cb.checked = true;
+        }
+        map.fitBounds(item.bounds, { padding: [60, 60], maxZoom: 14 });
+        if (typeof showNotification === 'function') {
+            showNotification(`Teleported to SAR Layer: ${item.name || item.folder || 'Layer'}`, 'info');
+        }
+    }
+}
+window.teleportToSarLayer = teleportToSarLayer;
 
 function toggleMapLayerVisibility(uiId) {
     const layerObj = activeLayers.find(l => l.uiId === uiId);

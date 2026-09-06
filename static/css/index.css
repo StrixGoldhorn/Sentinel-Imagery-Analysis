@@ -504,6 +504,28 @@ body.ship-sidebar-open .search-group {
     color: #0f172a !important;
     border-color: #94a3b8 !important;
 }
+.btn-teleport-sar {
+    padding: 0 8px !important;
+    height: 32px !important;
+    font-size: 0.74rem !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #475569 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+    transition: all 0.15s ease;
+    white-space: nowrap !important;
+}
+.btn-teleport-sar:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+}
 .aoi-layer-card details {
     margin-top: 3px !important;
     border: 1px solid #e2e8f0 !important;

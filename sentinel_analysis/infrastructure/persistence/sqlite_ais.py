@@ -9,6 +9,17 @@ from sentinel_analysis.infrastructure.persistence.migrations.runner import Migra
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
 
+def _normalize_utc_iso(val: object) -> str | None:
+    if val is None:
+        return None
+    s = str(val).strip()
+    if not s:
+        return None
+    if s.endswith("Z") or ("+" in s[10:] or ("-" in s[10:] and len(s) > 16)):
+        return s
+    return s.replace(" ", "T") + "Z"
+
+
 class SQLiteAISRepository:
     def __init__(self, database_path: Path | str, timeout: float = 5) -> None:
         self._database_path = Path(database_path).resolve()
@@ -155,8 +166,8 @@ class SQLiteAISRepository:
             ).fetchone()
             if row and row[0] is not None and row[1] is not None:
                 return {
-                    "min_timestamp": row[0],
-                    "max_timestamp": row[1],
+                    "min_timestamp": _normalize_utc_iso(row[0]),
+                    "max_timestamp": _normalize_utc_iso(row[1]),
                     "total_records": row[2],
                     "count": row[2],
                 }
@@ -263,7 +274,7 @@ class SQLiteAISRepository:
                     "longitude": float(row[7]),
                     "speed": float(row[8]) if row[8] is not None else None,
                     "heading": float(row[9]) if row[9] is not None else None,
-                    "timestamp": row[10],
+                    "timestamp": _normalize_utc_iso(row[10]),
                     "source_plugin": row[11],
                 })
         return results
@@ -298,12 +309,12 @@ class SQLiteAISRepository:
                 "type": vessel_row[4] or "Unspecified",
                 "vessel_type": vessel_row[4],
                 "callsign": vessel_row[5],
-                "created_at": vessel_row[6],
+                "created_at": _normalize_utc_iso(vessel_row[6]),
                 "latitude": float(loc_row[0]) if loc_row and loc_row[0] is not None else None,
                 "longitude": float(loc_row[1]) if loc_row and loc_row[1] is not None else None,
                 "speed": float(loc_row[2]) if loc_row and loc_row[2] is not None else None,
                 "heading": float(loc_row[3]) if loc_row and loc_row[3] is not None else None,
-                "timestamp": loc_row[4] if loc_row else None,
+                "timestamp": _normalize_utc_iso(loc_row[4]) if loc_row else None,
                 "source_plugin": loc_row[5] if loc_row else None,
             }
 
@@ -368,10 +379,10 @@ class SQLiteAISRepository:
                     "description": row[2],
                     "tag": row[3],
                     "config": config_data,
-                    "cooldown_until": row[5],
+                    "cooldown_until": _normalize_utc_iso(row[5]),
                     "consecutive_failures": int(row[6] or 0),
                     "last_failure_reason": row[7],
-                    "updated_at": row[8],
+                    "updated_at": _normalize_utc_iso(row[8]),
                 }
         return None
 
@@ -595,7 +606,7 @@ class SQLiteAISRepository:
                     "plugin_name": row[1],
                     "status": row[2],
                     "records_inserted": row[3],
-                    "timestamp": row[4],
+                    "timestamp": _normalize_utc_iso(row[4]),
                     "error_message": row[5],
                     "trigger_reason": row[6] if len(row) > 6 and row[6] else "Manual / Unspecified",
                 })
@@ -627,7 +638,7 @@ class SQLiteAISRepository:
                     "cooldown_runs": row[5] or 0,
                     "disabled_runs": row[6] or 0,
                     "running_runs": row[7] or 0,
-                    "last_run_at": row[8],
+                    "last_run_at": _normalize_utc_iso(row[8]),
                 }
         return stats
 

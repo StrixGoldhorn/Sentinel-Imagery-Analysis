@@ -9,6 +9,26 @@ from sentinel_analysis.infrastructure.persistence.migrations.runner import Migra
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
 
+def _parse_dt(val: object) -> datetime | None:
+    if not val:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+        if dt.utcoffset() is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _format_dt(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    if dt.utcoffset() is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
 class SQLiteAreaOfInterestRepository:
     def __init__(self, database_path: Path | str, timeout: float = 5) -> None:
         self._database_path = Path(database_path).resolve()
@@ -26,8 +46,8 @@ class SQLiteAreaOfInterestRepository:
             id=row["id"],
             name=row["name"],
             bbox=BoundingBox.from_sequence(json.loads(row["bbox"])),
-            next_scan=datetime.fromisoformat(row["next_scan"].replace("Z", "+00:00")).astimezone(timezone.utc) if row["next_scan"] else None,
-            last_checked=datetime.fromisoformat(row["last_checked"].replace("Z", "+00:00")).astimezone(timezone.utc) if row["last_checked"] else None,
+            next_scan=_parse_dt(row["next_scan"]),
+            last_checked=_parse_dt(row["last_checked"]),
             auto_capture_enabled=auto_capture,
         )
 
@@ -55,7 +75,7 @@ class SQLiteAreaOfInterestRepository:
         with self._database.connection(rows=True) as connection:
             cursor = connection.execute(
                 "UPDATE aoi SET next_scan = ?, last_checked = ? WHERE id = ?",
-                (next_scan.isoformat(), last_checked.isoformat(), aoi_id),
+                (_format_dt(next_scan), _format_dt(last_checked), aoi_id),
             )
             if cursor.rowcount == 0:
                 raise LookupError(f"Area of interest not found: {aoi_id}")
@@ -77,10 +97,9 @@ class SQLiteAreaOfInterestRepository:
             return None
 
         now = datetime.now(timezone.utc)
-        try:
-            expires_at = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
-            fetched_at = datetime.fromisoformat(str(row["fetched_at"]).replace("Z", "+00:00")).astimezone(timezone.utc)
-        except Exception:
+        expires_at = _parse_dt(row["expires_at"])
+        fetched_at = _parse_dt(row["fetched_at"])
+        if not expires_at or not fetched_at:
             return None
 
         if now > expires_at:
@@ -97,11 +116,11 @@ class SQLiteAreaOfInterestRepository:
             for p in passes:
                 t_val = p.get("time")
                 if t_val:
-                    try:
-                        p_dt = datetime.fromisoformat(str(t_val).replace("Z", "+00:00")).astimezone(timezone.utc)
+                    p_dt = _parse_dt(t_val)
+                    if p_dt is not None:
                         if p_dt >= cutoff:
                             filtered.append(p)
-                    except Exception:
+                    else:
                         filtered.append(p)
                 else:
                     filtered.append(p)

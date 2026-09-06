@@ -202,18 +202,72 @@ class SQLitePostPassIngestionRepository:
                 ),
             )
 
-    def list(self, limit: int = 50) -> list[PostPassIngestionJob]:
+    def get_stats(self) -> dict[str, int]:
         with self._database.connection(rows=True) as conn:
-            rows = conn.execute(
+            cursor = conn.execute(
                 """
-                SELECT p.*, a.name AS aoi_name
-                FROM post_pass_ingestions p
-                LEFT JOIN aoi a ON p.aoi_id = a.id
-                ORDER BY p.pass_time DESC
-                LIMIT ?
-                """,
-                (max(1, min(int(limit), 200)),),
-            ).fetchall()
+                SELECT 
+                    SUM(CASE WHEN status = 'POLLING_CATALOG' THEN 1 ELSE 0 END) AS polling,
+                    SUM(CASE WHEN status = 'PENDING_PASS' THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN status = 'INGESTING' THEN 1 ELSE 0 END) AS ingesting,
+                    SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed,
+                    SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
+                    SUM(CASE WHEN status = 'TIMED_OUT' THEN 1 ELSE 0 END) AS timed_out,
+                    COUNT(*) AS total
+                FROM post_pass_ingestions
+                """
+            )
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "polling": int(row["polling"] or 0),
+                    "pending": int(row["pending"] or 0),
+                    "ingesting": int(row["ingesting"] or 0),
+                    "completed": int(row["completed"] or 0),
+                    "failed": int(row["failed"] or 0),
+                    "timed_out": int(row["timed_out"] or 0),
+                    "total": int(row["total"] or 0),
+                }
+            return {
+                "polling": 0, "pending": 0, "ingesting": 0,
+                "completed": 0, "failed": 0, "timed_out": 0, "total": 0,
+            }
+
+    def list(
+        self,
+        limit: int = 500,
+        status: Optional[str] = None,
+        aoi_id: Optional[int] = None,
+    ) -> list[PostPassIngestionJob]:
+        limit_val = max(1, min(int(limit), 2000))
+        where_clauses = []
+        params: list[object] = []
+        if status:
+            where_clauses.append("p.status = ?")
+            params.append(status.upper().strip())
+        if aoi_id is not None:
+            where_clauses.append("p.aoi_id = ?")
+            params.append(int(aoi_id))
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        query = f"""
+            SELECT p.*, a.name AS aoi_name
+            FROM post_pass_ingestions p
+            LEFT JOIN aoi a ON p.aoi_id = a.id
+            {where_sql}
+            ORDER BY 
+                CASE 
+                    WHEN p.status = 'INGESTING' THEN 1
+                    WHEN p.status = 'POLLING_CATALOG' THEN 2
+                    WHEN p.status = 'PENDING_PASS' THEN 3
+                    ELSE 4
+                END ASC,
+                p.pass_time DESC
+            LIMIT ?
+        """
+        params.append(limit_val)
+        with self._database.connection(rows=True) as conn:
+            rows = conn.execute(query, tuple(params)).fetchall()
         return [self._from_row(row) for row in rows]
 
     def delete(self, job_id: int) -> None:

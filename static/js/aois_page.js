@@ -4,6 +4,18 @@
 
 const aoiPredictionsCache = {};
 
+function parseUtcDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    let s = String(val).trim();
+    if (!s) return null;
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+        s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadAOIs();
 });
@@ -19,23 +31,23 @@ async function loadAOIs() {
 
     try {
         const response = await fetch('/api/aoi');
-        const aois = await response.json();
+        const data = await response.json();
 
         if (loadingState) loadingState.style.display = 'none';
+
+        const aois = Array.isArray(data) ? data : (data.aois || []);
 
         if (!aois || aois.length === 0) {
             if (emptyState) emptyState.style.display = 'block';
             return;
         }
 
-        aois.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base', numeric: true }));
-
         aois.forEach(aoi => {
             const card = createAoiCard(aoi);
-            grid.appendChild(card);
+            if (grid) grid.appendChild(card);
         });
-    } catch (error) {
-        console.error('Failed to load AOIs:', error);
+    } catch (err) {
+        console.error('Error loading AOIs:', err);
         if (loadingState) loadingState.style.display = 'none';
         showToast('Error loading Areas of Interest', 'error');
     }
@@ -52,8 +64,10 @@ function createAoiCard(aoi) {
 
     let nextScanBadge = '<span class="badge badge-secondary">Not predicted</span>';
     if (aoi.next_scan) {
-        const d = new Date(aoi.next_scan);
-        nextScanBadge = `<span class="badge badge-success" title="Next Pass: ${d.toISOString()}">Next Pass: ${d.toLocaleString()}</span>`;
+        const d = parseUtcDate(aoi.next_scan);
+        const iso = d ? d.toISOString() : escapeHtml(aoi.next_scan);
+        const local = d ? d.toLocaleString() : escapeHtml(aoi.next_scan);
+        nextScanBadge = `<span class="badge badge-success" title="Next Pass: ${iso}">Next Pass: ${local}</span>`;
     }
 
     card.innerHTML = `
@@ -251,8 +265,10 @@ function renderFlypasts(aoiId, data) {
 
     let cacheBadge = '';
     if (data.cached && data.expires_at) {
-        const expDate = new Date(data.expires_at);
-        cacheBadge = `<span class="flypast-cache-pill cached" title="Cache valid until ${expDate.toISOString()}">💾 DB Cached (Expires ${expDate.toLocaleTimeString()})</span>`;
+        const expDate = parseUtcDate(data.expires_at);
+        const iso = expDate ? expDate.toISOString() : escapeHtml(data.expires_at);
+        const local = expDate ? expDate.toLocaleTimeString() : escapeHtml(data.expires_at);
+        cacheBadge = `<span class="flypast-cache-pill cached" title="Cache valid until ${iso}">💾 DB Cached (Expires ${local})</span>`;
     } else {
         cacheBadge = `<span class="flypast-cache-pill live" title="Freshly generated and updated in local database">⚡ Live Forecast</span>`;
     }
@@ -346,9 +362,9 @@ function renderPassListHtml(aoiId, predictions, emptyMessage) {
     }
 
     return predictions.slice(0, 10).map((pred, index) => {
-        const passDate = new Date(pred.time);
-        const zuluStr = passDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-        const localStr = passDate.toLocaleString();
+        const passDate = parseUtcDate(pred.time);
+        const zuluStr = passDate ? passDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : escapeHtml(pred.time);
+        const localStr = passDate ? passDate.toLocaleString() : escapeHtml(pred.time);
         
         const sat = pred.satellite || 'Sentinel-1';
         const dir = pred.orbit_direction || null;

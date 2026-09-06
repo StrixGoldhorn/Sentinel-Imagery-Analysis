@@ -8,6 +8,18 @@ let availableAois = [];
 let autoRefreshTimer = null;
 let isAutoRefreshActive = true;
 
+function parseUtcDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    let s = String(val).trim();
+    if (!s) return null;
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+        s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initPostPassDashboard();
 });
@@ -91,12 +103,12 @@ async function loadPostPassJobs(isSilent = false) {
     }
 
     try {
-        const response = await fetch('/api/schedule/post_pass_jobs');
+        const response = await fetch('/api/schedule/post_pass_jobs?limit=500');
         const data = await response.json();
 
         if (data.status === 'success') {
             allPostPassJobs = data.jobs || [];
-            updateMetrics(allPostPassJobs);
+            updateMetrics(allPostPassJobs, data.stats);
             applyPostPassFilters();
 
             const lastUpdated = document.getElementById('lastUpdatedText');
@@ -126,7 +138,7 @@ async function loadPostPassJobs(isSilent = false) {
     }
 }
 
-function updateMetrics(jobs) {
+function updateMetrics(jobs, serverStats) {
     let polling = 0;
     let pending = 0;
     let ingesting = 0;
@@ -134,15 +146,24 @@ function updateMetrics(jobs) {
     let failed = 0;
     let timedOut = 0;
 
-    jobs.forEach(job => {
-        const st = (job.status || '').toUpperCase();
-        if (st === 'POLLING_CATALOG') polling++;
-        else if (st === 'PENDING_PASS') pending++;
-        else if (st === 'INGESTING') ingesting++;
-        else if (st === 'COMPLETED') completed++;
-        else if (st === 'TIMED_OUT') timedOut++;
-        else if (st === 'FAILED') failed++;
-    });
+    if (serverStats && typeof serverStats.polling === 'number') {
+        polling = serverStats.polling;
+        pending = serverStats.pending;
+        ingesting = serverStats.ingesting;
+        completed = serverStats.completed;
+        failed = serverStats.failed;
+        timedOut = serverStats.timed_out;
+    } else {
+        jobs.forEach(job => {
+            const st = (job.status || '').toUpperCase();
+            if (st === 'POLLING_CATALOG') polling++;
+            else if (st === 'PENDING_PASS') pending++;
+            else if (st === 'INGESTING') ingesting++;
+            else if (st === 'COMPLETED') completed++;
+            else if (st === 'TIMED_OUT') timedOut++;
+            else if (st === 'FAILED') failed++;
+        });
+    }
 
     const elPolling = document.getElementById('metricPollingCount');
     const elPending = document.getElementById('metricPendingCount');
@@ -214,12 +235,12 @@ function renderPostPassTable(jobs) {
     const now = new Date();
 
     tbody.innerHTML = jobs.map(job => {
-        const passDt = job.pass_time ? new Date(job.pass_time) : null;
+        const passDt = parseUtcDate(job.pass_time);
         const passStr = passDt ? passDt.toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
         }) : 'N/A';
 
-        const expDt = job.expected_imagery_time ? new Date(job.expected_imagery_time) : passDt;
+        const expDt = parseUtcDate(job.expected_imagery_time) || passDt;
         const expStr = expDt ? expDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
 
         let statusBadge = '';
@@ -255,7 +276,7 @@ function renderPostPassTable(jobs) {
         let nextPollText = '-';
         if (job.status === 'POLLING_CATALOG') {
             if (job.next_poll_at) {
-                const nextDt = new Date(job.next_poll_at);
+                const nextDt = parseUtcDate(job.next_poll_at);
                 const diffSec = Math.round((nextDt - now) / 1000);
                 if (diffSec > 0) {
                     nextPollText = `Next in ${diffSec}s (Check #${job.attempts})`;
@@ -266,7 +287,8 @@ function renderPostPassTable(jobs) {
                 nextPollText = `Due now (Polled #${job.attempts})`;
             }
         } else if (job.status === 'COMPLETED' && job.completed_at) {
-            nextPollText = `Completed at ${new Date(job.completed_at).toLocaleTimeString()}`;
+            const compDt = parseUtcDate(job.completed_at);
+            nextPollText = `Completed at ${compDt ? compDt.toLocaleTimeString() : 'N/A'}`;
         } else if (job.status === 'TIMED_OUT') {
             nextPollText = `<div style="color: #64748b; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window')}">
                 ⏱️ <strong>Wait window expired:</strong> Product not published by Copernicus within 24h.

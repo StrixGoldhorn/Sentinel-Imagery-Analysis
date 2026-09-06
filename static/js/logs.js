@@ -264,10 +264,23 @@ function exportLogsJson() {
     downloadAnchor.remove();
 }
 
+function parseUtcDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    let s = String(val).trim();
+    if (!s) return null;
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+        s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function formatUtcTime(isoStr) {
     if (!isoStr) return '-';
     try {
-        const date = new Date(isoStr);
+        const date = parseUtcDate(isoStr);
+        if (!date) return isoStr;
         return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
     } catch {
         return isoStr;

@@ -114,20 +114,27 @@ def trigger_schedule_poll():
 @blueprint.get("/api/schedule/post_pass_jobs")
 def get_post_pass_jobs():
     """Return recent post-pass imagery ingestion jobs."""
-    limit_raw = request.args.get("limit", "50")
+    limit_raw = request.args.get("limit", "500")
     try:
-        limit = max(1, min(int(limit_raw), 200))
+        limit = max(1, min(int(limit_raw), 2000))
     except ValueError:
-        limit = 50
+        limit = 500
 
     repo = getattr(container(), "post_pass_repository", None)
     if repo is None:
-        return jsonify(status="success", jobs=[], count=0)
+        return jsonify(status="success", jobs=[], count=0, stats={})
 
-    jobs = repo.list(limit=limit)
     status_filter = request.args.get("status")
-    if status_filter:
-        jobs = [j for j in jobs if j.status.upper() == status_filter.strip().upper()]
+    aoi_id_raw = request.args.get("aoi_id")
+    aoi_id = int(aoi_id_raw) if aoi_id_raw and aoi_id_raw.isdigit() else None
+
+    stats = repo.get_stats() if hasattr(repo, "get_stats") else {}
+    try:
+        jobs = repo.list(limit=limit, status=status_filter, aoi_id=aoi_id)
+    except TypeError:
+        jobs = repo.list(limit=limit)
+        if status_filter:
+            jobs = [j for j in jobs if j.status.upper() == status_filter.strip().upper()]
 
     def _job_dict(job):
         return {
@@ -151,6 +158,8 @@ def get_post_pass_jobs():
     return jsonify(
         status="success",
         count=len(jobs),
+        total_count=stats.get("total", len(jobs)),
+        stats=stats,
         jobs=[_job_dict(j) for j in jobs],
     )
 
@@ -180,14 +189,20 @@ def create_custom_post_pass_job():
     if not pass_time_raw:
         raise RequestValidationError("pass_time is required")
     try:
-        pass_time = datetime.fromisoformat(str(pass_time_raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+        dt = datetime.fromisoformat(str(pass_time_raw).replace("Z", "+00:00"))
+        if dt.utcoffset() is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        pass_time = dt.astimezone(timezone.utc)
     except Exception as exc:
         raise RequestValidationError(f"Invalid pass_time format: {exc}")
 
     expected_imagery_time_raw = payload.get("expected_imagery_time")
     if expected_imagery_time_raw:
         try:
-            expected_imagery_time = datetime.fromisoformat(str(expected_imagery_time_raw).replace("Z", "+00:00")).astimezone(timezone.utc)
+            exp_dt = datetime.fromisoformat(str(expected_imagery_time_raw).replace("Z", "+00:00"))
+            if exp_dt.utcoffset() is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            expected_imagery_time = exp_dt.astimezone(timezone.utc)
         except Exception as exc:
             raise RequestValidationError(f"Invalid expected_imagery_time format: {exc}")
     else:

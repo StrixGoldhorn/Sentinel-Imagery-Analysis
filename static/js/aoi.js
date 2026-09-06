@@ -4,6 +4,18 @@
 
 let aoiMapLayers = [];
 
+function parseUtcDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    let s = String(val).trim();
+    if (!s) return null;
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+        s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function toggleAoiLayer(uiId) {
     const layerObj = aoiMapLayers.find(l => l.uiId === uiId);
     if (!layerObj) return;
@@ -53,12 +65,19 @@ async function loadAOIs() {
         });
         aoiMapLayers = [];
 
+        const aoiLayersList = document.getElementById('aoiLayersList');
+        if (aoiLayersList) aoiLayersList.innerHTML = '';
+        const aoiHeading = document.getElementById('aoiLayersHeading');
+
         if (aois.length === 0) {
             if (aoiList) {
                 aoiList.innerHTML = '<p style="color: #666; font-size: 0.9em;">No Areas of Interest saved yet.</p>';
             }
+            if (aoiHeading) aoiHeading.style.display = 'none';
             return;
         }
+
+        if (aoiHeading) aoiHeading.style.display = 'block';
 
         aois.forEach(aoi => {
             const safeAoiName = escapeHtml(aoi.name || `AOI #${aoi.id}`);
@@ -68,8 +87,9 @@ async function loadAOIs() {
                 
                 let nextScanText = '<span style="color: #666; font-size: 0.8em;">Not predicted yet</span>';
                 if (aoi.next_scan) {
-                    const scanDate = new Date(aoi.next_scan);
-                    nextScanText = `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;" title="Next Scan: ${scanDate.toLocaleString()}">${scanDate.toLocaleString()}</span>`;
+                    const scanDate = parseUtcDate(aoi.next_scan);
+                    const scanStr = scanDate ? scanDate.toLocaleString() : escapeHtml(aoi.next_scan);
+                    nextScanText = `<span style="background: #28a745; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.8em;" title="Next Scan: ${scanStr}">${scanStr}</span>`;
                 }
 
                 const isAuto = aoi.auto_capture_enabled ? 'checked' : '';
@@ -122,7 +142,8 @@ async function loadAOIs() {
             
             const aoiGroup = L.featureGroup([aoiRect]).addTo(map);
             const layerId = `aoi-layer-${aoi.id}`;
-            const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
+            const parsedScan = parseUtcDate(aoi.next_scan);
+            const zuluTime = parsedScan ? parsedScan.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
             
             const controlHtml = `
                 <div id="${layerId}" class="layer-info aoi-layer-card" style="border-left: 4px solid ${CONFIG.COLOR_AOI_OUTLINE};">
@@ -162,7 +183,8 @@ async function loadAOIs() {
                     </details>
                 </div>
             `;
-            document.getElementById('layersList').insertAdjacentHTML('beforeend', controlHtml);
+            const aoiContainer = document.getElementById('aoiLayersList') || document.getElementById('layersList');
+            if (aoiContainer) aoiContainer.insertAdjacentHTML('beforeend', controlHtml);
             aoiMapLayers.push({ leafletLayer: aoiGroup, tabMarker: tabMarker, bounds: lBounds, uiId: layerId, id: aoi.id, name: safeAoiName, aoi: aoi });
         });
         
@@ -206,7 +228,9 @@ async function predictAOI(aoiId) {
                 const dir = firstPred.orbit_direction ? ` (${firstPred.orbit_direction})` : '';
                 const conf = firstPred.confidence_score ? ` [${Math.round(firstPred.confidence_score * 100)}% Conf]` : '';
                 const src = firstPred.source ? ` [Source: ${firstPred.source}]` : '';
-                msg = `Next Pass: ${sat}${dir}${conf}${src} at ${new Date(firstPred.time).toLocaleString()}`;
+                const predDate = parseUtcDate(firstPred.time);
+                const predStr = predDate ? predDate.toLocaleString() : escapeHtml(firstPred.time);
+                msg = `Next Pass: ${sat}${dir}${conf}${src} at ${predStr}`;
             }
             if (result.mission_analysis && result.mission_analysis.total_acquisitions > 0) {
                 msg += ` | Hist: ${result.mission_analysis.total_acquisitions} passes (Avg ~${result.mission_analysis.average_revisit_days}d)`;
@@ -347,7 +371,8 @@ function getAoiTabPopupContent(aoiId) {
     if (!layerObj) return '<div style="padding:10px;">AOI not found</div>';
     const aoi = layerObj.aoi || {};
     const safeAoiName = escapeHtml(aoi.name || layerObj.name);
-    const zuluTime = aoi.next_scan ? new Date(aoi.next_scan).toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
+    const parsedScan = parseUtcDate(aoi.next_scan);
+    const zuluTime = parsedScan ? parsedScan.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
     const bboxStr = aoi.bbox ? aoi.bbox.map(n => Number(n).toFixed(3)).join(', ') : '';
 
     return `

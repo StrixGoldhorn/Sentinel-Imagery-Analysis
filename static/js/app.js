@@ -4,6 +4,18 @@
 
 let abortController = null;
 
+function parseUtcDate(val) {
+    if (!val) return null;
+    if (val instanceof Date) return val;
+    let s = String(val).trim();
+    if (!s) return null;
+    if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-', 10)) {
+        s = s.replace(' ', 'T') + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function initSearch() {
     const searchInput = document.getElementById('locationSearch');
     const resultsBox = document.getElementById('searchResults');
@@ -558,9 +570,10 @@ function openShipDetailsSidebar(vessel) {
 
     if (timeEl) {
         if (vessel.timestamp) {
-            const zulu = new Date(vessel.timestamp).toISOString().replace('T', ' ').replace(/\..+/, '') + ' UTC';
-            const local = new Date(vessel.timestamp).toLocaleTimeString();
-            timeEl.textContent = `${zulu} (${local})`;
+            const parsedTime = parseUtcDate(vessel.timestamp);
+            const zulu = parsedTime ? parsedTime.toISOString().replace('T', ' ').replace(/\..+/, '') + ' UTC' : String(vessel.timestamp);
+            const local = parsedTime ? parsedTime.toLocaleTimeString() : '';
+            timeEl.textContent = local ? `${zulu} (${local})` : zulu;
         } else {
             timeEl.textContent = 'Unknown';
         }
