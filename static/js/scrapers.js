@@ -163,7 +163,9 @@ function renderScrapers() {
                         </div>
                         <div class="s-stat-item">
                             <span class="s-stat-label">Success Rate</span>
-                            <span class="s-stat-value ${s.success_rate >= 90 ? 'success' : 'danger'}">${s.success_rate}%</span>
+                            <span class="s-stat-value ${s.enabled ? (s.success_rate >= 90 ? 'success' : 'danger') : 'disabled'}" style="${!s.enabled ? 'color: #94a3b8;' : ''}" title="${!s.enabled ? 'Disabled scraper - excluded from overall success rate' : ''}">
+                                ${s.enabled ? `${s.success_rate}%` : (s.total_runs > 0 ? `${s.success_rate}% (Disabled)` : 'Disabled')}
+                            </span>
                         </div>
                     </div>
 

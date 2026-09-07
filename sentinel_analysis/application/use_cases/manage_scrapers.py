@@ -75,6 +75,8 @@ class ListScrapers:
         total_runs_all = 0
         total_records_all = 0
         total_success_all = 0
+        total_runs_enabled = 0
+        total_success_enabled = 0
 
         for meta in all_meta:
             name = meta["name"]
@@ -106,6 +108,10 @@ class ListScrapers:
             total_records_all += total_records
             total_success_all += success_runs
 
+            if enabled:
+                total_runs_enabled += total_runs
+                total_success_enabled += success_runs
+
             tag = p_detail.get("tag") or meta.get("category", "General")
             category = tag
 
@@ -136,7 +142,9 @@ class ListScrapers:
         active_count = sum(1 for s in scrapers if s["enabled"])
         cooling_count = sum(1 for s in scrapers if s["is_cooling_down"])
         overall_success_rate = (
-            round(total_success_all / total_runs_all * 100.0, 1) if total_runs_all > 0 else 100.0
+            round(total_success_enabled / total_runs_enabled * 100.0, 1)
+            if total_runs_enabled > 0
+            else 100.0
         )
 
         return {
@@ -419,10 +427,39 @@ class GetScraperLogsUseCase:
         if hasattr(self._repository, "get_scraper_stats"):
             stats = self._repository.get_scraper_stats()
 
+        all_configs = {}
+        if hasattr(self._repository, "get_all_scraper_configs"):
+            all_configs = self._repository.get_all_scraper_configs() or {}
+
         total_runs = sum(s.get("total_runs", 0) for s in stats.values())
         total_records = sum(s.get("total_records", 0) for s in stats.values())
-        total_success = sum(s.get("success_runs", 0) for s in stats.values())
-        overall_rate = round(total_success / total_runs * 100.0, 1) if total_runs > 0 else 100.0
+
+        total_runs_enabled = 0
+        total_success_enabled = 0
+        for p_name, s in stats.items():
+            is_enabled = True
+            if p_name in all_configs:
+                cfg = all_configs[p_name]
+                if isinstance(cfg, dict):
+                    is_enabled = bool(cfg.get("enabled", True))
+                elif isinstance(cfg, bool):
+                    is_enabled = cfg
+            elif hasattr(self._repository, "get_scraper_config"):
+                cfg = self._repository.get_scraper_config(p_name)
+                if isinstance(cfg, dict):
+                    is_enabled = bool(cfg.get("enabled", True))
+                elif isinstance(cfg, bool):
+                    is_enabled = cfg
+
+            if is_enabled:
+                total_runs_enabled += s.get("total_runs", 0)
+                total_success_enabled += s.get("success_runs", 0)
+
+        overall_rate = (
+            round(total_success_enabled / total_runs_enabled * 100.0, 1)
+            if total_runs_enabled > 0
+            else 100.0
+        )
 
         return {
             "logs": logs,

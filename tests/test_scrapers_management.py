@@ -671,6 +671,52 @@ def test_ingest_ais_logs_on_trigger_and_records_reason() -> None:
     assert plugin_b_logs[0]["trigger_reason"] == "Satellite Flypast (Malacca Strait)"
 
 
+def test_overall_success_rate_ignores_disabled_scrapers() -> None:
+    repo = MemoryAISRepository()
+    plugin_a = DummyPlugin("ActivePlugin")
+    plugin_b = DummyPlugin("DisabledPlugin")
+    registry = DynamicAISPluginRegistry([plugin_a, plugin_b])
+
+    repo.set_scraper_config("ActivePlugin", True)
+    repo.set_scraper_config("DisabledPlugin", False)
+
+    # ActivePlugin: 9 successes, 1 failure -> 90%
+    for _ in range(9):
+        repo.log_execution("ActivePlugin", "SUCCESS", 10, None)
+    repo.log_execution("ActivePlugin", "FAILED", 0, "Error")
+
+    # DisabledPlugin: 10 failures -> 0%
+    for _ in range(10):
+        repo.log_execution("DisabledPlugin", "FAILED", 0, "Network error")
+
+    use_case = ListScrapers(registry, repo)
+    result = use_case.execute()
+
+    # DisabledPlugin's 10 failures should NOT be counted in overall_success_rate
+    # If they were counted, rate would be 9 / (10 + 10) = 45.0%
+    # With disabled excluded, rate is 9 / 10 = 90.0%
+    assert result["metrics"]["overall_success_rate"] == 90.0
+    assert result["metrics"]["total_runs"] == 20
+
+
+def test_get_scraper_logs_metrics_ignores_disabled_scrapers() -> None:
+    repo = MemoryAISRepository()
+    repo.set_scraper_config("ActivePlugin", True)
+    repo.set_scraper_config("DisabledPlugin", False)
+
+    for _ in range(4):
+        repo.log_execution("ActivePlugin", "SUCCESS", 5, None)
+
+    for _ in range(6):
+        repo.log_execution("DisabledPlugin", "FAILED", 0, "Broken")
+
+    use_case = GetScraperLogsUseCase(repo)
+    result = use_case.execute()
+
+    # ActivePlugin has 4/4 successes = 100.0%. DisabledPlugin's 6 failures are ignored.
+    assert result["metrics"]["overall_success_rate"] == 100.0
+
+
 def load_tests(loader, standard_tests, pattern):
     suite = unittest.TestSuite()
     for name, obj in list(globals().items()):
