@@ -7,6 +7,30 @@ let filteredPostPassJobs = [];
 let availableAois = [];
 let autoRefreshTimer = null;
 let isAutoRefreshActive = true;
+let liveTickerTimer = null;
+
+function formatDuration(totalSeconds, includeSeconds = true) {
+    if (isNaN(totalSeconds) || totalSeconds === null) return '-';
+    const absSec = Math.abs(Math.round(totalSeconds));
+
+    const hours = Math.floor(absSec / 3600);
+    const minutes = Math.floor((absSec % 3600) / 60);
+    const seconds = absSec % 60;
+
+    let parts = [];
+    if (hours > 0) {
+        parts.push(`${hours}h`);
+        if (minutes > 0 || !includeSeconds) parts.push(`${minutes}m`);
+        if (includeSeconds && hours < 2) parts.push(`${seconds}s`);
+    } else if (minutes > 0) {
+        parts.push(`${minutes}m`);
+        if (includeSeconds) parts.push(`${seconds}s`);
+    } else {
+        parts.push(`${seconds}s`);
+    }
+
+    return parts.join(' ') || '0s';
+}
 
 function parseUtcDate(val) {
     if (!val) return null;
@@ -28,6 +52,75 @@ async function initPostPassDashboard() {
     await loadAois();
     await loadPostPassJobs();
     setupAutoRefresh();
+    setupLiveTicker();
+}
+
+function setupLiveTicker() {
+    if (liveTickerTimer) clearInterval(liveTickerTimer);
+    liveTickerTimer = setInterval(() => {
+        updateLiveCountdowns();
+    }, 1000);
+}
+
+function updateLiveCountdowns() {
+    const nowMs = Date.now();
+
+    // 1. Next poll countdowns
+    document.querySelectorAll('.live-poll-countdown').forEach(el => {
+        const targetMs = parseInt(el.getAttribute('data-timestamp'), 10);
+        if (!isNaN(targetMs)) {
+            const diffSec = Math.round((targetMs - nowMs) / 1000);
+            if (diffSec > 0) {
+                el.textContent = `In ${formatDuration(diffSec, true)}`;
+            } else {
+                const cell = el.closest('.polling-cell');
+                if (cell && !cell.classList.contains('is-due')) {
+                    cell.classList.add('is-due');
+                    const attempts = el.getAttribute('data-attempts') || '1';
+                    const nextLine = cell.querySelector('.next-poll-line');
+                    if (nextLine) {
+                        nextLine.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="badge" style="background: #e0f2fe; color: #0369a1; animation: pulse 1.5s infinite; font-size: 0.78rem; padding: 3px 6px;">
+                                    🔄 Due for Poll (Checking...)
+                                </span>
+                                <span style="font-size: 0.78rem; color: #64748b;">Polled #${attempts}</span>
+                            </div>
+                        `;
+                    }
+                }
+            }
+        }
+    });
+
+    // 2. Flypast countdowns
+    document.querySelectorAll('.live-pass-countdown').forEach(el => {
+        const targetMs = parseInt(el.getAttribute('data-timestamp'), 10);
+        if (!isNaN(targetMs)) {
+            const diffSec = Math.round((targetMs - nowMs) / 1000);
+            if (diffSec > 0) {
+                el.textContent = `In ${formatDuration(diffSec, true)}`;
+            } else if (diffSec >= -300) {
+                el.textContent = `Active now (${formatDuration(300 + diffSec, true)} left)`;
+            } else {
+                el.textContent = `${formatDuration(-diffSec, false)} ago`;
+            }
+        }
+    });
+
+    // 3. Invalid / timeout countdowns
+    document.querySelectorAll('.live-invalid-countdown').forEach(el => {
+        const targetMs = parseInt(el.getAttribute('data-timestamp'), 10);
+        if (!isNaN(targetMs)) {
+            const diffSec = Math.round((targetMs - nowMs) / 1000);
+            if (diffSec > 0) {
+                el.textContent = `${formatDuration(diffSec, false)} left`;
+            } else {
+                el.textContent = 'Expired';
+                el.style.color = '#dc2626';
+            }
+        }
+    });
 }
 
 function setupAutoRefresh() {
@@ -243,6 +336,33 @@ function renderPostPassTable(jobs) {
         const expDt = parseUtcDate(job.expected_imagery_time) || passDt;
         const expStr = expDt ? expDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
 
+        // Validity calculation (24 hours timeout limit from expected pass time)
+        const maxWaitHours = job.max_wait_hours || 24.0;
+        const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
+        const invalidDiffSec = invalidDt ? Math.round((invalidDt - now) / 1000) : null;
+
+        // Relative pass timing
+        let timingContent = '';
+        if (passDt) {
+            const passDiffSec = Math.round((passDt - now) / 1000);
+            let relPassText = '';
+            if (passDiffSec > 0) {
+                relPassText = `<div style="font-size: 0.75rem; color: #4338ca; font-weight: 500;">Flypast in <span class="live-pass-countdown" data-timestamp="${passDt.getTime()}">${formatDuration(passDiffSec, true)}</span></div>`;
+            } else if (passDiffSec >= -300) {
+                relPassText = `<div style="font-size: 0.75rem; color: #059669; font-weight: 600;">⚡ Active flypast window</div>`;
+            } else {
+                relPassText = `<div style="font-size: 0.75rem; color: #64748b;">Passed ${formatDuration(-passDiffSec, false)} ago</div>`;
+            }
+
+            timingContent = `
+                <div style="font-size: 0.85rem; font-weight: 600; color: #0369a1;">${expStr}</div>
+                <div style="font-size: 0.75rem; color: #64748b;">&plusmn;1h Window</div>
+                ${relPassText}
+            `;
+        } else {
+            timingContent = '<span style="color: #94a3b8;">N/A</span>';
+        }
+
         let statusBadge = '';
         const isTimingMismatch = job.status === 'FAILED' && (job.error_message || '').toLowerCase().includes('more recent imagery');
 
@@ -273,32 +393,140 @@ function renderPostPassTable(jobs) {
                 statusBadge = `<span class="badge badge-secondary">${escapeHtml(job.status || 'UNKNOWN')}</span>`;
         }
 
-        let nextPollText = '-';
+        let nextPollContent = '-';
         if (job.status === 'POLLING_CATALOG') {
+            let nextPollLine = '';
             if (job.next_poll_at) {
                 const nextDt = parseUtcDate(job.next_poll_at);
                 const diffSec = Math.round((nextDt - now) / 1000);
                 if (diffSec > 0) {
-                    nextPollText = `Next in ${diffSec}s (Check #${job.attempts})`;
+                    nextPollLine = `
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <span style="color: #1d4ed8; font-weight: 600;">Next scan:</span>
+                            <span class="live-poll-countdown" data-timestamp="${nextDt.getTime()}" data-attempts="${job.attempts}" style="font-weight: 600; color: #2563eb;">
+                                In ${formatDuration(diffSec, true)}
+                            </span>
+                            <span style="font-size: 0.78rem; color: #64748b;">(Check #${job.attempts + 1})</span>
+                        </div>
+                    `;
                 } else {
-                    nextPollText = `Due now (Polled #${job.attempts})`;
+                    nextPollLine = `
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span class="badge" style="background: #e0f2fe; color: #0369a1; animation: pulse 1.5s infinite; font-size: 0.78rem; padding: 3px 6px;">
+                                🔄 Due for Poll (Checking...)
+                            </span>
+                            <span style="font-size: 0.78rem; color: #64748b;">Polled #${job.attempts}</span>
+                        </div>
+                    `;
                 }
             } else {
-                nextPollText = `Due now (Polled #${job.attempts})`;
+                nextPollLine = `
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span class="badge" style="background: #e0f2fe; color: #0369a1; font-size: 0.78rem; padding: 3px 6px;">
+                            🔄 Due for Poll
+                        </span>
+                        <span style="font-size: 0.78rem; color: #64748b;">Polled #${job.attempts}</span>
+                    </div>
+                `;
             }
-        } else if (job.status === 'COMPLETED' && job.completed_at) {
+
+            let validityLine = '';
+            if (invalidDiffSec !== null) {
+                if (invalidDiffSec > 0) {
+                    validityLine = `
+                        <div style="font-size: 0.78rem; color: #475569; margin-top: 3px;" title="Catalog polling expires 24 hours after satellite pass if Copernicus does not publish imagery">
+                            ⏱️ <strong>Valid for:</strong> <span class="live-invalid-countdown" data-timestamp="${invalidDt.getTime()}" style="color: #0f172a; font-weight: 600;">${formatDuration(invalidDiffSec, false)} left</span>
+                        </div>
+                    `;
+                } else {
+                    validityLine = `
+                        <div style="font-size: 0.78rem; color: #dc2626; margin-top: 3px;">
+                            ⏱️ <strong>Wait window expired:</strong> Timed out after 24h
+                        </div>
+                    `;
+                }
+            }
+
+            nextPollContent = `
+                <div class="polling-cell" data-job-id="${job.id}">
+                    <div class="next-poll-line">${nextPollLine}</div>
+                    ${validityLine}
+                </div>
+            `;
+        } else if (job.status === 'PENDING_PASS') {
+            const passEndDt = passDt ? new Date(passDt.getTime() + 5 * 60 * 1000) : null;
+            let passLine = '';
+
+            if (passDt) {
+                const secToPass = Math.round((passDt - now) / 1000);
+                const secToEnd = passEndDt ? Math.round((passEndDt - now) / 1000) : 0;
+
+                if (secToPass > 0) {
+                    passLine = `
+                        <div style="color: #4f46e5; font-weight: 600;">
+                            Flypast <span class="live-pass-countdown" data-timestamp="${passDt.getTime()}">In ${formatDuration(secToPass, true)}</span>
+                        </div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Catalog poll starts 5m after pass</div>
+                    `;
+                } else if (secToEnd > 0) {
+                    passLine = `
+                        <div style="color: #059669; font-weight: 600;">
+                            ⚡ Flypast Window Active
+                        </div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Scan poll starts in ${formatDuration(secToEnd, true)}</div>
+                    `;
+                } else {
+                    passLine = `
+                        <div style="color: #0284c7; font-weight: 600;">
+                            Flypast completed
+                        </div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Starting catalog poll...</div>
+                    `;
+                }
+            } else {
+                passLine = '<span style="color: #64748b;">Pending pass schedule</span>';
+            }
+
+            nextPollContent = `
+                <div class="polling-cell" data-job-id="${job.id}">
+                    ${passLine}
+                </div>
+            `;
+        } else if (job.status === 'INGESTING') {
+            nextPollContent = `
+                <div style="color: #b45309; font-weight: 600; display: flex; align-items: center; gap: 5px;">
+                    <span class="loading-spinner" style="width: 12px; height: 12px; border-color: #b45309; border-top-color: transparent;"></span>
+                    Ingesting Imagery...
+                </div>
+                <div style="font-size: 0.78rem; color: #64748b;">Downloading SAR product &amp; stitching DEM</div>
+            `;
+        } else if (job.status === 'COMPLETED') {
             const compDt = parseUtcDate(job.completed_at);
-            nextPollText = `Completed at ${compDt ? compDt.toLocaleTimeString() : 'N/A'}`;
+            const timeStr = compDt ? compDt.toLocaleTimeString() : 'N/A';
+            nextPollContent = `
+                <div style="color: #15803d; font-weight: 600;">
+                    ✓ Acquired on Check #${job.attempts || 1}
+                </div>
+                <div style="font-size: 0.78rem; color: #64748b;">Completed at ${timeStr}</div>
+            `;
         } else if (job.status === 'TIMED_OUT') {
-            nextPollText = `<div style="color: #64748b; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window')}">
-                ⏱️ <strong>Wait window expired:</strong> Product not published by Copernicus within 24h.
-            </div>`;
+            nextPollContent = `
+                <div style="color: #64748b; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window')}">
+                    ⏱️ <strong>Wait window expired:</strong> Product not published by Copernicus within 24h.
+                </div>
+            `;
         } else if (isTimingMismatch) {
-            nextPollText = `<div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message)}">
-                <strong>Missed Pass:</strong> Newer imagery detected in catalog.
-            </div>`;
+            nextPollContent = `
+                <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message)}">
+                    ⚠️ <strong>Missed Pass (Invalid):</strong> Newer imagery detected in catalog.
+                </div>
+            `;
         } else if (job.error_message) {
-            nextPollText = `<span style="color: #dc3545; font-size: 0.8rem;" title="${escapeHtml(job.error_message)}">${escapeHtml(job.error_message)}</span>`;
+            nextPollContent = `
+                <div style="color: #dc3545; font-size: 0.8rem;" title="${escapeHtml(job.error_message)}">
+                    ❌ ${escapeHtml(job.error_message)}
+                </div>
+            `;
         }
 
         let scanCell = '<span style="color: #94a3b8;">None</span>';
@@ -330,8 +558,7 @@ function renderPostPassTable(jobs) {
                     <div style="font-size: 0.8rem; color: #64748b;">${passStr}</div>
                 </td>
                 <td style="padding: 12px 14px;">
-                    <div style="font-size: 0.85rem; font-weight: 500; color: #0369a1;">${expStr}</div>
-                    <div style="font-size: 0.75rem; color: #64748b;">&plusmn;1h Window</div>
+                    ${timingContent}
                 </td>
                 <td style="padding: 12px 14px;">
                     <div style="font-weight: 500; color: #334155;">${escapeHtml(job.satellite || 'Sentinel-1')}</div>
@@ -341,7 +568,7 @@ function renderPostPassTable(jobs) {
                     ${statusBadge}
                 </td>
                 <td style="padding: 12px 14px; font-size: 0.85rem; color: #334155;">
-                    ${nextPollText}
+                    ${nextPollContent}
                 </td>
                 <td style="padding: 12px 14px;">
                     ${scanCell}

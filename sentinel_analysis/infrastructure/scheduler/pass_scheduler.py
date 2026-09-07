@@ -1,12 +1,15 @@
 """Background daemon worker for periodic satellite pass checks."""
 
 from datetime import datetime, timezone
+import logging
 import threading
 import time
 from typing import Any, Optional
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+
+logger = logging.getLogger(__name__)
 
 
 class PassSchedulerWorker:

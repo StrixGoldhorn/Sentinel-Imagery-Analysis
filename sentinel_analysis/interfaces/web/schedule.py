@@ -143,6 +143,8 @@ def get_post_pass_jobs():
             jobs = [j for j in jobs if j.status.upper() == status_filter.strip().upper()]
 
     def _job_dict(job):
+        exp_time = job.expected_imagery_time or job.pass_time
+        expires_at = (exp_time + timedelta(hours=24)) if exp_time else None
         return {
             "id": job.id,
             "aoi_id": job.aoi_id,
@@ -155,6 +157,8 @@ def get_post_pass_jobs():
             "attempts": job.attempts,
             "last_polled_at": job.last_polled_at.isoformat() if job.last_polled_at else None,
             "next_poll_at": job.next_poll_at.isoformat() if job.next_poll_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "max_wait_hours": 24.0,
             "scan_folder": job.scan_folder,
             "error_message": job.error_message,
             "created_at": job.created_at.isoformat() if job.created_at else None,
