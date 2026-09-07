@@ -63,6 +63,7 @@ def create_scan():
             days_ago = int(days_ago)
         except (TypeError, ValueError):
             days_ago = 30
+    aoi_name = optional_string(payload, "aoi_name")
     scan = container().create_scan.execute(
         bbox,
         days_ago=days_ago,

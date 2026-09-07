@@ -33,6 +33,7 @@ def create_async_scan():
     if start_date is not None and end_date is not None and start_date > end_date:
         raise RequestValidationError("Start date/time cannot be after end date/time")
 
+    aoi_name = optional_string(payload, "aoi_name")
     queue = container().task_queue
     cnt = container()
 
