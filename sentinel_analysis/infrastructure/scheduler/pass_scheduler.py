@@ -16,18 +16,43 @@ class PassSchedulerWorker:
         self,
         schedule_use_case: CheckAndScheduleAOIs,
         api_key: Optional[str] = None,
-        poll_interval_seconds: float = 60.0,
+        poll_interval_seconds: float = 3600.0,
         post_pass_repo: Optional[PostPassIngestionRepository] = None,
+        settings_repo: Optional[Any] = None,
     ) -> None:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
         self._poll_interval = poll_interval_seconds
         self._post_pass_repo = post_pass_repo
+        self._settings_repo = settings_repo
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._last_run_at: Optional[datetime] = None
         self._last_results: list[dict[str, Any]] = []
         self._last_error: Optional[str] = None
+
+    def get_poll_interval(self) -> float:
+        """Return the effective poll interval in seconds, checking settings if available."""
+        if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
+            try:
+                val = self._settings_repo.get("poll_interval_seconds")
+                if val is not None:
+                    fval = float(val)
+                    if fval >= 1.0:
+                        return fval
+            except Exception:
+                pass
+        return self._poll_interval
+
+    def set_poll_interval(self, seconds: float) -> None:
+        """Update the poll interval in seconds."""
+        val = max(1.0, float(seconds))
+        self._poll_interval = val
+        if self._settings_repo is not None and hasattr(self._settings_repo, "set"):
+            try:
+                self._settings_repo.set("scheduler", "poll_interval_seconds", val)
+            except Exception:
+                pass
 
     def start(self) -> None:
         if not self._api_key:
@@ -45,11 +70,14 @@ class PassSchedulerWorker:
                     self.trigger_check()
             except Exception as exc:
                 self._last_error = str(exc)
-            # Sleep in 1s increments so we can exit cleanly on stop
-            for _ in range(int(self._poll_interval)):
-                if not self._running:
+            # Sleep in 1s increments, dynamically respecting changes to poll interval
+            elapsed = 0.0
+            while self._running:
+                interval = self.get_poll_interval()
+                if elapsed >= interval:
                     break
                 time.sleep(1)
+                elapsed += 1.0
 
     def trigger_check(self) -> list[dict[str, Any]]:
         """Run an immediate check cycle across active AOIs."""
@@ -78,7 +106,7 @@ class PassSchedulerWorker:
         return {
             "is_running": self._running,
             "api_key_configured": bool(self._api_key),
-            "poll_interval_seconds": self._poll_interval,
+            "poll_interval_seconds": self.get_poll_interval(),
             "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
             "last_error": self._last_error,
             "last_results_count": len(self._last_results),

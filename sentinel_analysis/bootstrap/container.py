@@ -132,11 +132,21 @@ class ApplicationContainer:
             self.aoi_repository,
             self.hybrid_predictor,
         )
+        scheduler_poll_interval = 3600.0
+        if hasattr(self, "settings_repository") and self.settings_repository is not None:
+            saved_poll_interval = self.settings_repository.get("poll_interval_seconds")
+            if saved_poll_interval is not None:
+                try:
+                    scheduler_poll_interval = float(saved_poll_interval)
+                except (ValueError, TypeError):
+                    pass
+
         self.pass_scheduler = PassSchedulerWorker(
             self.schedule_aois,
             settings.n2yo_api_key or "default_key",
-            poll_interval_seconds=60.0,
+            poll_interval_seconds=scheduler_poll_interval,
             post_pass_repo=self.post_pass_repository,
+            settings_repo=self.settings_repository,
         )
 
         self.get_settings = GetSettings(self.settings_repository)

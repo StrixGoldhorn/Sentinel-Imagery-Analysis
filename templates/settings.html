@@ -289,8 +289,8 @@
 
                         <div class="settings-card">
                             <label for="input_scheduler_poll_interval_seconds" class="setting-title">Scheduler Poll Interval (Seconds)</label>
-                            <p class="setting-description">Frequency at which the background worker verifies upcoming passes.</p>
-                            <input type="number" id="input_scheduler_poll_interval_seconds" class="form-input" min="10" max="3600" value="60">
+                            <p class="setting-description">Frequency at which the background worker verifies upcoming passes and post-pass imagery (3600s = 1 hour).</p>
+                            <input type="number" id="input_scheduler_poll_interval_seconds" class="form-input" min="10" max="86400" step="60" value="3600">
                         </div>
 
                         <div class="settings-card">

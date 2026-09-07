@@ -68,7 +68,7 @@ def get_scheduler_status():
         status_info = {
             "is_running": False,
             "api_key_configured": bool(container().settings.n2yo_api_key),
-            "poll_interval_seconds": 60.0,
+            "poll_interval_seconds": 3600.0,
             "last_run_at": None,
             "last_error": None,
             "last_results_count": 0,

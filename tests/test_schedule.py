@@ -332,6 +332,7 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status["is_running"] is False
     assert status["api_key_configured"] is True
     assert status["last_run_at"] is None
+    assert status["poll_interval_seconds"] == 60.0
 
     results = worker.trigger_check()
     assert results == []
@@ -339,6 +340,43 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     status_after = worker.get_status()
     assert status_after["last_run_at"] is not None
     assert status_after["last_error"] is None
+
+
+def test_pass_scheduler_worker_default_interval_is_one_hour() -> None:
+    aoi_repo = StubAOIRepo([])
+    check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
+    worker = PassSchedulerWorker(check_aois, api_key="dummy_key")
+
+    assert worker.get_poll_interval() == 3600.0
+    status = worker.get_status()
+    assert status["poll_interval_seconds"] == 3600.0
+
+
+def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
+    aoi_repo = StubAOIRepo([])
+    check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
+
+    class MockSettingsRepo:
+        def __init__(self, initial_interval=1800.0):
+            self.settings = {"poll_interval_seconds": initial_interval}
+
+        def get(self, key, default=None):
+            return self.settings.get(key, default)
+
+        def set(self, section, key, value):
+            self.settings[key] = value
+
+    mock_repo = MockSettingsRepo(initial_interval=1800.0)
+    worker = PassSchedulerWorker(check_aois, api_key="dummy_key", settings_repo=mock_repo)
+
+    assert worker.get_poll_interval() == 1800.0
+    assert worker.get_status()["poll_interval_seconds"] == 1800.0
+
+    # Test updating dynamically via set_poll_interval
+    worker.set_poll_interval(7200.0)
+    assert worker.get_poll_interval() == 7200.0
+    assert mock_repo.get("poll_interval_seconds") == 7200.0
+
 
 
 def load_tests(loader, standard_tests, pattern):

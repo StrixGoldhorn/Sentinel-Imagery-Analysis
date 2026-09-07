@@ -49,6 +49,13 @@ def update_settings_api():
 
     try:
         app_container.update_settings.execute(payload)
+        if hasattr(app_container, "pass_scheduler") and app_container.pass_scheduler is not None:
+            updated_interval = app_container.settings_repository.get("poll_interval_seconds")
+            if updated_interval is not None:
+                try:
+                    app_container.pass_scheduler.set_poll_interval(float(updated_interval))
+                except Exception:
+                    pass
         return jsonify({
             "status": "success",
             "message": "Settings updated successfully",
@@ -73,6 +80,13 @@ def reset_settings_api():
     section = payload.get("section")
     try:
         app_container.reset_settings.execute(section=section)
+        if hasattr(app_container, "pass_scheduler") and app_container.pass_scheduler is not None:
+            updated_interval = app_container.settings_repository.get("poll_interval_seconds")
+            if updated_interval is not None:
+                try:
+                    app_container.pass_scheduler.set_poll_interval(float(updated_interval))
+                except Exception:
+                    pass
         return jsonify({
             "status": "success",
             "message": f"Settings for '{section}' reset to defaults" if section else "All settings reset to defaults",
