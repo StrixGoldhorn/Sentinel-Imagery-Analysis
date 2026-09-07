@@ -28,6 +28,7 @@ class CheckAndScheduleAOIs:
         post_pass_repository: Optional[PostPassIngestionRepository] = None,
         ingest_post_pass: Optional[IngestPostPassImagery] = None,
         settings_repo: Optional[Any] = None,
+        pass_monitor: Optional[Any] = None,
     ) -> None:
         self._aois = aoi_repository
         self._predictor = pass_predictor
@@ -36,6 +37,11 @@ class CheckAndScheduleAOIs:
         self._post_pass_repo = post_pass_repository
         self._ingest_post_pass = ingest_post_pass
         self._settings_repo = settings_repo
+        self._pass_monitor = pass_monitor
+
+    @property
+    def pass_monitor(self) -> Optional[Any]:
+        return self._pass_monitor
 
     def get_enabled_satellites(self) -> list[str] | None:
         if self._settings_repo is not None:
@@ -154,6 +160,12 @@ class CheckAndScheduleAOIs:
 
                 if active_flypast_time:
                     is_flypast_active = True
+                    if self._pass_monitor is not None:
+                        self._pass_monitor.schedule_or_start(
+                            aoi=aoi,
+                            pass_time=active_flypast_time,
+                            active_pass_info=active_pass_info,
+                        )
                     if self._ingest_ais is not None:
                         # 1-minute scrape window around current minute within the pass window
                         start_time = max(active_flypast_time - timedelta(minutes=5), now - timedelta(minutes=1))
@@ -170,7 +182,6 @@ class CheckAndScheduleAOIs:
                                 (start_time, end_time),
                             )
                         ais_records_scraped = ingest_res["total_inserted"]
-
                     # Once an AOI is auto scanned, the job is added.
                     # Otherwise, if no AOI autoscan happens (e.g. if the application was not running at that time), DO NOT ADD JOB.
                     if self._post_pass_repo is not None and aoi.id is not None:
@@ -217,6 +228,13 @@ class CheckAndScheduleAOIs:
                                     expected_imagery_time=existing.expected_imagery_time,
                                 )
                                 self._post_pass_repo.update(updated_job)
+                elif next_pass and self._pass_monitor is not None:
+                    next_info = next((p for p in parsed_passes if p["time"] == next_pass), None)
+                    self._pass_monitor.schedule_or_start(
+                        aoi=aoi,
+                        pass_time=next_pass,
+                        active_pass_info=next_info,
+                    )
 
                 results.append({
                     "aoi_id": aoi.id,

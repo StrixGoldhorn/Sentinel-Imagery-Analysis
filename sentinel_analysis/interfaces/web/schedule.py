@@ -77,6 +77,7 @@ def get_scheduler_status():
             "last_run_at": None,
             "last_error": None,
             "last_results_count": 0,
+            "active_pass_monitors": [],
             "thread_alive": False,
         }
     return jsonify(status="success", scheduler=status_info)

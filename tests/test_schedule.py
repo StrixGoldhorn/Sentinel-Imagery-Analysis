@@ -378,6 +378,30 @@ def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
     assert mock_repo.get("poll_interval_seconds") == 7200.0
 
 
+def test_pass_scheduler_worker_polls_due_post_pass_jobs() -> None:
+    aoi_repo = StubAOIRepo([])
+    check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
+
+    class MockIngestPostPass:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, job_id=None):
+            self.calls += 1
+            return []
+
+    mock_ingest = MockIngestPostPass()
+    worker = PassSchedulerWorker(check_aois, api_key="dummy_key", ingest_post_pass=mock_ingest)
+
+    class MockPostPassRepo:
+        def get_jobs_due_for_poll(self, now):
+            return ["dummy_job"]
+
+    worker._post_pass_repo = MockPostPassRepo()
+    worker._poll_due_post_pass_jobs()
+    assert mock_ingest.calls == 1
+
+
 
 def load_tests(loader, standard_tests, pattern):
     suite = unittest.TestSuite()

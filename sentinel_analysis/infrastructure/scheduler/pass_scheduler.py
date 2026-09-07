@@ -19,12 +19,16 @@ class PassSchedulerWorker:
         poll_interval_seconds: float = 3600.0,
         post_pass_repo: Optional[PostPassIngestionRepository] = None,
         settings_repo: Optional[Any] = None,
+        pass_monitor: Optional[Any] = None,
+        ingest_post_pass: Optional[Any] = None,
     ) -> None:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
         self._poll_interval = poll_interval_seconds
         self._post_pass_repo = post_pass_repo
         self._settings_repo = settings_repo
+        self._pass_monitor = pass_monitor or getattr(schedule_use_case, "pass_monitor", None)
+        self._ingest_post_pass = ingest_post_pass or getattr(schedule_use_case, "_ingest_post_pass", None)
         self._running = False
         self._thread: Optional[threading.Thread] = None
         self._last_run_at: Optional[datetime] = None
@@ -55,29 +59,48 @@ class PassSchedulerWorker:
                 pass
 
     def start(self) -> None:
-        if not self._api_key:
-            return  # N2YO API key not configured, pass scheduler disabled
         if self._running:
             return
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="pass-scheduler")
         self._thread.start()
 
+    def _poll_due_post_pass_jobs(self) -> None:
+        """Check and process any post-pass catalog jobs that are due."""
+        ingest_uc = self._ingest_post_pass or getattr(self._schedule_use_case, "_ingest_post_pass", None)
+        if ingest_uc is not None and self._post_pass_repo is not None:
+            try:
+                now = datetime.now(timezone.utc)
+                due_jobs = self._post_pass_repo.get_jobs_due_for_poll(now)
+                if due_jobs:
+                    logger.info("Polling %d due post-pass catalog jobs...", len(due_jobs))
+                    ingest_uc.execute()
+            except Exception as exc:
+                logger.warning("Error during periodic post-pass catalog check: %s", exc)
+
     def _run_loop(self) -> None:
+        post_pass_check_interval = 30.0  # Check for due post-pass catalog jobs every 30 seconds
         while self._running:
             try:
                 if self._api_key:
                     self.trigger_check()
+                else:
+                    self._poll_due_post_pass_jobs()
             except Exception as exc:
                 self._last_error = str(exc)
             # Sleep in 1s increments, dynamically respecting changes to poll interval
             elapsed = 0.0
+            post_pass_elapsed = 0.0
             while self._running:
                 interval = self.get_poll_interval()
                 if elapsed >= interval:
                     break
                 time.sleep(1)
                 elapsed += 1.0
+                post_pass_elapsed += 1.0
+                if post_pass_elapsed >= post_pass_check_interval:
+                    post_pass_elapsed = 0.0
+                    self._poll_due_post_pass_jobs()
 
     def trigger_check(self) -> list[dict[str, Any]]:
         """Run an immediate check cycle across active AOIs."""
@@ -103,6 +126,13 @@ class PassSchedulerWorker:
             except Exception:
                 pass
 
+        active_monitors = []
+        if self._pass_monitor is not None and hasattr(self._pass_monitor, "get_active_monitors"):
+            try:
+                active_monitors = self._pass_monitor.get_active_monitors()
+            except Exception:
+                pass
+
         return {
             "is_running": self._running,
             "api_key_configured": bool(self._api_key),
@@ -111,11 +141,17 @@ class PassSchedulerWorker:
             "last_error": self._last_error,
             "last_results_count": len(self._last_results),
             "active_post_pass_jobs_count": active_jobs_count,
+            "active_pass_monitors": active_monitors,
             "thread_alive": bool(self._thread and self._thread.is_alive()),
         }
 
     def stop(self) -> None:
         self._running = False
+        if self._pass_monitor is not None and hasattr(self._pass_monitor, "stop_all"):
+            try:
+                self._pass_monitor.stop_all()
+            except Exception:
+                pass
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 

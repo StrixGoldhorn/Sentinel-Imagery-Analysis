@@ -48,6 +48,7 @@ from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteS
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
+from sentinel_analysis.infrastructure.scheduler.pass_monitor import BackgroundPassMonitor
 from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedulerWorker
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
 
@@ -124,6 +125,10 @@ class ApplicationContainer:
             self.create_scan,
             self.detect_ships,
         )
+        self.pass_monitor = BackgroundPassMonitor(
+            self.ingest_ais,
+            self.post_pass_repository,
+        )
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,
             self.hybrid_predictor,
@@ -132,6 +137,7 @@ class ApplicationContainer:
             self.post_pass_repository,
             self.ingest_post_pass,
             settings_repo=self.settings_repository,
+            pass_monitor=self.pass_monitor,
         )
         self.get_upcoming_scrapes = GetUpcomingScrapes(
             self.aoi_repository,
@@ -153,6 +159,8 @@ class ApplicationContainer:
             poll_interval_seconds=scheduler_poll_interval,
             post_pass_repo=self.post_pass_repository,
             settings_repo=self.settings_repository,
+            pass_monitor=self.pass_monitor,
+            ingest_post_pass=self.ingest_post_pass,
         )
 
         self.get_settings = GetSettings(self.settings_repository)
