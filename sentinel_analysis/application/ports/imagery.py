@@ -1,5 +1,6 @@
 """Application-owned contracts for acquiring and combining satellite imagery."""
 
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol, Sequence, runtime_checkable
 
@@ -17,6 +18,8 @@ class ImageryProvider(Protocol):
         self,
         bbox: BoundingBox,
         days_ago: int | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> Acquisition | None:
         ...
 

@@ -8,6 +8,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     RequestValidationError,
     bounding_box,
     json_object,
+    optional_datetime,
     optional_string,
 )
 from sentinel_analysis.interfaces.web.serialization import scan_image_url
@@ -19,12 +20,29 @@ blueprint = Blueprint("tasks", __name__)
 def create_async_scan():
     payload = json_object()
     bbox = bounding_box(payload)
-    aoi_name = optional_string(payload, "aoi_name")
+    start_date = (
+        optional_datetime(payload, "start_datetime", is_end_of_day=False)
+        or optional_datetime(payload, "start_date", time_field="start_time", is_end_of_day=False)
+        or optional_datetime(payload, "date_from", time_field="time_from", is_end_of_day=False)
+    )
+    end_date = (
+        optional_datetime(payload, "end_datetime", is_end_of_day=True)
+        or optional_datetime(payload, "end_date", time_field="end_time", is_end_of_day=True)
+        or optional_datetime(payload, "date_to", time_field="time_to", is_end_of_day=True)
+    )
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise RequestValidationError("Start date/time cannot be after end date/time")
+
     queue = container().task_queue
     cnt = container()
 
     def _run_scan() -> dict[str, object]:
-        scan = cnt.create_scan.execute(bbox, aoi_name=aoi_name)
+        scan = cnt.create_scan.execute(
+            bbox,
+            aoi_name=aoi_name,
+            start_date=start_date,
+            end_date=end_date,
+        )
         return {
             "folderName": scan.folder_name,
             "customName": scan.metadata.get("custom_name") or scan.folder_name,

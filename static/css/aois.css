@@ -469,3 +469,109 @@ body {
     to { transform: rotate(360deg); }
 }
 
+.aoi-sar-section {
+    margin-top: 10px;
+    padding: 12px 16px;
+    background: var(--bg-subtle, #f8fafc);
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: var(--radius-md, 6px);
+}
+
+.aoi-sar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.aoi-sar-title {
+    font-weight: 600;
+    font-size: var(--font-size-sm, 0.9rem);
+    color: var(--text-primary, #1e293b);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.aoi-sar-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.aoi-sar-input-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.aoi-sar-input-group label {
+    margin: 0;
+    font-size: var(--font-size-xs, 0.82rem);
+    font-weight: 500;
+    color: var(--text-secondary, #475569);
+    white-space: nowrap;
+}
+
+.aoi-sar-input-group input[type="date"],
+.aoi-sar-input-group input[type="datetime-local"] {
+    padding: 4px 8px;
+    font-size: var(--font-size-xs, 0.82rem);
+    border: 1px solid var(--border-color-strong, #cbd5e1);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--card-bg, #ffffff);
+    color: var(--text-primary, #0f172a);
+    min-width: 215px;
+}
+
+/* AOI SAR Datetime Range Controls */
+.aoi-range-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-top: 4px;
+    width: 100%;
+}
+
+.aoi-range-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.aoi-range-row label {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 500;
+    color: #64748b;
+    min-width: 38px;
+    flex-shrink: 0;
+}
+
+.aoi-range-row input[type="datetime-local"],
+.aoi-range-row input[type="date"] {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    padding: 2px 6px;
+    font-size: 0.76rem;
+    line-height: 1.4;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #0f172a;
+    box-sizing: border-box;
+}
+
+.aoi-range-row input[type="datetime-local"]:focus,
+.aoi-range-row input[type="date"]:focus {
+    outline: none;
+    border-color: #0284c7;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+

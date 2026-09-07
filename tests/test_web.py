@@ -54,6 +54,17 @@ class StubUseCase:
 
 
 
+class StubAOIRepository:
+    def __init__(self, aois=None):
+        self._aois = {a.id: a for a in (aois or [])}
+
+    def get(self, aoi_id):
+        return self._aois.get(aoi_id)
+
+    def list(self):
+        return list(self._aois.values())
+
+
 class StubTaskQueue:
     def __init__(self):
         self.tasks = {}
@@ -176,7 +187,7 @@ class StubContainer:
             "metrics": {"total_runs": 1, "total_records": 25, "overall_success_rate": 100.0},
         })
         self.task_queue = StubTaskQueue()
-        self.aoi_repository = None
+        self.aoi_repository = StubAOIRepository([AreaOfInterest(name="Singapore Strait", bbox=BBOX, id=42)])
         self.ais_repository = None
         self.pass_scheduler = None
         self.settings_repository = None
@@ -668,6 +679,117 @@ def test_delete_aoi_post_fallback_api_route() -> None:
     assert response.status_code == 200
     assert response.json["status"] == "success"
     assert container.delete_aoi.calls == [(42,)]
+
+
+def test_scan_aoi_api_route_with_default_date_range() -> None:
+    client, container, _, _ = make_client()
+    response = client.post("/api/aoi/42/scan")
+    assert response.status_code == 201
+    assert response.json["status"] == "success"
+    assert "start_date" in response.json
+    assert "end_date" in response.json
+    assert len(container.create_scan.keyword_calls) == 1
+    call_kwargs = container.create_scan.keyword_calls[0]
+    assert call_kwargs["aoi_name"] == "Singapore Strait"
+    assert call_kwargs["start_date"] is not None
+    assert call_kwargs["end_date"] is not None
+    assert call_kwargs["start_date"] < call_kwargs["end_date"]
+
+
+def test_scan_aoi_api_route_with_custom_date_range() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan",
+        json={"start_date": "2026-08-01", "end_date": "2026-08-10"},
+    )
+    assert response.status_code == 201
+    assert response.json["status"] == "success"
+    assert "2026-08-01" in response.json["start_date"]
+    assert "2026-08-10" in response.json["end_date"]
+    call_kwargs = container.create_scan.keyword_calls[0]
+    assert call_kwargs["start_date"] == datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
+    assert call_kwargs["end_date"] == datetime(2026, 8, 10, 23, 59, 59, 999999, tzinfo=timezone.utc)
+
+
+def test_scan_aoi_api_route_inverted_date_range_returns_400() -> None:
+    client, _, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan",
+        json={"start_date": "2026-08-15", "end_date": "2026-08-01"},
+    )
+    assert response.status_code == 400
+    assert "cannot be after end" in response.json["error"]
+
+
+def test_scan_aoi_api_route_with_custom_time_range() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan",
+        json={"start_date": "2026-08-01T08:30", "end_date": "2026-08-10T14:45"},
+    )
+    assert response.status_code == 201
+    assert response.json["status"] == "success"
+    call_kwargs = container.create_scan.keyword_calls[0]
+    assert call_kwargs["start_date"] == datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc)
+    assert call_kwargs["end_date"] == datetime(2026, 8, 10, 14, 45, tzinfo=timezone.utc)
+
+
+def test_scan_aoi_api_route_with_separate_date_and_time() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan",
+        json={
+            "start_date": "2026-08-01",
+            "start_time": "08:30",
+            "end_date": "2026-08-10",
+            "end_time": "14:45",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json["status"] == "success"
+    call_kwargs = container.create_scan.keyword_calls[0]
+    assert call_kwargs["start_date"] == datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc)
+    assert call_kwargs["end_date"] == datetime(2026, 8, 10, 14, 45, tzinfo=timezone.utc)
+
+
+def test_scan_aoi_api_route_inverted_time_same_day_returns_400() -> None:
+    client, _, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan",
+        json={"start_date": "2026-08-01T15:00", "end_date": "2026-08-01T09:00"},
+    )
+    assert response.status_code == 400
+    assert "cannot be after end" in response.json["error"]
+
+
+def test_scan_aoi_api_route_async() -> None:
+    client, _, _, _ = make_client()
+    response = client.post(
+        "/api/aoi/42/scan?async=true&start_date=2026-08-01T08:30&end_date=2026-08-10T14:45",
+    )
+    assert response.status_code == 202
+    assert response.json["status"] == "pending"
+    assert response.json["task_id"] == "task_123"
+    assert "2026-08-01" in response.json["start_date"]
+    assert "2026-08-10" in response.json["end_date"]
+
+
+def test_create_scan_route_with_date_range() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/scan",
+        json={
+            "bbox": [103.0, 1.0, 104.0, 2.0],
+            "start_date": "2026-08-01",
+            "start_time": "08:30",
+            "end_date": "2026-08-10",
+            "end_time": "14:45",
+        },
+    )
+    assert response.status_code == 200
+    call_kwargs = container.create_scan.keyword_calls[0]
+    assert call_kwargs["start_date"] == datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc)
+    assert call_kwargs["end_date"] == datetime(2026, 8, 10, 14, 45, tzinfo=timezone.utc)
 
 
 def load_tests(loader, standard_tests, pattern):

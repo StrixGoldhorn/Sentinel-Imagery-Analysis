@@ -29,12 +29,35 @@ class CreateScan:
         bbox: BoundingBox,
         days_ago: int | None = None,
         aoi_name: str | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> Scan:
         if days_ago is not None:
             if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
                 raise ValueError("Imagery search window must be a positive number of days")
 
-        acquisition = self._imagery.find_latest_acquisition(bbox, days_ago)
+        if start_date is not None:
+            if start_date.utcoffset() is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+            start_date = start_date.astimezone(timezone.utc)
+        if end_date is not None:
+            if end_date.utcoffset() is None:
+                end_date = end_date.replace(tzinfo=timezone.utc)
+            end_date = end_date.astimezone(timezone.utc)
+
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError("start_date cannot be after end_date")
+
+        try:
+            acquisition = self._imagery.find_latest_acquisition(
+                bbox,
+                days_ago=days_ago,
+                start_date=start_date,
+                end_date=end_date,
+            )
+        except TypeError:
+            acquisition = self._imagery.find_latest_acquisition(bbox, days_ago)
+
         if acquisition is None:
             raise NoImageryFoundError("No SAR coverage found for this area")
 
@@ -97,14 +120,20 @@ class CreateScan:
                         dem_tile_path.unlink(missing_ok=True)
 
             latitude, longitude = bbox.center
+            settings_dict: dict[str, object] = {
+                "bbox": bbox.as_list(),
+                "evalscript": "EVALSCRIPT_SAR",
+                "datasource": acquisition.product_type,
+            }
+            if start_date is not None:
+                settings_dict["start_date"] = start_date.isoformat()
+            if end_date is not None:
+                settings_dict["end_date"] = end_date.isoformat()
+
             metadata: dict[str, object] = {
                 "acquisition_datetime": acquisition.acquired_at.isoformat(),
                 "satellite": acquisition.satellite,
-                "settings": {
-                    "bbox": bbox.as_list(),
-                    "evalscript": "EVALSCRIPT_SAR",
-                    "datasource": acquisition.product_type,
-                },
+                "settings": settings_dict,
                 "scraped_datetime": now.isoformat(),
                 "location": self._locations.resolve(latitude, longitude),
                 "dem_available": dem_available,

@@ -16,6 +16,32 @@ function parseUtcDate(val) {
     return isNaN(d.getTime()) ? null : d;
 }
 
+function getDefaultAoiDateRange() {
+    const now = new Date();
+    const fifteenDaysAgo = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+    const formatDateTime = (d) => {
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const hours = String(d.getUTCHours()).padStart(2, '0');
+        const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+    const formatDate = (d) => {
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    return {
+        startDateTime: formatDateTime(fifteenDaysAgo),
+        endDateTime: formatDateTime(now),
+        startDate: formatDate(fifteenDaysAgo),
+        endDate: formatDate(now)
+    };
+}
+window.getDefaultAoiDateRange = getDefaultAoiDateRange;
+
 function toggleAoiLayer(uiId) {
     const layerObj = aoiMapLayers.find(l => l.uiId === uiId);
     if (!layerObj) return;
@@ -81,6 +107,7 @@ async function loadAOIs() {
 
         aois.forEach(aoi => {
             const safeAoiName = escapeHtml(aoi.name || `AOI #${aoi.id}`);
+            const defaultDates = getDefaultAoiDateRange();
             if (aoiList) {
                 const div = document.createElement('div');
                 div.style.cssText = 'border: 1px solid #ddd; padding: 10px; border-radius: 5px; background: #fafafa;';
@@ -98,6 +125,22 @@ async function loadAOIs() {
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
                         <strong>${safeAoiName}</strong>
                         ${nextScanText}
+                    </div>
+                    <div style="margin-top: 5px; margin-bottom: 6px; padding: 6px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.75rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <span style="font-weight: 600; color: #475569;">SAR Range (UTC):</span>
+                            <span style="color: #94a3b8; font-size: 0.7rem;">Default: Last 15d</span>
+                        </div>
+                        <div class="aoi-range-container">
+                            <div class="aoi-range-row">
+                                <label for="aoi-drawer-start-${aoi.id}">From:</label>
+                                <input type="datetime-local" id="aoi-drawer-start-${aoi.id}" value="${defaultDates.startDateTime}" title="Start date and time in UTC (default 15 days ago)">
+                            </div>
+                            <div class="aoi-range-row">
+                                <label for="aoi-drawer-end-${aoi.id}">To:</label>
+                                <input type="datetime-local" id="aoi-drawer-end-${aoi.id}" value="${defaultDates.endDateTime}" title="End date and time in UTC (default current time)">
+                            </div>
+                        </div>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 4px; flex-wrap: wrap;">
                         <small style="color: #666; font-size: 0.7em;">BBox: [${aoi.bbox.map(n => n.toFixed(2)).join(', ')}]</small>
@@ -118,10 +161,10 @@ async function loadAOIs() {
 
             const lBounds = L.latLngBounds([[aoi.bbox[1], aoi.bbox[0]], [aoi.bbox[3], aoi.bbox[2]]]);
             const aoiRect = L.rectangle(lBounds, { color: CONFIG.COLOR_AOI_OUTLINE, weight: 2, fill: false, interactive: true })
-                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', minWidth: 200 });
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', minWidth: 270 });
             const tabMarker = L.circleMarker(lBounds.getNorthWest(), { radius: 6, opacity: 0, fillOpacity: 0, interactive: true })
                 .bindTooltip(`<strong>${safeAoiName}</strong><br><span style="font-size:0.75rem;color:#86efac;font-weight:600;">Type: Area of Interest</span>`, { permanent: true, className: 'folder-tab-tooltip folder-tab-aoi', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET })
-                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', offset: [15, -5], minWidth: 200 });
+                .bindPopup(() => getAoiTabPopupContent(aoi.id), { className: 'sar-tab-popup aoi-tab-popup', offset: [15, -5], minWidth: 270 });
 
             tabMarker.on('click', function() {
                 this.openPopup();
@@ -167,8 +210,24 @@ async function loadAOIs() {
                         <div class="aoi-drawer-content">
                             <div><strong>AOI Name:</strong> ${safeAoiName}</div>
                             <div><strong>Next Scan:</strong> ${zuluTime}</div>
+                            <div style="margin-top: 6px; margin-bottom: 6px; padding: 6px 8px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.75rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <span style="font-weight: 600; color: #475569;">SAR Range (UTC):</span>
+                                    <span style="color: #94a3b8; font-size: 0.7rem;">Default: Last 15d</span>
+                                </div>
+                                <div class="aoi-range-container">
+                                    <div class="aoi-range-row">
+                                        <label for="aoi-layer-start-${aoi.id}">From:</label>
+                                        <input type="datetime-local" id="aoi-layer-start-${aoi.id}" value="${defaultDates.startDateTime}" title="Start date and time in UTC (default 15 days ago)">
+                                    </div>
+                                    <div class="aoi-range-row">
+                                        <label for="aoi-layer-end-${aoi.id}">To:</label>
+                                        <input type="datetime-local" id="aoi-layer-end-${aoi.id}" value="${defaultDates.endDateTime}" title="End date and time in UTC (default current time)">
+                                    </div>
+                                </div>
+                            </div>
                             <button type="button" class="btn btn-sm btn-success" onclick="triggerAoiScan(${aoi.id})" style="background: #16a34a; border-color: #15803d; color: #ffffff;">
-                                🛰️ Initiate SAR Scan (Latest Imagery)
+                                🛰️ Initiate SAR Scan
                             </button>
                             <button type="button" class="btn btn-sm btn-warning" onclick="forceScanAOI(${aoi.id}, this)" style="background: #f59e0b; border-color: #d97706; color: #ffffff;">
                                 ⚡ Force AIS Scan
@@ -374,6 +433,7 @@ function getAoiTabPopupContent(aoiId) {
     const parsedScan = parseUtcDate(aoi.next_scan);
     const zuluTime = parsedScan ? parsedScan.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z' : 'Not predicted yet';
     const bboxStr = aoi.bbox ? aoi.bbox.map(n => Number(n).toFixed(3)).join(', ') : '';
+    const defaultDates = getDefaultAoiDateRange();
 
     return `
         <div class="sar-tab-popup-content aoi-tab-popup-content">
@@ -385,9 +445,25 @@ function getAoiTabPopupContent(aoiId) {
                 <div class="meta-row"><span class="meta-lbl">BBox:</span><span class="meta-val">[${bboxStr}]</span></div>
                 <div class="meta-row"><span class="meta-lbl">Next Scan:</span><span class="meta-val">${zuluTime}</span></div>
             </div>
+            <div style="margin-bottom: 8px; padding: 6px 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-weight: 600; color: #475569;">SAR Range (UTC):</span>
+                    <span style="color: #94a3b8; font-size: 0.7rem;">Default: Last 15d</span>
+                </div>
+                <div class="aoi-range-container">
+                    <div class="aoi-range-row">
+                        <label for="aoi-popup-start-${aoiId}">From:</label>
+                        <input type="datetime-local" id="aoi-popup-start-${aoiId}" value="${defaultDates.startDateTime}" title="Start date and time in UTC (default 15 days ago)">
+                    </div>
+                    <div class="aoi-range-row">
+                        <label for="aoi-popup-end-${aoiId}">To:</label>
+                        <input type="datetime-local" id="aoi-popup-end-${aoiId}" value="${defaultDates.endDateTime}" title="End date and time in UTC (default current time)">
+                    </div>
+                </div>
+            </div>
             <div class="sar-tab-popup-actions">
                 <button type="button" class="sar-tab-popup-btn-primary" style="background: #16a34a; border-color: #15803d; color: #ffffff;" onclick="triggerAoiScan(${aoiId})">
-                    🛰️ Initiate SAR Scan (Latest Imagery)
+                    🛰️ Initiate SAR Scan
                 </button>
                 <button type="button" class="sar-tab-popup-btn-warning" onclick="forceScanAOI(${aoiId}, this)">
                     ⚡ Force AIS Scan
@@ -403,11 +479,33 @@ function getAoiTabPopupContent(aoiId) {
     `;
 }
 
-async function triggerAoiScan(aoiId) {
+async function triggerAoiScan(aoiId, startDate, endDate) {
     if (typeof isScanning !== 'undefined' && isScanning) {
         showNotification("A scan is already in progress.", "warning");
         return;
     }
+
+    const defaultRange = getDefaultAoiDateRange();
+    if (!startDate) {
+        const popupStart = document.getElementById(`aoi-popup-start-${aoiId}`)?.value;
+        const layerStart = document.getElementById(`aoi-layer-start-${aoiId}`)?.value;
+        const drawerStart = document.getElementById(`aoi-drawer-start-${aoiId}`)?.value;
+        const cardStart = document.getElementById(`aoi-start-date-${aoiId}`)?.value;
+        startDate = popupStart || layerStart || drawerStart || cardStart || defaultRange.startDateTime || defaultRange.startDate;
+    }
+    if (!endDate) {
+        const popupEnd = document.getElementById(`aoi-popup-end-${aoiId}`)?.value;
+        const layerEnd = document.getElementById(`aoi-layer-end-${aoiId}`)?.value;
+        const drawerEnd = document.getElementById(`aoi-drawer-end-${aoiId}`)?.value;
+        const cardEnd = document.getElementById(`aoi-end-date-${aoiId}`)?.value;
+        endDate = popupEnd || layerEnd || drawerEnd || cardEnd || defaultRange.endDateTime || defaultRange.endDate;
+    }
+
+    if (startDate && endDate && startDate > endDate) {
+        showNotification("Start date/time cannot be after end date/time.", "warning");
+        return;
+    }
+
     const layerObj = aoiMapLayers.find(l => l.id === aoiId);
     const aoi = layerObj ? layerObj.aoi : null;
     const aoiName = aoi ? aoi.name : `AOI #${aoiId}`;
@@ -415,19 +513,30 @@ async function triggerAoiScan(aoiId) {
 
     if (map) map.closePopup();
 
-    showNotification(`Initiating SAR scan for ${aoiName}...`, "info");
+    const displayStart = startDate.replace('T', ' ');
+    const displayEnd = endDate.replace('T', ' ');
+    showNotification(`Initiating SAR scan for ${aoiName} (${displayStart} to ${displayEnd} UTC)...`, "info");
 
     const statusText = document.getElementById('status');
     const scanBtn = document.getElementById('scanBtn');
-    if (statusText) statusText.innerText = `Dispatching SAR acquisition for ${aoiName}...`;
+    if (statusText) statusText.innerText = `Dispatching SAR acquisition for ${aoiName} (${displayStart} to ${displayEnd} UTC)...`;
     if (scanBtn) scanBtn.disabled = true;
     if (typeof isScanning !== 'undefined') isScanning = true;
 
     try {
-        const asyncRes = await fetch(`/api/aoi/${aoiId}/scan?async=true`, {
+        const urlParams = new URLSearchParams({
+            async: 'true',
+            start_date: startDate,
+            end_date: endDate
+        });
+        const asyncRes = await fetch(`/api/aoi/${aoiId}/scan?${urlParams.toString()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ async: true })
+            body: JSON.stringify({
+                async: true,
+                start_date: startDate,
+                end_date: endDate
+            })
         });
 
         if (asyncRes.ok) {
@@ -453,7 +562,10 @@ async function triggerAoiScan(aoiId) {
         const syncRes = await fetch(`/api/aoi/${aoiId}/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
+            body: JSON.stringify({
+                start_date: startDate,
+                end_date: endDate
+            })
         });
         const result = await syncRes.json().catch(() => ({}));
         if (typeof handleScanCompletion === 'function') {

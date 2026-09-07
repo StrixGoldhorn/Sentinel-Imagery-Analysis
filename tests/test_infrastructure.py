@@ -306,6 +306,83 @@ def test_copernicus_catalog_response_is_translated_to_domain_acquisition() -> No
     assert "2014-01-01" in client.get_calls[1][1]["params"]["datetime"]
 
 
+def test_copernicus_find_latest_acquisition_with_date_range_and_sorting() -> None:
+    response = FakeResponse(
+        {
+            "features": [
+                {
+                    "id": "product-older",
+                    "properties": {"datetime": "2026-08-05T10:00:00Z"},
+                },
+                {
+                    "id": "product-newer",
+                    "properties": {"datetime": "2026-08-10T12:00:00Z"},
+                },
+            ]
+        }
+    )
+    client = FakeHTTPClient(get_responses=[response])
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    start = datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 8, 15, 23, 59, 59, tzinfo=timezone.utc)
+    acquisition = provider.find_latest_acquisition(BBOX, start_date=start, end_date=end)
+
+    assert acquisition is not None
+    assert acquisition.product_id == "product-newer"
+    assert acquisition.acquired_at == datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+    params = client.get_calls[0][1]["params"]
+    assert params["limit"] == 50
+    assert "2026-08-01T00:00:00Z/2026-08-15T23:59:59" in params["datetime"]
+
+
+def test_copernicus_find_latest_acquisition_rejects_inverted_dates() -> None:
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+    start = datetime(2026, 8, 20, tzinfo=timezone.utc)
+    end = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    try:
+        provider.find_latest_acquisition(BBOX, start_date=start, end_date=end)
+        assert False, "Expected ValueError"
+    except ValueError as exc:
+        assert "start_date cannot be after end_date" in str(exc)
+
+
+def test_copernicus_find_latest_acquisition_with_custom_time_range() -> None:
+    response = FakeResponse(
+        {
+            "features": [
+                {
+                    "id": "product-at-1230",
+                    "properties": {"datetime": "2026-08-10T12:30:00Z"},
+                },
+            ]
+        }
+    )
+    client = FakeHTTPClient(get_responses=[response])
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    start = datetime(2026, 8, 10, 8, 30, tzinfo=timezone.utc)
+    end = datetime(2026, 8, 10, 14, 45, tzinfo=timezone.utc)
+    acquisition = provider.find_latest_acquisition(BBOX, start_date=start, end_date=end)
+
+    assert acquisition is not None
+    assert acquisition.product_id == "product-at-1230"
+    params = client.get_calls[0][1]["params"]
+    assert params["datetime"] == "2026-08-10T08:30:00Z/2026-08-10T14:45:00Z"
+
+
+
 def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape() -> None:
     valid_client = FakeHTTPClient(
         get_responses=[FakeResponse({"info": {}, "passes": [{"maxUTC": 1787792400, "maxElev": 44}]})]

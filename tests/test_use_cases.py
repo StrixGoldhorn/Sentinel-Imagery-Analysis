@@ -33,7 +33,7 @@ BBOX = BoundingBox(103, 1, 104, 2)
 
 
 class EmptyImageryProvider:
-    def find_latest_acquisition(self, bbox, days_ago=None):
+    def find_latest_acquisition(self, bbox, days_ago=None, start_date=None, end_date=None):
         return Acquisition(datetime(2026, 8, 27, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
 
 
@@ -208,7 +208,13 @@ def test_create_scan_does_not_delete_when_workspace_preparation_fails() -> None:
 
 
 class WorkingImageryProvider:
-    def find_latest_acquisition(self, bbox, days_ago=None):
+    def __init__(self) -> None:
+        self.last_start_date = None
+        self.last_end_date = None
+
+    def find_latest_acquisition(self, bbox, days_ago=None, start_date=None, end_date=None):
+        self.last_start_date = start_date
+        self.last_end_date = end_date
         return Acquisition(datetime(2026, 8, 27, 12, 0, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd", product_id="S1A_TEST")
 
     def calculate_tiles(self, bbox):
@@ -227,6 +233,20 @@ class WorkingImageryProvider:
 class WorkingStitcher:
     def stitch(self, tiles, output_path, allow_empty=False):
         pass
+
+
+def test_create_scan_with_date_range_records_metadata_and_queries_provider() -> None:
+    repository = TrackingScanRepository()
+    imagery = WorkingImageryProvider()
+    use_case = CreateScan(imagery, WorkingStitcher(), repository, NoOpLocationResolver())
+    start = datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 8, 15, 23, 59, 59, tzinfo=timezone.utc)
+    scan = use_case.execute(BBOX, aoi_name="Malacca", start_date=start, end_date=end)
+
+    assert imagery.last_start_date == start
+    assert imagery.last_end_date == end
+    assert scan.metadata["settings"]["start_date"] == start.isoformat()
+    assert scan.metadata["settings"]["end_date"] == end.isoformat()
 
 
 def test_create_scan_with_aoi_name_formats_folder_and_metadata() -> None:

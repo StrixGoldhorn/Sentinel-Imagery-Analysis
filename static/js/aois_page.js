@@ -53,6 +53,141 @@ async function loadAOIs() {
     }
 }
 
+function getDefaultAoiDateRange() {
+    const now = new Date();
+    const fifteenDaysAgo = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
+    const formatDateTime = (d) => {
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const hours = String(d.getUTCHours()).padStart(2, '0');
+        const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+    const formatDate = (d) => {
+        const year = d.getUTCFullYear();
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    return {
+        startDateTime: formatDateTime(fifteenDaysAgo),
+        endDateTime: formatDateTime(now),
+        startDate: formatDate(fifteenDaysAgo),
+        endDate: formatDate(now)
+    };
+}
+window.getDefaultAoiDateRange = getDefaultAoiDateRange;
+
+function resetAoiDateRange(aoiId) {
+    const def = getDefaultAoiDateRange();
+    const startInput = document.getElementById(`aoi-start-date-${aoiId}`);
+    const endInput = document.getElementById(`aoi-end-date-${aoiId}`);
+    if (startInput) startInput.value = def.startDateTime;
+    if (endInput) endInput.value = def.endDateTime;
+    const statusEl = document.getElementById(`sar-status-${aoiId}`);
+    if (statusEl) statusEl.textContent = '';
+}
+window.resetAoiDateRange = resetAoiDateRange;
+
+async function getAoiSarImagery(aoiId) {
+    const startInput = document.getElementById(`aoi-start-date-${aoiId}`);
+    const endInput = document.getElementById(`aoi-end-date-${aoiId}`);
+    const btn = document.getElementById(`btn-sar-${aoiId}`);
+    const statusEl = document.getElementById(`sar-status-${aoiId}`);
+
+    const startDate = startInput ? startInput.value : '';
+    const endDate = endInput ? endInput.value : '';
+
+    if (startDate && endDate && startDate > endDate) {
+        showToast("Start date/time cannot be after end date/time.", "warning");
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.innerHTML = '<span class="loading-spinner"></span> Requesting SAR scan...';
+
+    try {
+        const urlParams = new URLSearchParams({
+            async: 'true',
+            start_date: startDate,
+            end_date: endDate
+        });
+        const res = await fetch(`/api/aoi/${aoiId}/scan?${urlParams.toString()}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                async: true,
+                start_date: startDate,
+                end_date: endDate
+            })
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const taskId = data.task_id;
+        if (statusEl) statusEl.innerHTML = '<span class="loading-spinner"></span> Acquisition in progress...';
+        showToast(`SAR acquisition started for AOI #${aoiId}. Processing...`, "info");
+
+        if (taskId) {
+            pollSarTaskStatus(taskId, aoiId);
+        } else {
+            if (btn) btn.disabled = false;
+            if (statusEl) statusEl.innerHTML = '✅ Scan completed!';
+            showToast(`SAR scan completed!`, "success");
+        }
+    } catch (err) {
+        console.error("Error acquiring SAR imagery:", err);
+        if (btn) btn.disabled = false;
+        if (statusEl) statusEl.textContent = `❌ ${err.message}`;
+        showToast(`Failed to get SAR imagery: ${err.message}`, "error");
+    }
+}
+window.getAoiSarImagery = getAoiSarImagery;
+
+async function pollSarTaskStatus(taskId, aoiId) {
+    const btn = document.getElementById(`btn-sar-${aoiId}`);
+    const statusEl = document.getElementById(`sar-status-${aoiId}`);
+
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`/api/tasks/${taskId}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                clearInterval(interval);
+                if (btn) btn.disabled = false;
+                if (statusEl) statusEl.textContent = `❌ Error polling task`;
+                return;
+            }
+
+            if (data.status === "completed") {
+                clearInterval(interval);
+                if (btn) btn.disabled = false;
+                if (statusEl) statusEl.innerHTML = '✅ Scan complete! <a href="/" style="font-weight: 600; color: #16a34a; text-decoration: underline;">View on Main Map</a>';
+                showToast(`SAR imagery successfully acquired for AOI #${aoiId}!`, "success");
+            } else if (data.status === "failed") {
+                clearInterval(interval);
+                if (btn) btn.disabled = false;
+                const errMsg = data.error || data.message || "Acquisition failed";
+                if (statusEl) statusEl.textContent = `❌ ${errMsg}`;
+                showToast(`SAR acquisition failed: ${errMsg}`, "error");
+            } else {
+                if (statusEl) {
+                    const msg = data.message ? ` (${data.message})` : '';
+                    statusEl.innerHTML = `<span class="loading-spinner"></span> Processing...${msg}`;
+                }
+            }
+        } catch (e) {
+            clearInterval(interval);
+            if (btn) btn.disabled = false;
+            if (statusEl) statusEl.textContent = '❌ Connection lost';
+        }
+    }, 2500);
+}
+
 function createAoiCard(aoi) {
     const card = document.createElement('div');
     card.className = 'aoi-card';
@@ -61,6 +196,7 @@ function createAoiCard(aoi) {
     const safeName = escapeHtml(aoi.name || `AOI #${aoi.id}`);
     const bboxFormatted = aoi.bbox.map(n => Number(n).toFixed(2)).join(', ');
     const isAuto = aoi.auto_capture_enabled ? 'checked' : '';
+    const defaultDates = getDefaultAoiDateRange();
 
     let nextScanBadge = '<span class="badge badge-secondary">Not predicted</span>';
     if (aoi.next_scan) {
@@ -124,6 +260,34 @@ function createAoiCard(aoi) {
                         </svg>
                         Delete
                     </button>
+                </div>
+            </div>
+
+            <div class="aoi-sar-section">
+                <div class="aoi-sar-header">
+                    <span class="aoi-sar-title">
+                        <span>🛰️</span> SAR Imagery Acquisition (Sentinel-1)
+                    </span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted, #64748b);">Default: 15 days ago to current (UTC)</span>
+                </div>
+                <div class="aoi-sar-controls">
+                    <div class="aoi-sar-input-group">
+                        <label for="aoi-start-date-${aoi.id}">From (UTC):</label>
+                        <input type="datetime-local" id="aoi-start-date-${aoi.id}" value="${defaultDates.startDateTime}" title="Start date and time for SAR search (default 15 days ago)">
+                    </div>
+                    <div class="aoi-sar-input-group">
+                        <label for="aoi-end-date-${aoi.id}">To (UTC):</label>
+                        <input type="datetime-local" id="aoi-end-date-${aoi.id}" value="${defaultDates.endDateTime}" title="End date and time for SAR search (default current time)">
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <button class="btn btn-sm btn-success" id="btn-sar-${aoi.id}" onclick="getAoiSarImagery(${aoi.id})" style="background: #16a34a; border-color: #15803d; color: #ffffff; padding: 4px 12px; font-weight: 500;" title="Fetch latest Sentinel-1 SAR imagery for ${safeName} within selected dates">
+                            Get SAR Imagery
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetAoiDateRange(${aoi.id})" style="padding: 4px 8px; font-size: 0.8rem;" title="Reset date range to default (15 days ago to today)">
+                            Reset
+                        </button>
+                    </div>
+                    <span id="sar-status-${aoi.id}" style="font-size: 0.82rem; color: var(--text-secondary, #64748b); margin-left: 4px;"></span>
                 </div>
             </div>
 

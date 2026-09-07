@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 
 from sentinel_analysis.interfaces.web.dependencies import container
@@ -7,6 +7,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     boolean,
     bounding_box,
     json_object,
+    optional_datetime,
     optional_string,
     required_string,
 )
@@ -189,11 +190,79 @@ def scan_aoi(aoi_id: int):
     if aoi is None:
         return jsonify(error=f"Area of Interest {aoi_id} not found"), 404
 
+    payload = request.get_json(silent=True) or {} if request.is_json else {}
+    if not isinstance(payload, dict):
+        payload = {}
+
     is_async = request.args.get("async", "").lower() in ("true", "1", "yes")
-    if request.is_json:
-        payload = request.get_json(silent=True) or {}
-        if isinstance(payload, dict) and (payload.get("async") or payload.get("is_async")):
-            is_async = True
+    if payload.get("async") or payload.get("is_async"):
+        is_async = True
+
+    now = datetime.now(timezone.utc)
+    default_start = now - timedelta(days=15)
+    default_end = now
+
+    start_raw = (
+        request.args.get("start_datetime")
+        or request.args.get("start_date")
+        or request.args.get("date_from")
+        or payload.get("start_datetime")
+        or payload.get("start_date")
+        or payload.get("date_from")
+    )
+    start_time_raw = (
+        request.args.get("start_time")
+        or request.args.get("time_from")
+        or payload.get("start_time")
+        or payload.get("time_from")
+    )
+
+    end_raw = (
+        request.args.get("end_datetime")
+        or request.args.get("end_date")
+        or request.args.get("date_to")
+        or payload.get("end_datetime")
+        or payload.get("end_date")
+        or payload.get("date_to")
+    )
+    end_time_raw = (
+        request.args.get("end_time")
+        or request.args.get("time_to")
+        or payload.get("end_time")
+        or payload.get("time_to")
+    )
+
+    days_ago = None
+    if "days_ago" in payload or "days_ago" in request.args:
+        try:
+            days_ago = int(payload.get("days_ago") or request.args.get("days_ago"))
+        except (TypeError, ValueError):
+            pass
+
+    if start_raw is not None:
+        start_date = optional_datetime(
+            {"start_date": start_raw, "start_time": start_time_raw},
+            "start_date",
+            time_field="start_time",
+            is_end_of_day=False,
+        )
+    elif days_ago is not None:
+        start_date = now - timedelta(days=days_ago)
+    else:
+        start_date = default_start
+
+    if end_raw is not None:
+        end_date = optional_datetime(
+            {"end_date": end_raw, "end_time": end_time_raw},
+            "end_date",
+            time_field="end_time",
+            is_end_of_day=True,
+        )
+    else:
+        end_date = default_end
+
+    if start_date > end_date:
+        raise RequestValidationError("Start date/time cannot be after end date/time")
 
     if is_async:
         queue = cnt.task_queue
@@ -201,7 +270,12 @@ def scan_aoi(aoi_id: int):
         aoi_name = aoi.name
 
         def _run_scan() -> dict[str, object]:
-            scan = cnt.create_scan.execute(bbox, aoi_name=aoi_name)
+            scan = cnt.create_scan.execute(
+                bbox,
+                aoi_name=aoi_name,
+                start_date=start_date,
+                end_date=end_date,
+            )
             return {
                 "folderName": scan.folder_name,
                 "customName": scan.metadata.get("custom_name") or scan.folder_name,
@@ -210,6 +284,8 @@ def scan_aoi(aoi_id: int):
                 "datetime": scan.acquisition.acquired_at.isoformat(),
                 "aoi_id": aoi_id,
                 "aoi_name": aoi_name,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
             }
 
         task = queue.submit("scan", None, _run_scan)
@@ -219,9 +295,16 @@ def scan_aoi(aoi_id: int):
             "task_status": task.status,
             "aoi_id": aoi.id,
             "aoi_name": aoi.name,
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
         }), 202
 
-    scan = cnt.create_scan.execute(aoi.bbox, aoi_name=aoi.name)
+    scan = cnt.create_scan.execute(
+        aoi.bbox,
+        aoi_name=aoi.name,
+        start_date=start_date,
+        end_date=end_date,
+    )
     return jsonify(
         status="success",
         aoi_id=aoi.id,
@@ -231,4 +314,6 @@ def scan_aoi(aoi_id: int):
         imageUrl=scan_image_url(scan, cnt.settings.output_root),
         bounds=[[aoi.bbox.min_latitude, aoi.bbox.min_longitude], [aoi.bbox.max_latitude, aoi.bbox.max_longitude]],
         datetime=scan.acquisition.acquired_at.isoformat(),
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
     ), 201

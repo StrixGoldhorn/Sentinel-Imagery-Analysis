@@ -1,5 +1,4 @@
-"""Strict parsing helpers for the JSON HTTP boundary."""
-
+from datetime import datetime, timezone
 from typing import Any
 
 from flask import request
@@ -77,4 +76,48 @@ def safe_folder_name(folder_name: str) -> str:
     ):
         raise RequestValidationError("Invalid scan folder name")
     return folder_name
+
+
+def optional_datetime(
+    payload: dict[str, Any],
+    field: str,
+    default: datetime | None = None,
+    is_end_of_day: bool = False,
+    time_field: str | None = None,
+) -> datetime | None:
+    value = payload.get(field)
+    time_val = payload.get(time_field) if time_field else None
+
+    if value is None and time_val is None:
+        return default
+    if isinstance(value, datetime):
+        if value.utcoffset() is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    if not isinstance(value, str) or not value.strip():
+        return default
+
+    val_str = value.strip()
+    if time_val and isinstance(time_val, str) and time_val.strip():
+        t_str = time_val.strip()
+        if "T" not in val_str and " " not in val_str:
+            val_str = f"{val_str}T{t_str}"
+
+    try:
+        if len(val_str) == 10 and val_str.count("-") == 2:
+            d = datetime.strptime(val_str, "%Y-%m-%d")
+            if is_end_of_day:
+                return datetime(d.year, d.month, d.day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+            return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=timezone.utc)
+
+        normalized = val_str.replace("Z", "+00:00")
+        if " " in normalized and "T" not in normalized:
+            normalized = normalized.replace(" ", "T")
+        dt = datetime.fromisoformat(normalized)
+        if dt.utcoffset() is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception as exc:
+        raise RequestValidationError(f"Invalid datetime format for field '{field}': {val_str}") from exc
+
 

@@ -32,7 +32,7 @@ class FakeImageryProvider:
     def __init__(self) -> None:
         self.acquisition = Acquisition(datetime(2026, 8, 1, tzinfo=timezone.utc), "Sentinel-1", "sentinel-1-grd")
 
-    def find_latest_acquisition(self, bbox, days_ago=30):
+    def find_latest_acquisition(self, bbox, days_ago=30, start_date=None, end_date=None):
         return self.acquisition
 
     def calculate_tiles(self, bbox):

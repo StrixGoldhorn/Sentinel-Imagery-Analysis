@@ -28,7 +28,7 @@ class CompleteAdapter:
 
     name = "complete"
 
-    def find_latest_acquisition(self, bbox, days_ago=None):
+    def find_latest_acquisition(self, bbox, days_ago=None, start_date=None, end_date=None):
         return None
 
 

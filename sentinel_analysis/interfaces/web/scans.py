@@ -16,6 +16,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     bounding_box,
     integer,
     json_object,
+    optional_datetime,
     optional_string,
     safe_folder_name,
 )
@@ -42,7 +43,18 @@ def index():
 def create_scan():
     payload = json_object()
     bbox = bounding_box(payload)
-    aoi_name = optional_string(payload, "aoi_name")
+    start_date = (
+        optional_datetime(payload, "start_datetime", is_end_of_day=False)
+        or optional_datetime(payload, "start_date", time_field="start_time", is_end_of_day=False)
+        or optional_datetime(payload, "date_from", time_field="time_from", is_end_of_day=False)
+    )
+    end_date = (
+        optional_datetime(payload, "end_datetime", is_end_of_day=True)
+        or optional_datetime(payload, "end_date", time_field="end_time", is_end_of_day=True)
+        or optional_datetime(payload, "date_to", time_field="time_to", is_end_of_day=True)
+    )
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise RequestValidationError("Start date/time cannot be after end date/time")
     days_ago = payload.get("days_ago")
     if days_ago is None:
         days_ago = _get_setting("search_window_days", 30)
@@ -51,7 +63,13 @@ def create_scan():
             days_ago = int(days_ago)
         except (TypeError, ValueError):
             days_ago = 30
-    scan = container().create_scan.execute(bbox, days_ago=days_ago, aoi_name=aoi_name)
+    scan = container().create_scan.execute(
+        bbox,
+        days_ago=days_ago,
+        aoi_name=aoi_name,
+        start_date=start_date,
+        end_date=end_date,
+    )
     return jsonify(
         status="success",
         folderName=scan.folder_name,

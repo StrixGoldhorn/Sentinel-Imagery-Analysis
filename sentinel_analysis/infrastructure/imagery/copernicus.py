@@ -186,22 +186,42 @@ class CopernicusImageryProvider:
         self,
         bbox: BoundingBox,
         days_ago: int | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> Acquisition | None:
         if days_ago is not None:
             if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
                 raise ValueError("Catalog search window must be a positive number of days")
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise ValueError("start_date cannot be after end_date")
         try:
             now = self._clock()
             if now.utcoffset() is None:
                 now = now.replace(tzinfo=timezone.utc)
             now = now.astimezone(timezone.utc)
-            if days_ago is not None:
+
+            if start_date is not None or end_date is not None:
+                start = start_date if start_date is not None else (now - timedelta(days=15))
+                end = end_date if end_date is not None else now
+            elif days_ago is not None:
                 start = now - timedelta(days=days_ago)
+                end = now + timedelta(days=1)
             else:
                 # Search across all Sentinel-1 acquisitions to find the most recent available
                 start = datetime(2014, 1, 1, tzinfo=timezone.utc)
+                end = now + timedelta(days=1)
 
-            end = now + timedelta(days=1)
+            if start.utcoffset() is None:
+                start = start.replace(tzinfo=timezone.utc)
+            start = start.astimezone(timezone.utc)
+            if end.utcoffset() is None:
+                end = end.replace(tzinfo=timezone.utc)
+            end = end.astimezone(timezone.utc)
+
+            if start > end:
+                raise ValueError("start_date cannot be after end_date")
+
+            limit = 50 if (start_date is not None or end_date is not None) else 1
 
             payload = None
             for attempt in range(self._max_retries + 1):
@@ -213,7 +233,7 @@ class CopernicusImageryProvider:
                             "bbox": ",".join(map(str, bbox.as_list())),
                             "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
                             "collections": "sentinel-1-grd",
-                            "limit": 1,
+                            "limit": limit,
                         },
                         timeout=60,
                     )
@@ -238,9 +258,14 @@ class CopernicusImageryProvider:
                 raise ValueError("Catalog features must be a list")
             if not features:
                 return None
-            feature = features[0]
-            if not isinstance(feature, Mapping):
+            valid_features = [f for f in features if isinstance(f, Mapping)]
+            if not valid_features:
                 raise ValueError("Catalog feature must be an object")
+            valid_features.sort(
+                key=lambda f: str((f.get("properties") if isinstance(f.get("properties"), Mapping) else {}).get("datetime") or ""),
+                reverse=True,
+            )
+            feature = valid_features[0]
             properties = feature.get("properties")
             if not isinstance(properties, Mapping):
                 raise ValueError("Catalog feature properties must be an object")
