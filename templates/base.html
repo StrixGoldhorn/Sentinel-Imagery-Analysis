@@ -294,8 +294,8 @@
                     const isRunning = Boolean(s && (s.is_running || s.thread_alive));
                     navSchedulerInfo = {
                         isRunning: isRunning,
-                        lastRunMs: s && s.last_run_at ? new Date(s.last_run_at).getTime() : Date.now(),
-                        pollIntervalMs: (s && s.poll_interval_seconds ? s.poll_interval_seconds : 60) * 1000
+                        lastRunMs: s && (s.last_aoi_check_at || s.last_run_at) ? new Date(s.last_aoi_check_at || s.last_run_at).getTime() : Date.now(),
+                        pollIntervalMs: (s && s.aoi_check_interval_seconds ? s.aoi_check_interval_seconds : 30) * 1000
                     };
                 }
             } catch (err) {}

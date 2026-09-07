@@ -187,7 +187,9 @@ function collectFormData() {
         scheduler: {
             n2yo_api_key: getString('input_scheduler_n2yo_api_key', ''),
             auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
-            poll_interval_seconds: getFloat('input_scheduler_poll_interval_seconds', 3600.0),
+            aoi_check_interval_seconds: getFloat('input_scheduler_aoi_check_interval_seconds', 30.0),
+            sar_scan_interval_seconds: getFloat('input_scheduler_sar_scan_interval_seconds', 3600.0),
+            poll_interval_seconds: getFloat('input_scheduler_sar_scan_interval_seconds', 3600.0),
             satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
             enabled_satellites: Array.from(document.querySelectorAll('input[name="satellite_selection"]:checked')).map(el => el.value),
         },

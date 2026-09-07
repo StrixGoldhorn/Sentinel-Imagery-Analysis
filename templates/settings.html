@@ -288,9 +288,15 @@
                         </div>
 
                         <div class="settings-card">
-                            <label for="input_scheduler_poll_interval_seconds" class="setting-title">Scheduler Poll Interval (Seconds)</label>
-                            <p class="setting-description">Frequency at which the background worker verifies upcoming passes and post-pass imagery (3600s = 1 hour).</p>
-                            <input type="number" id="input_scheduler_poll_interval_seconds" class="form-input" min="10" max="86400" step="60" value="3600">
+                            <label for="input_scheduler_aoi_check_interval_seconds" class="setting-title">AOI Scan Check Interval (Seconds)</label>
+                            <p class="setting-description">Frequency at which the background worker verifies if any AOI has an active flypast or needs scanning (default: 30s).</p>
+                            <input type="number" id="input_scheduler_aoi_check_interval_seconds" class="form-input" min="5" max="3600" step="5" value="30">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_sar_scan_interval_seconds" class="setting-title">SAR Imagery Scan Interval (Seconds)</label>
+                            <p class="setting-description">Frequency at which the background worker queries Copernicus for newly published SAR imagery (default: 3600s = 1 hour).</p>
+                            <input type="number" id="input_scheduler_sar_scan_interval_seconds" class="form-input" min="60" max="86400" step="60" value="3600">
                         </div>
 
                         <div class="settings-card">

@@ -50,12 +50,17 @@ def update_settings_api():
     try:
         app_container.update_settings.execute(payload)
         if hasattr(app_container, "pass_scheduler") and app_container.pass_scheduler is not None:
-            updated_interval = app_container.settings_repository.get("poll_interval_seconds")
-            if updated_interval is not None:
-                try:
-                    app_container.pass_scheduler.set_poll_interval(float(updated_interval))
-                except Exception:
-                    pass
+            try:
+                aoi_val = app_container.settings_repository.get("aoi_check_interval_seconds")
+                if aoi_val is not None:
+                    app_container.pass_scheduler.set_aoi_check_interval(float(aoi_val))
+                sar_val = app_container.settings_repository.get("sar_scan_interval_seconds")
+                if sar_val is None:
+                    sar_val = app_container.settings_repository.get("poll_interval_seconds")
+                if sar_val is not None:
+                    app_container.pass_scheduler.set_sar_scan_interval(float(sar_val))
+            except Exception:
+                pass
         return jsonify({
             "status": "success",
             "message": "Settings updated successfully",
@@ -81,12 +86,17 @@ def reset_settings_api():
     try:
         app_container.reset_settings.execute(section=section)
         if hasattr(app_container, "pass_scheduler") and app_container.pass_scheduler is not None:
-            updated_interval = app_container.settings_repository.get("poll_interval_seconds")
-            if updated_interval is not None:
-                try:
-                    app_container.pass_scheduler.set_poll_interval(float(updated_interval))
-                except Exception:
-                    pass
+            try:
+                aoi_val = app_container.settings_repository.get("aoi_check_interval_seconds")
+                if aoi_val is not None:
+                    app_container.pass_scheduler.set_aoi_check_interval(float(aoi_val))
+                sar_val = app_container.settings_repository.get("sar_scan_interval_seconds")
+                if sar_val is None:
+                    sar_val = app_container.settings_repository.get("poll_interval_seconds")
+                if sar_val is not None:
+                    app_container.pass_scheduler.set_sar_scan_interval(float(sar_val))
+            except Exception:
+                pass
         return jsonify({
             "status": "success",
             "message": f"Settings for '{section}' reset to defaults" if section else "All settings reset to defaults",

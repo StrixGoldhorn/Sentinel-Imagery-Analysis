@@ -333,22 +333,30 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status["api_key_configured"] is True
     assert status["last_run_at"] is None
     assert status["poll_interval_seconds"] == 60.0
+    assert status["aoi_check_interval_seconds"] == 30.0
+    assert status["sar_scan_interval_seconds"] == 60.0
 
     results = worker.trigger_check()
     assert results == []
 
     status_after = worker.get_status()
     assert status_after["last_run_at"] is not None
+    assert status_after["last_aoi_check_at"] is not None
     assert status_after["last_error"] is None
 
 
-def test_pass_scheduler_worker_default_interval_is_one_hour() -> None:
+def test_pass_scheduler_worker_default_intervals_30s_aoi_and_1h_sar() -> None:
     aoi_repo = StubAOIRepo([])
     check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
     worker = PassSchedulerWorker(check_aois, api_key="dummy_key")
 
+    assert worker.get_aoi_check_interval() == 30.0
+    assert worker.get_sar_scan_interval() == 3600.0
     assert worker.get_poll_interval() == 3600.0
+
     status = worker.get_status()
+    assert status["aoi_check_interval_seconds"] == 30.0
+    assert status["sar_scan_interval_seconds"] == 3600.0
     assert status["poll_interval_seconds"] == 3600.0
 
 
@@ -357,8 +365,12 @@ def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
     check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
 
     class MockSettingsRepo:
-        def __init__(self, initial_interval=1800.0):
-            self.settings = {"poll_interval_seconds": initial_interval}
+        def __init__(self, initial_interval=1800.0, initial_aoi_interval=30.0):
+            self.settings = {
+                "poll_interval_seconds": initial_interval,
+                "sar_scan_interval_seconds": initial_interval,
+                "aoi_check_interval_seconds": initial_aoi_interval,
+            }
 
         def get(self, key, default=None):
             return self.settings.get(key, default)
@@ -366,16 +378,21 @@ def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
         def set(self, section, key, value):
             self.settings[key] = value
 
-    mock_repo = MockSettingsRepo(initial_interval=1800.0)
+    mock_repo = MockSettingsRepo(initial_interval=1800.0, initial_aoi_interval=20.0)
     worker = PassSchedulerWorker(check_aois, api_key="dummy_key", settings_repo=mock_repo)
 
+    assert worker.get_sar_scan_interval() == 1800.0
+    assert worker.get_aoi_check_interval() == 20.0
     assert worker.get_poll_interval() == 1800.0
-    assert worker.get_status()["poll_interval_seconds"] == 1800.0
 
-    # Test updating dynamically via set_poll_interval
-    worker.set_poll_interval(7200.0)
-    assert worker.get_poll_interval() == 7200.0
-    assert mock_repo.get("poll_interval_seconds") == 7200.0
+    # Test updating intervals dynamically
+    worker.set_sar_scan_interval(7200.0)
+    assert worker.get_sar_scan_interval() == 7200.0
+    assert mock_repo.get("sar_scan_interval_seconds") == 7200.0
+
+    worker.set_aoi_check_interval(45.0)
+    assert worker.get_aoi_check_interval() == 45.0
+    assert mock_repo.get("aoi_check_interval_seconds") == 45.0
 
 
 def test_pass_scheduler_worker_polls_due_post_pass_jobs() -> None:
@@ -398,8 +415,50 @@ def test_pass_scheduler_worker_polls_due_post_pass_jobs() -> None:
             return ["dummy_job"]
 
     worker._post_pass_repo = MockPostPassRepo()
-    worker._poll_due_post_pass_jobs()
+    res = worker._poll_due_post_pass_jobs()
     assert mock_ingest.calls == 1
+    assert res == []
+    assert worker.get_status()["last_sar_scan_at"] is not None
+
+
+def test_pass_scheduler_decoupled_aoi_check_does_not_trigger_sar_ingest() -> None:
+    aoi_repo = StubAOIRepo([])
+
+    class MockIngestPostPass:
+        def __init__(self):
+            self.calls = 0
+
+        def execute(self, job_id=None):
+            self.calls += 1
+            return []
+
+    mock_ingest = MockIngestPostPass()
+    check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]), ingest_post_pass=mock_ingest)
+    worker = PassSchedulerWorker(check_aois, api_key="dummy_key", ingest_post_pass=mock_ingest)
+
+    # Calling 30s AOI check must NOT trigger post-pass ingestion
+    worker.trigger_check()
+    assert mock_ingest.calls == 0
+
+    # Explicitly calling trigger_sar_scan MUST trigger post-pass ingestion if jobs are due
+    class MockPostPassRepo:
+        def get_jobs_due_for_poll(self, now):
+            return ["job1"]
+
+    worker._post_pass_repo = MockPostPassRepo()
+    worker.trigger_sar_scan()
+    assert mock_ingest.calls == 1
+
+
+def test_pass_scheduler_backend_selection() -> None:
+    aoi_repo = StubAOIRepo([])
+    check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
+
+    # Threading fallback can be explicitly forced or auto-selected
+    worker_thread = PassSchedulerWorker(check_aois, api_key="dummy_key", use_apscheduler=False)
+    assert worker_thread.backend_type == "threading_fallback"
+    assert worker_thread.get_status()["scheduler_backend"] == "threading_fallback"
+
 
 
 

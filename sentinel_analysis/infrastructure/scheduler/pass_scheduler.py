@@ -1,10 +1,19 @@
-"""Background daemon worker for periodic satellite pass checks."""
+"""Background scheduler worker for periodic satellite pass checks and SAR imagery ingestion."""
 
 from datetime import datetime, timezone
 import logging
 import threading
 import time
 from typing import Any, Optional
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.interval import IntervalTrigger
+    APSCHEDULER_AVAILABLE = True
+except ImportError:
+    APSCHEDULER_AVAILABLE = False
+    BackgroundScheduler = None  # type: ignore
+    IntervalTrigger = None  # type: ignore
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
@@ -13,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class PassSchedulerWorker:
-    """Runs periodic AOI checks in a daemon background thread."""
+    """Runs periodic AOI pass checks (every 30s) and SAR imagery catalog ingestion (every 1h).
+
+    Uses APScheduler (BackgroundScheduler) when available, falling back cleanly
+    to threading timers if APScheduler is not installed.
+    """
 
     def __init__(
         self,
@@ -24,95 +37,219 @@ class PassSchedulerWorker:
         settings_repo: Optional[Any] = None,
         pass_monitor: Optional[Any] = None,
         ingest_post_pass: Optional[Any] = None,
+        aoi_check_interval_seconds: float = 30.0,
+        sar_scan_interval_seconds: Optional[float] = None,
+        use_apscheduler: bool = True,
     ) -> None:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
-        self._poll_interval = poll_interval_seconds
+        self._aoi_check_interval = max(1.0, float(aoi_check_interval_seconds))
+        # Default SAR scan interval is 3600s (1 hour), or poll_interval_seconds if explicitly set
+        self._sar_scan_interval = max(
+            1.0,
+            float(sar_scan_interval_seconds if sar_scan_interval_seconds is not None else poll_interval_seconds),
+        )
         self._post_pass_repo = post_pass_repo
         self._settings_repo = settings_repo
         self._pass_monitor = pass_monitor or getattr(schedule_use_case, "pass_monitor", None)
         self._ingest_post_pass = ingest_post_pass or getattr(schedule_use_case, "_ingest_post_pass", None)
+        self._use_apscheduler = use_apscheduler and APSCHEDULER_AVAILABLE
         self._running = False
+
+        self._scheduler: Optional[Any] = None
         self._thread: Optional[threading.Thread] = None
+
         self._last_run_at: Optional[datetime] = None
+        self._last_aoi_check_at: Optional[datetime] = None
+        self._last_sar_scan_at: Optional[datetime] = None
         self._last_results: list[dict[str, Any]] = []
         self._last_error: Optional[str] = None
 
-    def get_poll_interval(self) -> float:
-        """Return the effective poll interval in seconds, checking settings if available."""
+    @property
+    def backend_type(self) -> str:
+        return "apscheduler" if self._use_apscheduler else "threading_fallback"
+
+    def get_aoi_check_interval(self) -> float:
+        """Return effective interval in seconds for AOI pass checks (default: 30s)."""
         if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
             try:
-                val = self._settings_repo.get("poll_interval_seconds")
+                val = self._settings_repo.get("aoi_check_interval_seconds")
                 if val is not None:
                     fval = float(val)
                     if fval >= 1.0:
                         return fval
             except Exception:
                 pass
-        return self._poll_interval
+        return self._aoi_check_interval
 
-    def set_poll_interval(self, seconds: float) -> None:
-        """Update the poll interval in seconds."""
+    def set_aoi_check_interval(self, seconds: float) -> None:
+        """Update interval for AOI pass checks."""
         val = max(1.0, float(seconds))
-        self._poll_interval = val
+        self._aoi_check_interval = val
         if self._settings_repo is not None and hasattr(self._settings_repo, "set"):
             try:
+                self._settings_repo.set("scheduler", "aoi_check_interval_seconds", val)
+            except Exception:
+                pass
+        if self._running and self._scheduler is not None and IntervalTrigger is not None:
+            try:
+                self._scheduler.reschedule_job(
+                    "aoi_check_job",
+                    trigger=IntervalTrigger(seconds=val),
+                )
+            except Exception as exc:
+                logger.warning("Failed to reschedule APScheduler aoi_check_job: %s", exc)
+
+    def get_sar_scan_interval(self) -> float:
+        """Return effective interval in seconds for SAR imagery catalog polling (default: 3600s = 1 hour)."""
+        if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
+            try:
+                val = self._settings_repo.get("sar_scan_interval_seconds")
+                if val is None:
+                    val = self._settings_repo.get("poll_interval_seconds")
+                if val is not None:
+                    fval = float(val)
+                    if fval >= 1.0:
+                        return fval
+            except Exception:
+                pass
+        return self._sar_scan_interval
+
+    def set_sar_scan_interval(self, seconds: float) -> None:
+        """Update interval for SAR imagery catalog polling."""
+        val = max(1.0, float(seconds))
+        self._sar_scan_interval = val
+        if self._settings_repo is not None and hasattr(self._settings_repo, "set"):
+            try:
+                self._settings_repo.set("scheduler", "sar_scan_interval_seconds", val)
                 self._settings_repo.set("scheduler", "poll_interval_seconds", val)
             except Exception:
                 pass
+        if self._running and self._scheduler is not None and IntervalTrigger is not None:
+            try:
+                self._scheduler.reschedule_job(
+                    "sar_scan_job",
+                    trigger=IntervalTrigger(seconds=val),
+                )
+            except Exception as exc:
+                logger.warning("Failed to reschedule APScheduler sar_scan_job: %s", exc)
+
+    # Backwards compatibility methods
+    def get_poll_interval(self) -> float:
+        """Alias for get_sar_scan_interval for backwards compatibility."""
+        return self.get_sar_scan_interval()
+
+    def set_poll_interval(self, seconds: float) -> None:
+        """Alias for set_sar_scan_interval for backwards compatibility."""
+        self.set_sar_scan_interval(seconds)
 
     def start(self) -> None:
         if self._running:
             return
         self._running = True
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="pass-scheduler")
-        self._thread.start()
 
-    def _poll_due_post_pass_jobs(self) -> None:
-        """Check and process any post-pass catalog jobs that are due."""
+        if self._use_apscheduler and BackgroundScheduler is not None and IntervalTrigger is not None:
+            try:
+                self._scheduler = BackgroundScheduler(daemon=True)
+                self._scheduler.add_job(
+                    self._run_aoi_check_cycle,
+                    trigger=IntervalTrigger(seconds=self.get_aoi_check_interval()),
+                    id="aoi_check_job",
+                    name="AOI Scan Check (30s)",
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True,
+                )
+                self._scheduler.add_job(
+                    self._poll_due_post_pass_jobs,
+                    trigger=IntervalTrigger(seconds=self.get_sar_scan_interval()),
+                    id="sar_scan_job",
+                    name="SAR Imagery Ingestion (1h)",
+                    replace_existing=True,
+                    max_instances=1,
+                    coalesce=True,
+                )
+                self._scheduler.start()
+                logger.info(
+                    "PassSchedulerWorker started with APScheduler (AOI check: %.1fs, SAR scan: %.1fs)",
+                    self.get_aoi_check_interval(),
+                    self.get_sar_scan_interval(),
+                )
+                return
+            except Exception as exc:
+                logger.warning("Failed to initialize APScheduler, falling back to threading: %s", exc)
+                self._use_apscheduler = False
+                self._scheduler = None
+
+        # Threading fallback
+        self._thread = threading.Thread(target=self._run_threading_loop, daemon=True, name="pass-scheduler")
+        self._thread.start()
+        logger.info(
+            "PassSchedulerWorker started with threading worker (AOI check: %.1fs, SAR scan: %.1fs)",
+            self.get_aoi_check_interval(),
+            self.get_sar_scan_interval(),
+        )
+
+    def _run_aoi_check_cycle(self) -> None:
+        """Run periodic AOI checks to detect flypasts and manage AIS scrapes."""
+        if not self._api_key:
+            return
+        try:
+            self.trigger_check()
+        except Exception as exc:
+            self._last_error = str(exc)
+            logger.warning("Error during periodic AOI scan check: %s", exc)
+
+    def _poll_due_post_pass_jobs(self) -> list[dict[str, Any]]:
+        """Check and process any post-pass catalog jobs that are due for SAR imagery ingestion."""
         ingest_uc = self._ingest_post_pass or getattr(self._schedule_use_case, "_ingest_post_pass", None)
+        results: list[dict[str, Any]] = []
         if ingest_uc is not None and self._post_pass_repo is not None:
             try:
                 now = datetime.now(timezone.utc)
                 due_jobs = self._post_pass_repo.get_jobs_due_for_poll(now)
                 if due_jobs:
-                    logger.info("Polling %d due post-pass catalog jobs...", len(due_jobs))
-                    ingest_uc.execute()
+                    logger.info("Polling %d due post-pass catalog jobs for SAR imagery...", len(due_jobs))
+                    results = ingest_uc.execute()
+                self._last_sar_scan_at = now
+                return results
             except Exception as exc:
-                logger.warning("Error during periodic post-pass catalog check: %s", exc)
+                logger.warning("Error during periodic SAR imagery catalog check: %s", exc)
+        return results
 
-    def _run_loop(self) -> None:
-        post_pass_check_interval = 30.0  # Check for due post-pass catalog jobs every 30 seconds
+    def _run_threading_loop(self) -> None:
+        """Threading fallback loop maintaining independent 30s AOI checks and 1-hour SAR scans."""
+        # Run initial cycle upon starting
+        self._run_aoi_check_cycle()
+        self._poll_due_post_pass_jobs()
+
+        aoi_elapsed = 0.0
+        sar_elapsed = 0.0
+
         while self._running:
-            try:
-                if self._api_key:
-                    self.trigger_check()
-                else:
-                    self._poll_due_post_pass_jobs()
-            except Exception as exc:
-                self._last_error = str(exc)
-            # Sleep in 1s increments, dynamically respecting changes to poll interval
-            elapsed = 0.0
-            post_pass_elapsed = 0.0
-            while self._running:
-                interval = self.get_poll_interval()
-                if elapsed >= interval:
-                    break
-                time.sleep(1)
-                elapsed += 1.0
-                post_pass_elapsed += 1.0
-                if post_pass_elapsed >= post_pass_check_interval:
-                    post_pass_elapsed = 0.0
-                    self._poll_due_post_pass_jobs()
+            time.sleep(1)
+            aoi_elapsed += 1.0
+            sar_elapsed += 1.0
+
+            aoi_interval = self.get_aoi_check_interval()
+            if aoi_elapsed >= aoi_interval:
+                aoi_elapsed = 0.0
+                self._run_aoi_check_cycle()
+
+            sar_interval = self.get_sar_scan_interval()
+            if sar_elapsed >= sar_interval:
+                sar_elapsed = 0.0
+                self._poll_due_post_pass_jobs()
 
     def trigger_check(self) -> list[dict[str, Any]]:
-        """Run an immediate check cycle across active AOIs."""
+        """Run an immediate AOI pass check cycle across active AOIs."""
         if not self._api_key:
             raise ValueError("Satellite prediction API key is not configured")
         now = datetime.now(timezone.utc)
         try:
-            results = self._schedule_use_case.execute(self._api_key)
+            results = self._schedule_use_case.execute(self._api_key, check_post_pass=False)
             self._last_run_at = now
+            self._last_aoi_check_at = now
             self._last_results = results
             self._last_error = None
             return results
@@ -120,8 +257,12 @@ class PassSchedulerWorker:
             self._last_error = str(exc)
             raise
 
+    def trigger_sar_scan(self) -> list[dict[str, Any]]:
+        """Run an immediate SAR imagery catalog check cycle across due post-pass jobs."""
+        return self._poll_due_post_pass_jobs()
+
     def get_status(self) -> dict[str, Any]:
-        """Return the current daemon status, interval, and last execution details."""
+        """Return the current scheduler status, intervals, backend type, and execution details."""
         active_jobs_count = 0
         if self._post_pass_repo is not None:
             try:
@@ -136,16 +277,40 @@ class PassSchedulerWorker:
             except Exception:
                 pass
 
+        thread_alive = False
+        if self._scheduler is not None and hasattr(self._scheduler, "running"):
+            thread_alive = bool(self._scheduler.running)
+        elif self._thread is not None:
+            thread_alive = bool(self._thread.is_alive())
+
+        jobs_list = []
+        if self._scheduler is not None and hasattr(self._scheduler, "get_jobs"):
+            try:
+                for j in self._scheduler.get_jobs():
+                    jobs_list.append({
+                        "id": j.id,
+                        "name": j.name,
+                        "next_run_time": j.next_run_time.isoformat() if j.next_run_time else None,
+                    })
+            except Exception:
+                pass
+
         return {
             "is_running": self._running,
+            "scheduler_backend": self.backend_type,
             "api_key_configured": bool(self._api_key),
+            "aoi_check_interval_seconds": self.get_aoi_check_interval(),
+            "sar_scan_interval_seconds": self.get_sar_scan_interval(),
             "poll_interval_seconds": self.get_poll_interval(),
             "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
+            "last_aoi_check_at": self._last_aoi_check_at.isoformat() if self._last_aoi_check_at else None,
+            "last_sar_scan_at": self._last_sar_scan_at.isoformat() if self._last_sar_scan_at else None,
             "last_error": self._last_error,
             "last_results_count": len(self._last_results),
             "active_post_pass_jobs_count": active_jobs_count,
             "active_pass_monitors": active_monitors,
-            "thread_alive": bool(self._thread and self._thread.is_alive()),
+            "thread_alive": thread_alive,
+            "jobs": jobs_list,
         }
 
     def stop(self) -> None:
@@ -155,7 +320,17 @@ class PassSchedulerWorker:
                 self._pass_monitor.stop_all()
             except Exception:
                 pass
+
+        if self._scheduler is not None:
+            try:
+                self._scheduler.shutdown(wait=False)
+            except Exception:
+                pass
+            self._scheduler = None
+
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
+            self._thread = None
+
 
 

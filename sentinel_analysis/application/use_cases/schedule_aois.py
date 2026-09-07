@@ -56,7 +56,7 @@ class CheckAndScheduleAOIs:
             return DEFAULT_ENABLED_SATELLITES.copy()
         return None
 
-    def execute(self, api_key: str) -> list[dict[str, Any]]:
+    def execute(self, api_key: str, check_post_pass: bool = False) -> list[dict[str, Any]]:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("Satellite prediction API key is required")
         api_key = api_key.strip()
@@ -252,9 +252,9 @@ class CheckAndScheduleAOIs:
                     "status": "ERROR",
                 })
 
-        # Process due post-pass catalog checks
+        # Process due post-pass catalog checks only if explicitly requested
         post_pass_results: list[dict[str, Any]] = []
-        if self._ingest_post_pass is not None:
+        if check_post_pass and self._ingest_post_pass is not None:
             try:
                 post_pass_results = self._ingest_post_pass.execute()
             except Exception:

@@ -481,18 +481,23 @@ async function loadSchedulerStatus() {
 
         if (s.is_running && s.thread_alive) {
             if (badge) badge.className = 'scheduler-badge scheduler-running';
-            if (text) text.textContent = 'Scheduler Daemon Active';
+            if (text) text.textContent = s.scheduler_backend === 'apscheduler' ? 'APScheduler Active' : 'Scheduler Active';
         } else {
             if (badge) badge.className = 'scheduler-badge scheduler-stopped';
             if (text) text.textContent = s.api_key_configured ? 'Scheduler Paused' : 'Scheduler Disabled (No API Key)';
         }
 
-        if (pollRate) pollRate.textContent = `Poll interval: ${Math.round(s.poll_interval_seconds || 60)}s`;
+        if (pollRate) {
+            const aoiSec = Math.round(s.aoi_check_interval_seconds || 30);
+            const sarSec = Math.round(s.sar_scan_interval_seconds || s.poll_interval_seconds || 3600);
+            const sarStr = sarSec >= 3600 ? `${Math.round(sarSec / 3600)}h` : `${sarSec}s`;
+            pollRate.textContent = `AOI check: ${aoiSec}s | SAR scan: ${sarStr}`;
+        }
 
         if (lastRun) {
-            if (s.last_run_at) {
-                const dt = new Date(s.last_run_at);
-                lastRun.textContent = `Last check: ${dt.toLocaleTimeString()}`;
+            if (s.last_aoi_check_at || s.last_run_at) {
+                const dt = new Date(s.last_aoi_check_at || s.last_run_at);
+                lastRun.textContent = `Last AOI check: ${dt.toLocaleTimeString()}`;
             } else {
                 lastRun.textContent = 'Last check: Starting...';
             }

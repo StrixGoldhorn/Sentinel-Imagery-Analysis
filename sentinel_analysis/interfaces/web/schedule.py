@@ -72,13 +72,19 @@ def get_scheduler_status():
     else:
         status_info = {
             "is_running": False,
+            "scheduler_backend": "none",
             "api_key_configured": bool(container().settings.n2yo_api_key),
+            "aoi_check_interval_seconds": 30.0,
+            "sar_scan_interval_seconds": 3600.0,
             "poll_interval_seconds": 3600.0,
             "last_run_at": None,
+            "last_aoi_check_at": None,
+            "last_sar_scan_at": None,
             "last_error": None,
             "last_results_count": 0,
             "active_pass_monitors": [],
             "thread_alive": False,
+            "jobs": [],
         }
     return jsonify(status="success", scheduler=status_info)
 

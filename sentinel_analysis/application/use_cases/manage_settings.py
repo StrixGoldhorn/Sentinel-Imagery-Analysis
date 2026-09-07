@@ -133,14 +133,23 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("Max Tile Image Size must be between 100 and 10000 pixels")
 
-        if key == "poll_interval_seconds":
+        if key in ("poll_interval_seconds", "sar_scan_interval_seconds"):
             try:
                 fval = float(value)
                 if fval < 1.0:
                     raise ValueError
                 return fval
             except (TypeError, ValueError):
-                raise ValueError("Poll interval must be at least 1.0 second")
+                raise ValueError(f"{key.replace('_', ' ').capitalize()} must be at least 1.0 second")
+
+        if key == "aoi_check_interval_seconds":
+            try:
+                fval = float(value)
+                if fval < 1.0:
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("AOI check interval must be at least 1.0 second")
 
         if key == "default_zoom":
             try:

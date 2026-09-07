@@ -7,3 +7,4 @@ python-dotenv
 playwright
 playwright-stealth
 pyais
+apscheduler>=3.10.0
