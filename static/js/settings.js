@@ -67,6 +67,18 @@ async function loadSettings() {
 function populateForm(sections) {
     for (const [sectionKey, fields] of Object.entries(sections)) {
         for (const [fieldKey, fieldDef] of Object.entries(fields)) {
+            if (sectionKey === 'scheduler' && fieldKey === 'enabled_satellites') {
+                const rawVal = fieldDef.value;
+                const checkedSats = Array.isArray(rawVal)
+                    ? rawVal
+                    : (typeof rawVal === 'string' ? rawVal.split(',').map(s => s.trim()) : ['Sentinel-1A', 'Sentinel-1C']);
+                ['Sentinel-1A', 'Sentinel-1B', 'Sentinel-1C'].forEach(sat => {
+                    const chk = document.getElementById(`sat_${sat}`);
+                    if (chk) chk.checked = checkedSats.includes(sat);
+                });
+                continue;
+            }
+
             const inputId = `input_${sectionKey}_${fieldKey}`;
             const elem = document.getElementById(inputId);
             if (!elem) continue;
@@ -177,6 +189,7 @@ function collectFormData() {
             auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
             poll_interval_seconds: getFloat('input_scheduler_poll_interval_seconds', 3600.0),
             satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
+            enabled_satellites: Array.from(document.querySelectorAll('input[name="satellite_selection"]:checked')).map(el => el.value),
         },
         map_ui: {
             default_lat: getFloat('input_map_ui_default_lat', 1.290270),

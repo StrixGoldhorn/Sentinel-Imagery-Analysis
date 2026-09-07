@@ -9,6 +9,7 @@ import requests
 from sentinel_analysis.application.exceptions import ExternalServiceError
 from sentinel_analysis.application.ports.satellite import PassPrediction
 from sentinel_analysis.domain.entities import BoundingBox
+from sentinel_analysis.infrastructure.satellite.constants import NORAD_TO_SATELLITE_NAME
 
 
 class HTTPResponse(Protocol):
@@ -32,6 +33,7 @@ class N2YOPassPredictor:
         minimum_elevation: int = 15,
         timeout: float = 30,
         http_client: HTTPClient | None = None,
+        satellite_name: str | None = None,
     ) -> None:
         if isinstance(satellite_id, bool) or not isinstance(satellite_id, int) or satellite_id <= 0:
             raise ValueError("Satellite ID must be a positive integer")
@@ -46,15 +48,28 @@ class N2YOPassPredictor:
         self._minimum_elevation = minimum_elevation
         self._timeout = timeout
         self._http = http_client or requests
+        self._satellite_name = satellite_name or NORAD_TO_SATELLITE_NAME.get(satellite_id, "Sentinel-1A")
 
-    def predict(self, bbox: BoundingBox, api_key: str) -> list[PassPrediction]:
+    def predict(
+        self,
+        bbox: BoundingBox,
+        api_key: str,
+        satellite_id: int | None = None,
+        satellite_name: str | None = None,
+    ) -> list[PassPrediction]:
         if not api_key:
             raise ValueError("N2YO API key is required")
+        target_sat_id = satellite_id or self._satellite_id
+        target_sat_name = satellite_name or (
+            NORAD_TO_SATELLITE_NAME.get(target_sat_id, self._satellite_name)
+            if satellite_id
+            else self._satellite_name
+        )
         try:
             latitude, longitude = bbox.center
             url = (
                 "https://api.n2yo.com/rest/v1/satellite/radiopasses/"
-                f"{self._satellite_id}/{latitude}/{longitude}/0/{self._days}/"
+                f"{target_sat_id}/{latitude}/{longitude}/0/{self._days}/"
                 f"{self._minimum_elevation}/"
             )
             response = self._http.get(url, params={"apiKey": api_key}, timeout=self._timeout)
@@ -79,6 +94,7 @@ class N2YOPassPredictor:
                         PassPrediction(
                             time=datetime.fromtimestamp(float(timestamp), tz=timezone.utc).isoformat(),
                             max_elevation=item.get("maxElev"),
+                            satellite=target_sat_name,
                         )
                     )
             return predictions

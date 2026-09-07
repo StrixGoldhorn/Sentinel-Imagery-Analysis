@@ -1,9 +1,13 @@
 import concurrent.futures
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.domain.entities import BoundingBox
+from sentinel_analysis.infrastructure.satellite.constants import (
+    DEFAULT_ENABLED_SATELLITES,
+    SATELLITE_NAME_TO_NORAD,
+)
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
 
 
@@ -14,19 +18,63 @@ class HybridPassPredictor:
         self,
         n2yo_predictor: Optional[PassPredictor] = None,
         mission_analyzer: Optional[Sentinel1MissionAnalyzer] = None,
+        settings_repo: Optional[Any] = None,
     ) -> None:
         self._n2yo = n2yo_predictor
         self._mission_analyzer = mission_analyzer or Sentinel1MissionAnalyzer()
+        self._settings_repo = settings_repo
 
-    def predict(self, bbox: BoundingBox, api_key: str) -> list[PassPrediction]:
+    def get_enabled_satellites(self) -> list[str]:
+        if self._settings_repo is not None:
+            try:
+                val = self._settings_repo.get("enabled_satellites")
+                if isinstance(val, list):
+                    return [str(s).strip() for s in val if str(s).strip()]
+                elif isinstance(val, str) and val.strip():
+                    return [s.strip() for s in val.split(",") if s.strip()]
+            except Exception:
+                pass
+        return DEFAULT_ENABLED_SATELLITES.copy()
+
+    def predict(
+        self,
+        bbox: BoundingBox,
+        api_key: str,
+        enabled_satellites: Optional[list[str]] = None,
+    ) -> list[PassPrediction]:
+        if enabled_satellites is None:
+            enabled_satellites = self.get_enabled_satellites()
+
+        if not enabled_satellites:
+            return []
+
+        active_sats = set(enabled_satellites)
         n2yo_passes: list[PassPrediction] = []
         historical_passes: list[PassPrediction] = []
 
         def _fetch_n2yo() -> list[PassPrediction]:
-            if self._n2yo is not None and isinstance(api_key, str) and api_key.strip():
+            if self._n2yo is None or not isinstance(api_key, str) or not api_key.strip():
+                return []
+
+            passes: list[PassPrediction] = []
+            supports_sat_param = True
+            for sat_name in enabled_satellites:
+                norad_id = SATELLITE_NAME_TO_NORAD.get(sat_name)
+                if not norad_id:
+                    continue
                 try:
-                    raw_n2yo = self._n2yo.predict(bbox, api_key.strip())
-                    passes: list[PassPrediction] = []
+                    # If predictor accepts satellite_id/satellite_name kwargs
+                    if supports_sat_param:
+                        try:
+                            raw_n2yo = self._n2yo.predict(
+                                bbox, api_key.strip(), satellite_id=norad_id, satellite_name=sat_name
+                            )
+                        except TypeError:
+                            supports_sat_param = False
+                            raw_n2yo = self._n2yo.predict(bbox, api_key.strip())
+                    else:
+                        break
+
                     for item in raw_n2yo:
                         p = dict(item)
                         if "source" not in p or not p["source"]:
@@ -38,18 +86,25 @@ class HybridPassPredictor:
                         if "contribution_detail" not in p or not p["contribution_detail"]:
                             p["contribution_detail"] = "Astronomical pass tracking via N2YO NORAD orbit propagation"
                         if "satellite" not in p or not p["satellite"]:
-                            p["satellite"] = "Sentinel-1A"
+                            p["satellite"] = sat_name
                         if "confidence_score" not in p or p["confidence_score"] is None:
                             p["confidence_score"] = 0.68  # Lower weight for astronomical tracking
-                        passes.append(PassPrediction(**p))  # type: ignore[misc]
-                    return passes
+                        if not active_sats or p.get("satellite") in active_sats:
+                            passes.append(PassPrediction(**p))  # type: ignore[misc]
                 except Exception:
-                    return []
-            return []
+                    continue
+            return passes
 
         def _fetch_hist() -> list[PassPrediction]:
             try:
-                raw_hist = self._mission_analyzer.predict_from_history(bbox, days_ahead=10, limit=100)
+                try:
+                    raw_hist = self._mission_analyzer.predict_from_history(
+                        bbox, days_ahead=10, limit=100, enabled_satellites=enabled_satellites
+                    )
+                except TypeError:
+                    raw_hist = self._mission_analyzer.predict_from_history(
+                        bbox, days_ahead=10, limit=100
+                    )
                 passes: list[PassPrediction] = []
                 for item in raw_hist:
                     p = dict(item)
@@ -61,12 +116,15 @@ class HybridPassPredictor:
                         p["contribution_label"] = "Historical Repeat Cycle Only"
                     if "contribution_detail" not in p or not p["contribution_detail"]:
                         p["contribution_detail"] = p.get("historical_match") or "Extrapolated from Sentinel-1 12-day repeat cycle"
-                    passes.append(PassPrediction(**p))  # type: ignore[misc]
+                    if "satellite" not in p or not p["satellite"]:
+                        p["satellite"] = "Sentinel-1A"
+                    if not active_sats or p.get("satellite") in active_sats:
+                        passes.append(PassPrediction(**p))  # type: ignore[misc]
                 return passes
             except Exception:
                 return []
 
-        # Execute both external sources in parallel to dramatically cut latency
+        # Execute external sources in parallel to dramatically cut latency
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
             fut_n2yo = executor.submit(_fetch_n2yo)
             fut_hist = executor.submit(_fetch_hist)
@@ -74,12 +132,13 @@ class HybridPassPredictor:
             historical_passes = fut_hist.result()
 
         # 3. Merge and cross-validate both sources
-        return self._merge_predictions(n2yo_passes, historical_passes)
+        return self._merge_predictions(n2yo_passes, historical_passes, enabled_satellites=enabled_satellites)
 
     @staticmethod
     def _merge_predictions(
         n2yo_passes: list[PassPrediction],
         hist_passes: list[PassPrediction],
+        enabled_satellites: Optional[list[str]] = None,
     ) -> list[PassPrediction]:
         """Merge overlapping passes into cross-validated predictions with weighted confidence scores.
 
@@ -94,12 +153,16 @@ class HybridPassPredictor:
             if n_time.utcoffset() is None:
                 n_time = n_time.replace(tzinfo=timezone.utc)
             n_time = n_time.astimezone(timezone.utc)
+            n_sat = n_pass.get("satellite") or "Sentinel-1A"
 
             best_hist_idx: int | None = None
             min_diff_sec = 900.0  # 15 minute matching window
 
             for h_idx, h_pass in enumerate(hist_passes):
                 if h_idx in matched_hist_indices:
+                    continue
+                h_sat = h_pass.get("satellite") or "Sentinel-1A"
+                if h_sat != n_sat and not (h_sat in ("Sentinel-1", "Sentinel-1A") and n_sat in ("Sentinel-1", "Sentinel-1A")):
                     continue
                 h_time = datetime.fromisoformat(str(h_pass["time"]).replace("Z", "+00:00"))
                 if h_time.utcoffset() is None:
@@ -170,6 +233,10 @@ class HybridPassPredictor:
                 if "contribution_detail" not in p or not p["contribution_detail"]:
                     p["contribution_detail"] = p.get("historical_match") or "Extrapolated from Sentinel-1 12-day repeat cycle"
                 merged.append(PassPrediction(**p))  # type: ignore[misc]
+
+        if enabled_satellites is not None:
+            active_sats = set(enabled_satellites)
+            merged = [p for p in merged if p.get("satellite") in active_sats]
 
         # Sort all predictions chronologically
         merged.sort(key=lambda p: datetime.fromisoformat(str(p["time"]).replace("Z", "+00:00")))

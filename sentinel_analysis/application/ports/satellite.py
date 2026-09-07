@@ -71,5 +71,6 @@ class MissionPassAnalyzer(Protocol):
         bbox: BoundingBox,
         days_ahead: int = 10,
         limit: int = 20,
+        enabled_satellites: list[str] | None = None,
     ) -> list[PassPrediction]:
         ...

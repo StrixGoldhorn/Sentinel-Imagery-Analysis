@@ -83,6 +83,9 @@ async function loadSchedule() {
 
         allEvents = data.all_events || data.events || [];
         globalMetrics = data.metrics || {};
+        if (data.enabled_satellites && Array.isArray(data.enabled_satellites)) {
+            updateSatelliteFilterOptions(data.enabled_satellites);
+        }
         updateMetrics(globalMetrics);
         applyFilters();
     } catch (err) {
@@ -91,6 +94,20 @@ async function loadSchedule() {
         if (emptyState) emptyState.style.display = 'block';
         showToast('Connection error while fetching scrape schedule', 'error');
     }
+}
+
+function updateSatelliteFilterOptions(enabledSatellites) {
+    const select = document.getElementById('filterSatelliteSelect');
+    if (!select) return;
+    const currentVal = select.value;
+    select.innerHTML = '<option value="" selected>All Satellites</option>';
+    enabledSatellites.forEach(sat => {
+        const opt = document.createElement('option');
+        opt.value = sat;
+        opt.textContent = sat;
+        if (sat === currentVal) opt.selected = true;
+        select.appendChild(opt);
+    });
 }
 
 let globalMetrics = {};
@@ -166,6 +183,8 @@ function applyFilters() {
 
     const selectedAoiId = aoiSelect && aoiSelect.value ? parseInt(aoiSelect.value, 10) : null;
     const selectedSource = sourceSelect ? sourceSelect.value : '';
+    const satelliteSelect = document.getElementById('filterSatelliteSelect');
+    const selectedSatellite = satelliteSelect ? satelliteSelect.value : '';
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
     const horizonDays = daysAheadEl && daysAheadEl.value ? parseInt(daysAheadEl.value, 10) : 7;
     const nowMs = Date.now();
@@ -176,6 +195,9 @@ function applyFilters() {
             return false;
         }
         if (autoOnly && !event.auto_capture_enabled) {
+            return false;
+        }
+        if (selectedSatellite && event.satellite !== selectedSatellite) {
             return false;
         }
         if (selectedSource) {
@@ -280,6 +302,11 @@ function createScheduleCard(event, index) {
     const contribLabel = event.contribution_label || (contrib === 'both' ? 'Both (N2YO + Historical Repeat Cycle)' : (contrib === 'historical' ? 'Historical Mission Repeat Cycle' : 'N2YO Orbit Tracking'));
     const contribDetail = event.contribution_detail || '';
 
+    let satBadgeClass = 'badge-track';
+    if (sat === 'Sentinel-1A') satBadgeClass = 'badge-sat-s1a';
+    else if (sat === 'Sentinel-1C') satBadgeClass = 'badge-sat-s1c';
+    else if (sat === 'Sentinel-1B') satBadgeClass = 'badge-sat-s1b';
+
     card.innerHTML = `
         <div class="card-top-row">
             <div class="event-timing-group">
@@ -293,7 +320,7 @@ function createScheduleCard(event, index) {
             <div class="event-badges">
                 ${statusBadge}
                 ${contribBadge}
-                <span class="badge badge-track">${escapeHtml(sat)}</span>
+                <span class="badge ${satBadgeClass}">🛰️ ${escapeHtml(sat)}</span>
                 ${dir ? `<span class="badge ${dirClass}">${escapeHtml(dirArrow)}</span>` : ''}
                 ${track ? `<span class="badge badge-secondary">${escapeHtml(track)}</span>` : ''}
                 ${conf ? `<span class="badge badge-conf">${escapeHtml(conf)}</span>` : ''}

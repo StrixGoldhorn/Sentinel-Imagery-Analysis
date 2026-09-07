@@ -157,6 +157,16 @@
                 </div>
 
                 <div class="control-item">
+                    <label for="filterSatelliteSelect"><strong>Satellite:</strong></label>
+                    <select id="filterSatelliteSelect" class="select-control" onchange="applyFilters()">
+                        <option value="" selected>All Satellites</option>
+                        <option value="Sentinel-1A">Sentinel-1A</option>
+                        <option value="Sentinel-1C">Sentinel-1C</option>
+                        <option value="Sentinel-1B">Sentinel-1B</option>
+                    </select>
+                </div>
+
+                <div class="control-item">
                     <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                         <input type="checkbox" id="filterAutoOnly" onchange="applyFilters()">
                         <span>Auto-Capture AOIs Only</span>

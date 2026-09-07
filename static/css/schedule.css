@@ -380,6 +380,27 @@ body {
     border: 1px solid var(--color-info-border);
 }
 
+.badge-sat-s1a {
+    background-color: rgba(14, 165, 233, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(14, 165, 233, 0.4);
+    font-weight: 600;
+}
+
+.badge-sat-s1c {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    font-weight: 600;
+}
+
+.badge-sat-s1b {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    font-weight: 600;
+}
+
 .badge-conf {
     background-color: var(--color-warning-light);
     color: var(--color-warning-text);

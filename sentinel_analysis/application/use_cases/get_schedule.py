@@ -7,6 +7,10 @@ from typing import Any, Optional
 from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRepository
 from sentinel_analysis.application.ports.satellite import PassPredictor
 from sentinel_analysis.domain.entities import AreaOfInterest
+from sentinel_analysis.domain.satellite import (
+    DEFAULT_ENABLED_SATELLITES,
+    SATELLITE_CATALOG,
+)
 
 
 class GetUpcomingScrapes:
@@ -16,9 +20,24 @@ class GetUpcomingScrapes:
         self,
         aoi_repository: AreaOfInterestRepository,
         pass_predictor: PassPredictor,
+        settings_repo: Optional[Any] = None,
     ) -> None:
         self._aoi_repository = aoi_repository
         self._predictor = pass_predictor
+        self._settings_repo = settings_repo
+
+    def get_enabled_satellites(self) -> list[str] | None:
+        if self._settings_repo is not None:
+            try:
+                val = self._settings_repo.get("enabled_satellites")
+                if isinstance(val, list):
+                    return [str(s).strip() for s in val if str(s).strip()]
+                elif isinstance(val, str) and val.strip():
+                    return [s.strip() for s in val.split(",") if s.strip()]
+            except Exception:
+                pass
+            return DEFAULT_ENABLED_SATELLITES.copy()
+        return None
 
     def execute(
         self,
@@ -26,6 +45,7 @@ class GetUpcomingScrapes:
         auto_capture_only: bool = False,
         aoi_id: Optional[int] = None,
         days_ahead: int = 14,
+        satellite: Optional[str] = None,
     ) -> dict[str, Any]:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("Satellite prediction API key is required")
@@ -34,6 +54,10 @@ class GetUpcomingScrapes:
         forecast_days = max(1, int(days_ahead))
         eval_horizon_days = max(14, forecast_days)
         max_future = now + timedelta(days=eval_horizon_days)
+
+        enabled_satellites = self.get_enabled_satellites()
+        active_sats = set(enabled_satellites) if enabled_satellites is not None else None
+        target_sat = satellite.strip() if isinstance(satellite, str) and satellite.strip() else None
 
         all_aois = list(self._aoi_repository.list())
         total_aois = len(all_aois)
@@ -65,7 +89,10 @@ class GetUpcomingScrapes:
         if uncached_aois:
             def _fetch_for_aoi(target: AreaOfInterest) -> tuple[int, list[dict[str, Any]]]:
                 try:
-                    preds = self._predictor.predict(target.bbox, api_key)
+                    try:
+                        preds = self._predictor.predict(target.bbox, api_key, enabled_satellites=enabled_satellites)
+                    except TypeError:
+                        preds = self._predictor.predict(target.bbox, api_key)
                     # Automatically populate SQLite cache if available
                     if target.id is not None and hasattr(self._aoi_repository, "save_cached_forecast"):
                         try:
@@ -93,6 +120,12 @@ class GetUpcomingScrapes:
             raw_predictions = aoi_predictions_map.get(aoi.id, [])
 
             for pred in raw_predictions:
+                sat_name = pred.get("satellite") or "Sentinel-1A"
+                if active_sats and sat_name not in active_sats:
+                    continue
+                if target_sat and sat_name != target_sat:
+                    continue
+
                 pass_time_raw = pred.get("time")
                 if not pass_time_raw:
                     continue
@@ -210,5 +243,7 @@ class GetUpcomingScrapes:
                 "n2yo_only_count": n2yo_only_count,
                 "historical_only_count": historical_only_count,
             },
+            "enabled_satellites": enabled_satellites if enabled_satellites is not None else DEFAULT_ENABLED_SATELLITES.copy(),
+            "satellite_catalog": SATELLITE_CATALOG,
             "generated_at": now.isoformat(),
         }

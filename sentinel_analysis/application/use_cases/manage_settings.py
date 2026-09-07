@@ -3,6 +3,7 @@
 from typing import Any
 
 from sentinel_analysis.application.ports.settings_repository import SettingsRepository
+from sentinel_analysis.domain.satellite import ALL_SATELLITE_NAMES
 
 
 class GetSettings:
@@ -202,6 +203,19 @@ class UpdateSettings:
             if sval not in ("SAR", "SAR_DUAL_POL"):
                 raise ValueError("Default Evalscript must be one of: SAR, SAR_DUAL_POL")
             return sval
+
+        if key == "enabled_satellites":
+            if isinstance(value, str):
+                sats = [s.strip() for s in value.split(",") if s.strip()]
+            elif isinstance(value, (list, tuple, set)):
+                sats = [str(s).strip() for s in value if str(s).strip()]
+            else:
+                sats = []
+            valid_sats = set(ALL_SATELLITE_NAMES)
+            invalid = [s for s in sats if s not in valid_sats]
+            if invalid:
+                raise ValueError(f"Unknown satellite(s): {', '.join(invalid)}. Supported: {', '.join(ALL_SATELLITE_NAMES)}")
+            return sats
 
         if isinstance(value, str):
             return value.strip()

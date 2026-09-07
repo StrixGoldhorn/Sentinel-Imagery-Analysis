@@ -298,6 +298,34 @@
                             <p class="setting-description">Comma-separated NORAD tracking IDs for Sentinel-1 satellites.</p>
                             <input type="text" id="input_scheduler_satellite_norad_ids" class="form-input" value="39634, 41456, 62232">
                         </div>
+
+                        <div class="settings-card card-span-2">
+                            <label class="setting-title">Monitored Satellites</label>
+                            <p class="setting-description">Select which Sentinel-1 satellites to track, schedule passes for, and ingest imagery from. Unchecked satellites are completely excluded from forecasts, AIS scrapes, and catalog polling to preserve Copernicus quotas.</p>
+                            <div class="satellite-selection-grid" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem;">
+                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
+                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1A" id="sat_Sentinel-1A" checked style="cursor: pointer; width: 18px; height: 18px;">
+                                    <div>
+                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1A <span class="badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Operational</span></div>
+                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 39634 &bull; Sun-synchronous 12-day repeat</div>
+                                    </div>
+                                </label>
+                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
+                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1C" id="sat_Sentinel-1C" checked style="cursor: pointer; width: 18px; height: 18px;">
+                                    <div>
+                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1C <span class="badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Operational (New)</span></div>
+                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 62232 &bull; Launched Dec 2024 &bull; 180&deg; phase twin</div>
+                                    </div>
+                                </label>
+                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
+                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1B" id="sat_Sentinel-1B" style="cursor: pointer; width: 18px; height: 18px;">
+                                    <div>
+                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1B <span class="badge" style="font-size: 0.7rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Decommissioned</span></div>
+                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 41456 &bull; Retired Aug 2022 (Historical archive only)</div>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

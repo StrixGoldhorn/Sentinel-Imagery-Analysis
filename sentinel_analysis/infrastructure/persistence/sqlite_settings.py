@@ -138,6 +138,13 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "label": "Sentinel-1 NORAD IDs",
             "description": "Comma-separated NORAD tracking IDs for Sentinel-1A, 1B, 1C.",
         },
+        "enabled_satellites": {
+            "value": ["Sentinel-1A", "Sentinel-1C"],
+            "type": "multiselect",
+            "options": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"],
+            "label": "Monitored Satellites",
+            "description": "Select which Sentinel-1 satellites to track, schedule passes for, and ingest imagery from.",
+        },
     },
     "map_ui": {
         "default_lat": {

@@ -48,11 +48,16 @@ def get_upcoming_scrapes():
     except ValueError:
         days_ahead = 14
 
+    satellite = request.args.get("satellite")
+    if satellite:
+        satellite = satellite.strip()
+
     result = container().get_upcoming_scrapes.execute(
         api_key=api_key,
         auto_capture_only=auto_capture_only,
         aoi_id=aoi_id,
         days_ahead=days_ahead,
+        satellite=satellite,
     )
 
     return jsonify(status="success", **result)

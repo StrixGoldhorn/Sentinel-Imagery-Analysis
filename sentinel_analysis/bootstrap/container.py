@@ -72,7 +72,11 @@ class ApplicationContainer:
         self.stitcher = PillowImageStitcher()
         self.n2yo_predictor = N2YOPassPredictor()
         self.mission_analyzer = Sentinel1MissionAnalyzer(self.imagery)
-        self.hybrid_predictor = HybridPassPredictor(self.n2yo_predictor, self.mission_analyzer)
+        self.hybrid_predictor = HybridPassPredictor(
+            self.n2yo_predictor,
+            self.mission_analyzer,
+            settings_repo=self.settings_repository,
+        )
 
         self.generate_dem = GenerateDEM(self.imagery, self.stitcher)
         self.create_scan = CreateScan(
@@ -127,10 +131,12 @@ class ApplicationContainer:
             self.ingest_ais,
             self.post_pass_repository,
             self.ingest_post_pass,
+            settings_repo=self.settings_repository,
         )
         self.get_upcoming_scrapes = GetUpcomingScrapes(
             self.aoi_repository,
             self.hybrid_predictor,
+            settings_repo=self.settings_repository,
         )
         scheduler_poll_interval = 3600.0
         if hasattr(self, "settings_repository") and self.settings_repository is not None:

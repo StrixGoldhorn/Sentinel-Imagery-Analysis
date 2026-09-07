@@ -170,15 +170,23 @@ class Sentinel1MissionAnalyzer:
         bbox: BoundingBox,
         days_ahead: int = 10,
         limit: int = 100,
+        enabled_satellites: list[str] | None = None,
     ) -> list[PassPrediction]:
         """Project future Sentinel-1 passes using exact 12-day / 175-orbit repeat cycle mechanics."""
+        if enabled_satellites is not None and not enabled_satellites:
+            return []
+
+        active_sats = set(enabled_satellites) if enabled_satellites is not None else None
+
         _, history = self.analyze_history(bbox, limit=None)
         now = datetime.now(timezone.utc)
         max_time = now + timedelta(days=max(1, days_ahead))
 
         if not history:
             # When no catalog history is available, synthesize nominal orbital flypasts based on bbox
-            return self._synthesize_nominal_passes(bbox, now, max_time, limit=limit)
+            return self._synthesize_nominal_passes(
+                bbox, now, max_time, limit=limit, enabled_satellites=enabled_satellites
+            )
 
         # Group by relative orbit track and platform to find the latest pass for each track
         latest_by_track: dict[tuple[int | None, str, str], datetime] = {}
@@ -195,59 +203,61 @@ class Sentinel1MissionAnalyzer:
 
         for (track, direction, platform), last_dt in latest_by_track.items():
             # 1. Project primary satellite along 12-day repeat cycle
-            candidate_dt = last_dt
-            while candidate_dt < max_time:
-                if candidate_dt >= now:
-                    hist_desc = (
-                        f"Historical Track #{track} repeat cycle (+12d cadence)"
-                        if track is not None
-                        else "Historical 12d orbital repeat"
-                    )
-                    predicted_passes.append(
-                        PassPrediction(
-                            time=candidate_dt.isoformat(),
-                            max_elevation=75.0,
-                            source="HISTORICAL_MISSION",
-                            contribution="historical",
-                            contribution_label="Historical Repeat Cycle Only",
-                            contribution_detail=hist_desc,
-                            satellite=platform,
-                            orbit_direction=direction,
-                            relative_orbit=track,
-                            confidence_score=0.94,
-                            swath_mode="IW",
-                            historical_match=hist_desc,
+            if active_sats is None or platform in active_sats:
+                candidate_dt = last_dt
+                while candidate_dt < max_time:
+                    if candidate_dt >= now:
+                        hist_desc = (
+                            f"Historical Track #{track} repeat cycle (+12d cadence)"
+                            if track is not None
+                            else "Historical 12d orbital repeat"
                         )
-                    )
-                candidate_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
+                        predicted_passes.append(
+                            PassPrediction(
+                                time=candidate_dt.isoformat(),
+                                max_elevation=75.0,
+                                source="HISTORICAL_MISSION",
+                                contribution="historical",
+                                contribution_label="Historical Repeat Cycle Only",
+                                contribution_detail=hist_desc,
+                                satellite=platform,
+                                orbit_direction=direction,
+                                relative_orbit=track,
+                                confidence_score=0.94,
+                                swath_mode="IW",
+                                historical_match=hist_desc,
+                            )
+                        )
+                    candidate_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
 
             # 2. Project twin constellation satellite (e.g. S1C shifted by 6 days)
             twin_platform = "Sentinel-1C" if platform == "Sentinel-1A" else "Sentinel-1A"
-            twin_dt = last_dt + timedelta(days=S1_CONSTELLATION_PHASE_OFFSET_DAYS)
-            while twin_dt < max_time:
-                if twin_dt >= now:
-                    twin_desc = (
-                        f"Constellation 180° offset for Track #{track}"
-                        if track is not None
-                        else "Constellation 6d offset"
-                    )
-                    predicted_passes.append(
-                        PassPrediction(
-                            time=twin_dt.isoformat(),
-                            max_elevation=70.0,
-                            source="HISTORICAL_MISSION",
-                            contribution="historical",
-                            contribution_label="Historical Repeat Cycle Only",
-                            contribution_detail=twin_desc,
-                            satellite=twin_platform,
-                            orbit_direction=direction,
-                            relative_orbit=track,
-                            confidence_score=0.90,
-                            swath_mode="IW",
-                            historical_match=twin_desc,
+            if active_sats is None or twin_platform in active_sats:
+                twin_dt = last_dt + timedelta(days=S1_CONSTELLATION_PHASE_OFFSET_DAYS)
+                while twin_dt < max_time:
+                    if twin_dt >= now:
+                        twin_desc = (
+                            f"Constellation 180° offset for Track #{track}"
+                            if track is not None
+                            else "Constellation 6d offset"
                         )
-                    )
-                twin_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
+                        predicted_passes.append(
+                            PassPrediction(
+                                time=twin_dt.isoformat(),
+                                max_elevation=70.0,
+                                source="HISTORICAL_MISSION",
+                                contribution="historical",
+                                contribution_label="Historical Repeat Cycle Only",
+                                contribution_detail=twin_desc,
+                                satellite=twin_platform,
+                                orbit_direction=direction,
+                                relative_orbit=track,
+                                confidence_score=0.90,
+                                swath_mode="IW",
+                                historical_match=twin_desc,
+                            )
+                        )
+                    twin_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
 
         predicted_passes.sort(key=lambda p: datetime.fromisoformat(str(p["time"]).replace("Z", "+00:00")))
         return predicted_passes[:limit]
@@ -287,8 +297,13 @@ class Sentinel1MissionAnalyzer:
         start_time: datetime,
         end_time: datetime,
         limit: int = 100,
+        enabled_satellites: list[str] | None = None,
     ) -> list[PassPrediction]:
         """Synthesize nominal Sentinel-1 passes using Sun-synchronous orbit crossings."""
+        if enabled_satellites is not None and not enabled_satellites:
+            return []
+
+        active_sats = set(enabled_satellites) if enabled_satellites is not None else None
         lat, lon = bbox.center
         # Sun-synchronous equatorial crossing local solar time:
         # Descending ~ 06:00 LST, Ascending ~ 18:00 LST
@@ -307,6 +322,8 @@ class Sentinel1MissionAnalyzer:
                 ((utc_desc + 12) % 24, "DESCENDING", "Sentinel-1C"),
                 ((utc_asc + 12) % 24, "ASCENDING", "Sentinel-1C"),
             ]:
+                if active_sats is not None and sat not in active_sats:
+                    continue
                 h = int(utc_hour)
                 m = int((utc_hour % 1) * 60)
                 pass_dt = datetime(cur_day.year, cur_day.month, cur_day.day, h, m, tzinfo=timezone.utc)

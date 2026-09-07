@@ -13,6 +13,7 @@ from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
 from sentinel_analysis.domain.entities import PostPassIngestionJob
+from sentinel_analysis.domain.satellite import DEFAULT_ENABLED_SATELLITES
 
 
 class CheckAndScheduleAOIs:
@@ -26,6 +27,7 @@ class CheckAndScheduleAOIs:
         ingest_ais: Optional[IngestAIS] = None,
         post_pass_repository: Optional[PostPassIngestionRepository] = None,
         ingest_post_pass: Optional[IngestPostPassImagery] = None,
+        settings_repo: Optional[Any] = None,
     ) -> None:
         self._aois = aoi_repository
         self._predictor = pass_predictor
@@ -33,6 +35,20 @@ class CheckAndScheduleAOIs:
         self._ingest_ais = ingest_ais
         self._post_pass_repo = post_pass_repository
         self._ingest_post_pass = ingest_post_pass
+        self._settings_repo = settings_repo
+
+    def get_enabled_satellites(self) -> list[str] | None:
+        if self._settings_repo is not None:
+            try:
+                val = self._settings_repo.get("enabled_satellites")
+                if isinstance(val, list):
+                    return [str(s).strip() for s in val if str(s).strip()]
+                elif isinstance(val, str) and val.strip():
+                    return [s.strip() for s in val.split(",") if s.strip()]
+            except Exception:
+                pass
+            return DEFAULT_ENABLED_SATELLITES.copy()
+        return None
 
     def execute(self, api_key: str) -> list[dict[str, Any]]:
         if not isinstance(api_key, str) or not api_key.strip():
@@ -40,6 +56,8 @@ class CheckAndScheduleAOIs:
         api_key = api_key.strip()
         now = datetime.now(timezone.utc)
         results: list[dict[str, Any]] = []
+        enabled_satellites = self.get_enabled_satellites()
+        active_sats = set(enabled_satellites) if enabled_satellites is not None else None
 
         for aoi in self._aois.list():
             if not getattr(aoi, "auto_capture_enabled", False):
@@ -48,7 +66,10 @@ class CheckAndScheduleAOIs:
             try:
                 raw_predictions: list[dict[str, Any]] = []
                 try:
-                    raw_predictions = list(self._predictor.predict(aoi.bbox, api_key))
+                    try:
+                        raw_predictions = list(self._predictor.predict(aoi.bbox, api_key, enabled_satellites=enabled_satellites))
+                    except TypeError:
+                        raw_predictions = list(self._predictor.predict(aoi.bbox, api_key))
                 except Exception as pred_exc:
                     logger.warning("Predictor call failed for AOI %s (%s): %s", aoi.id, aoi.name, pred_exc)
 
@@ -62,6 +83,10 @@ class CheckAndScheduleAOIs:
 
                 parsed_passes: list[dict[str, Any]] = []
                 for pred in raw_predictions:
+                    sat_name = pred.get("satellite") or "Sentinel-1A"
+                    if active_sats is not None and sat_name not in active_sats:
+                        continue
+
                     src = pred.get("source")
                     contrib = pred.get("contribution")
                     if contrib:
@@ -84,7 +109,7 @@ class CheckAndScheduleAOIs:
                             p_time_utc = p_time.astimezone(timezone.utc)
                             parsed_passes.append({
                                 "time": p_time_utc,
-                                "satellite": pred.get("satellite") or "Sentinel-1",
+                                "satellite": sat_name,
                                 "orbit_direction": pred.get("orbit_direction"),
                                 "source": src or ("COMBINED" if contrib_norm == "both" else ("N2YO" if contrib_norm == "n2yo" else "HISTORICAL_MISSION")),
                                 "contribution": contrib_norm,
