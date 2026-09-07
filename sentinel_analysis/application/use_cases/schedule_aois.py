@@ -140,9 +140,11 @@ class CheckAndScheduleAOIs:
 
                 # Check if ANY predicted pass or aoi.next_scan is currently active (-5min to +5min)
                 active_flypast_time: datetime | None = None
+                active_pass_info: dict[str, Any] | None = None
                 for p in parsed_passes:
                     if -300 <= (p["time"] - now).total_seconds() <= 300:
                         active_flypast_time = p["time"]
+                        active_pass_info = p
                         break
 
                 if not active_flypast_time and getattr(aoi, "next_scan", None):
@@ -169,32 +171,31 @@ class CheckAndScheduleAOIs:
                             )
                         ais_records_scraped = ingest_res["total_inserted"]
 
-                # Register post-pass ingestion jobs for active, upcoming, and recently completed passes (last 24h to next 24h)
-                if self._post_pass_repo is not None and aoi.id is not None:
-                    cutoff_recent = now - timedelta(hours=24)
-                    cutoff_future = now + timedelta(hours=24)
-                    for pass_info in parsed_passes:
-                        # For imagery catalog polling, skip n2yo-only predicted passes
-                        if pass_info.get("contribution") == "n2yo":
-                            continue
-                        p_dt = pass_info["time"]
-                        if cutoff_recent <= p_dt <= cutoff_future:
-                            existing = self._post_pass_repo.find_by_aoi_and_pass(aoi.id, p_dt)
-                            is_completed = (p_dt + timedelta(minutes=5)) <= now
+                    # Once an AOI is auto scanned, the job is added.
+                    # Otherwise, if no AOI autoscan happens (e.g. if the application was not running at that time), DO NOT ADD JOB.
+                    if self._post_pass_repo is not None and aoi.id is not None:
+                        # Skip n2yo-only predicted passes for imagery catalog polling
+                        if not (active_pass_info and active_pass_info.get("contribution") == "n2yo"):
+                            existing = self._post_pass_repo.find_by_aoi_and_pass(aoi.id, active_flypast_time)
+                            is_completed = (active_flypast_time + timedelta(minutes=5)) <= now
                             target_status = "POLLING_CATALOG" if is_completed else "PENDING_PASS"
-                            next_poll = now if is_completed else (p_dt + timedelta(minutes=5))
+                            next_poll = now if is_completed else (active_flypast_time + timedelta(minutes=5))
+
+                            satellite = (active_pass_info.get("satellite") if active_pass_info else None) or "Sentinel-1"
+                            orbit_dir = active_pass_info.get("orbit_direction") if active_pass_info else None
 
                             if existing is None:
                                 new_job = PostPassIngestionJob(
                                     aoi_id=aoi.id,
-                                    pass_time=p_dt,
-                                    satellite=pass_info.get("satellite") or "Sentinel-1",
-                                    orbit_direction=pass_info.get("orbit_direction"),
+                                    pass_time=active_flypast_time,
+                                    satellite=satellite,
+                                    orbit_direction=orbit_dir,
                                     status=target_status,
                                     attempts=0,
                                     next_poll_at=next_poll,
                                     created_at=now,
                                     aoi_name=aoi.name,
+                                    expected_imagery_time=active_flypast_time,
                                 )
                                 self._post_pass_repo.add(new_job)
                             elif existing.status == "PENDING_PASS" and is_completed:

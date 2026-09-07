@@ -212,7 +212,7 @@ class SQLitePostPassIngestionRepository:
                     SUM(CASE WHEN status = 'INGESTING' THEN 1 ELSE 0 END) AS ingesting,
                     SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed,
                     SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS failed,
-                    SUM(CASE WHEN status = 'TIMED_OUT' THEN 1 ELSE 0 END) AS timed_out,
+                    SUM(CASE WHEN status IN ('TIMED_OUT', 'WAIT_EXPIRED') THEN 1 ELSE 0 END) AS timed_out,
                     COUNT(*) AS total
                 FROM post_pass_ingestions
                 """
@@ -243,8 +243,12 @@ class SQLitePostPassIngestionRepository:
         where_clauses = []
         params: list[object] = []
         if status:
-            where_clauses.append("p.status = ?")
-            params.append(status.upper().strip())
+            norm_status = status.upper().strip()
+            if norm_status in ("TIMED_OUT", "WAIT_EXPIRED"):
+                where_clauses.append("p.status IN ('TIMED_OUT', 'WAIT_EXPIRED')")
+            else:
+                where_clauses.append("p.status = ?")
+                params.append(norm_status)
         if aoi_id is not None:
             where_clauses.append("p.aoi_id = ?")
             params.append(int(aoi_id))

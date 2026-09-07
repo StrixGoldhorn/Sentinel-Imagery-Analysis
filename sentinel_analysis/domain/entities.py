@@ -362,7 +362,7 @@ class PostPassIngestionJob:
         if self.orbit_direction is not None:
             object.__setattr__(self, "orbit_direction", _optional_text(self.orbit_direction, "Orbit direction"))
         status = _required_text(self.status, "Job status").upper()
-        valid_statuses = {"PENDING_PASS", "POLLING_CATALOG", "INGESTING", "COMPLETED", "TIMED_OUT", "FAILED"}
+        valid_statuses = {"PENDING_PASS", "POLLING_CATALOG", "INGESTING", "COMPLETED", "TIMED_OUT", "WAIT_EXPIRED", "FAILED"}
         if status not in valid_statuses:
             raise DomainValidationError(f"Invalid job status: {status}. Must be one of {valid_statuses}")
         object.__setattr__(self, "status", status)

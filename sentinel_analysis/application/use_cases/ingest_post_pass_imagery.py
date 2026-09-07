@@ -28,21 +28,27 @@ def _extract_acq_datetime(acq) -> Optional[datetime]:
         return None
     if isinstance(acq, Acquisition) or hasattr(acq, "acquired_at"):
         dt = getattr(acq, "acquired_at", None)
-        if dt is not None:
-            if isinstance(dt, datetime):
-                return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        if dt is not None and not isinstance(dt, datetime):
             try:
-                parsed = datetime.fromisoformat(str(dt).replace("Z", "+00:00"))
+                dt_str = str(dt).strip()
+                if not dt_str or "mock" in dt_str.lower():
+                    return None
+                parsed = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
                 return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
             except Exception:
                 return None
+        elif isinstance(dt, datetime):
+            return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     if isinstance(acq, dict):
         raw = acq.get("properties", {}).get("datetime") or acq.get("datetime")
         if raw is not None:
             if isinstance(raw, datetime):
                 return raw.astimezone(timezone.utc) if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
             try:
-                parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                raw_str = str(raw).strip()
+                if not raw_str or "mock" in raw_str.lower():
+                    return None
+                parsed = datetime.fromisoformat(raw_str.replace("Z", "+00:00"))
                 return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
             except Exception:
                 return None
@@ -114,13 +120,12 @@ class IngestPostPassImagery:
             elapsed_seconds = (now - expected_time).total_seconds()
 
             try:
-                # Query Copernicus for acquisition matching expected imagery window (±1 hour)
+                # 1. Query for imagery that occur within that ±1 hour
                 window_start = expected_time - timedelta(hours=1)
                 window_end = expected_time + timedelta(hours=1)
 
-                acquisition_ready = False
+                time_range_imagery = None
                 matched_acq_time = None
-                more_recent_acq_time = None
 
                 if hasattr(self._imagery, "search_historical_acquisitions"):
                     acquisitions = self._imagery.search_historical_acquisitions(
@@ -132,12 +137,41 @@ class IngestPostPassImagery:
                     for acq in (acquisitions or []):
                         a_dt = _extract_acq_datetime(acq)
                         if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600:
-                            acquisition_ready = True
+                            time_range_imagery = acq
                             matched_acq_time = a_dt
                             break
 
-                    if not acquisition_ready:
-                        # Check if a more recent acquisition has already been published beyond the +1hr window
+                if time_range_imagery is None and hasattr(self._imagery, "find_latest_acquisition"):
+                    try:
+                        acq = self._imagery.find_latest_acquisition(
+                            aoi.bbox,
+                            start_date=window_start,
+                            end_date=window_end,
+                        )
+                        a_dt = _extract_acq_datetime(acq)
+                        if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600:
+                            time_range_imagery = acq
+                            matched_acq_time = a_dt
+                    except Exception:
+                        pass
+
+                # 2. AS WELL AS query for the latest imagery of the location
+                latest_imagery = None
+                latest_acq_time = None
+
+                if hasattr(self._imagery, "find_latest_acquisition"):
+                    try:
+                        latest_candidate = self._imagery.find_latest_acquisition(aoi.bbox)
+                        l_dt = _extract_acq_datetime(latest_candidate)
+                        if l_dt is not None:
+                            latest_imagery = latest_candidate
+                            latest_acq_time = l_dt
+                    except Exception:
+                        pass
+
+                # Also check search_historical_acquisitions for latest imagery
+                if hasattr(self._imagery, "search_historical_acquisitions"):
+                    try:
                         recent_acquisitions = self._imagery.search_historical_acquisitions(
                             aoi.bbox,
                             start_date=window_end,
@@ -146,21 +180,47 @@ class IngestPostPassImagery:
                         )
                         for acq in (recent_acquisitions or []):
                             a_dt = _extract_acq_datetime(acq)
-                            if a_dt and a_dt > window_end:
-                                more_recent_acq_time = a_dt
-                                break
-                else:
-                    # Fallback to find_latest_acquisition
-                    acq = self._imagery.find_latest_acquisition(aoi.bbox, days_ago=1)
-                    if acq is not None:
-                        diff_sec = (acq.acquired_at - expected_time).total_seconds()
-                        if abs(diff_sec) <= 3600:
-                            acquisition_ready = True
-                            matched_acq_time = acq.acquired_at
-                        elif diff_sec > 3600:
-                            more_recent_acq_time = acq.acquired_at
+                            if a_dt and (latest_acq_time is None or a_dt > latest_acq_time):
+                                latest_imagery = acq
+                                latest_acq_time = a_dt
+                    except Exception:
+                        pass
 
-                if acquisition_ready:
+                # 3. IF THE LATEST IMAGERY OF THE LOCATION EXCEEDS THE EXPECTED TIME RANGE AND THERE IS NO TIME RANGE RESULT, mark it as failed.
+                if latest_acq_time is not None and latest_acq_time > window_end and time_range_imagery is None:
+                    # Pass missed: a newer pass was already acquired and published, but target pass imagery was not acquired
+                    err_msg = (
+                        f"Timing mismatch: Detected more recent imagery acquired at "
+                        f"{latest_acq_time.strftime('%Y-%m-%d %H:%M:%S UTC')}, which is outside the expected window "
+                        f"({expected_time.strftime('%Y-%m-%d %H:%M:%S UTC')} ± 1h). Target pass imagery was not acquired."
+                    )
+                    failed_job = PostPassIngestionJob(
+                        id=job.id,
+                        aoi_id=job.aoi_id,
+                        pass_time=job.pass_time,
+                        satellite=job.satellite,
+                        orbit_direction=job.orbit_direction,
+                        status="FAILED",
+                        attempts=job.attempts + 1,
+                        last_polled_at=now,
+                        next_poll_at=None,
+                        scan_folder=job.scan_folder,
+                        error_message=err_msg,
+                        created_at=job.created_at,
+                        completed_at=now,
+                        aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
+                    )
+                    self._jobs.update(failed_job)
+                    results.append({
+                        "job_id": job.id,
+                        "aoi_id": job.aoi_id,
+                        "status": "FAILED",
+                        "error": err_msg,
+                    })
+
+                # 4. OTHERWISE, IF THERE IS IMAGERY FOR THE +- 1HR, mark it as completed.
+                elif time_range_imagery is not None:
                     # Mark as INGESTING
                     ingesting_job = PostPassIngestionJob(
                         id=job.id,
@@ -221,40 +281,11 @@ class IngestPostPassImagery:
                         "status": "COMPLETED",
                         "scan_folder": scan.folder_name,
                     })
-                elif more_recent_acq_time is not None:
-                    # A more recent orbit has already occurred and been published; expected pass was missed
-                    err_msg = (
-                        f"Timing mismatch: Detected more recent imagery acquired at "
-                        f"{more_recent_acq_time.strftime('%Y-%m-%d %H:%M:%S UTC')}, which is outside the expected window "
-                        f"({expected_time.strftime('%Y-%m-%d %H:%M:%S UTC')} ± 1h). Target pass imagery was not acquired."
-                    )
-                    failed_job = PostPassIngestionJob(
-                        id=job.id,
-                        aoi_id=job.aoi_id,
-                        pass_time=job.pass_time,
-                        satellite=job.satellite,
-                        orbit_direction=job.orbit_direction,
-                        status="FAILED",
-                        attempts=job.attempts + 1,
-                        last_polled_at=now,
-                        next_poll_at=None,
-                        scan_folder=job.scan_folder,
-                        error_message=err_msg,
-                        created_at=job.created_at,
-                        completed_at=now,
-                        aoi_name=aoi.name,
-                        expected_imagery_time=expected_time,
-                    )
-                    self._jobs.update(failed_job)
-                    results.append({
-                        "job_id": job.id,
-                        "aoi_id": job.aoi_id,
-                        "status": "FAILED",
-                        "error": err_msg,
-                    })
+
+                # 5. OTHERWISE, mark as wait expired (if timeout exceeded) or continue polling.
                 elif elapsed_seconds > (self._max_wait_hours * 3600):
                     # Timeout: No matching imagery in catalog and maximum wait duration exceeded
-                    timeout_msg = f"Exceeded maximum post-pass wait window ({self._max_wait_hours} hours)"
+                    timeout_msg = f"Wait window expired: Exceeded maximum post-pass wait window ({self._max_wait_hours} hours)"
                     timed_out_job = PostPassIngestionJob(
                         id=job.id,
                         aoi_id=job.aoi_id,

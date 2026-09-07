@@ -366,6 +366,74 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
         self.assertIn("more recent imagery", updated.error_message)
         self.assertIsNone(updated.next_poll_at)  # Stopped polling
 
+    def test_fails_when_find_latest_acquisition_exceeds_window_and_no_in_window_result(self):
+        now = datetime.now(timezone.utc)
+        expected_time = now - timedelta(hours=3)
+        job = PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=expected_time,
+            expected_imagery_time=expected_time,
+            status="POLLING_CATALOG",
+            attempts=1,
+            next_poll_at=now - timedelta(seconds=1),
+        )
+        job_id = self.post_pass_repo.add(job)
+
+        self.mock_imagery.search_historical_acquisitions.return_value = []
+        newer_acq = Acquisition(
+            acquired_at=expected_time + timedelta(hours=2, minutes=30),
+            satellite="Sentinel-1A",
+            product_type="GRD",
+            product_id="S1A_IW_GRDH_LATEST_EXCEEDED",
+        )
+        self.mock_imagery.find_latest_acquisition.return_value = newer_acq
+
+        results = self.use_case.execute()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "FAILED")
+        self.assertIn("Timing mismatch", results[0]["error"])
+
+        updated = self.post_pass_repo.get(job_id)
+        self.assertEqual(updated.status, "FAILED")
+        self.assertIn("Timing mismatch", updated.error_message)
+
+    def test_completes_when_imagery_exists_within_plus_minus_one_hour(self):
+        now = datetime.now(timezone.utc)
+        expected_time = now - timedelta(minutes=40)
+        job = PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=expected_time,
+            expected_imagery_time=expected_time,
+            status="POLLING_CATALOG",
+            attempts=1,
+            next_poll_at=now - timedelta(seconds=1),
+        )
+        job_id = self.post_pass_repo.add(job)
+
+        matching_acq = Acquisition(
+            acquired_at=expected_time + timedelta(minutes=15),
+            satellite="Sentinel-1A",
+            product_type="GRD",
+            product_id="S1A_IW_GRDH_MATCH_1HR",
+        )
+        self.mock_imagery.search_historical_acquisitions.return_value = [matching_acq]
+        mock_scan = Scan(
+            folder_name="2026-09-01_matched_1hr",
+            bbox=BoundingBox(-1.0, 50.0, -0.5, 50.5),
+            acquisition=matching_acq,
+            image_path=str(self.test_dir / "test.png"),
+            metadata={},
+        )
+        self.mock_create_scan.execute.return_value = mock_scan
+
+        results = self.use_case.execute()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["status"], "COMPLETED")
+        updated = self.post_pass_repo.get(job_id)
+        self.assertEqual(updated.status, "COMPLETED")
+
 
 class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
     def setUp(self):
@@ -399,7 +467,7 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
-    def test_registers_post_pass_job_on_completed_pass(self):
+    def test_does_not_register_job_when_no_active_flypast_autoscan(self):
         now = datetime.now(timezone.utc)
         completed_pass_time = now - timedelta(minutes=20)
         future_pass_time = now + timedelta(hours=2)
@@ -419,20 +487,13 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
 
         self.schedule_use_case.execute(api_key="test_key")
 
-        # Verify job was registered for completed pass
+        # Verify no job was registered for completed pass when app was offline (no autoscan)
         existing = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, completed_pass_time)
-        self.assertIsNotNone(existing)
-        self.assertEqual(existing.status, "POLLING_CATALOG")
-        self.assertEqual(existing.satellite, "Sentinel-1A")
+        self.assertIsNone(existing)
 
-        # Verify future pass is queued as PENDING_PASS
+        # Verify future pass is not pre-emptively registered before autoscan
         future_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, future_pass_time)
-        self.assertIsNotNone(future_job)
-        self.assertEqual(future_job.status, "PENDING_PASS")
-        self.assertEqual(future_job.satellite, "Sentinel-1B")
-
-        # Verify post pass ingestion execute was called
-        self.mock_ingest_post_pass.execute.assert_called_once()
+        self.assertIsNone(future_job)
 
     def test_registers_job_during_active_flypast(self):
         now = datetime.now(timezone.utc)
@@ -489,25 +550,28 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
 
     def test_automated_post_pass_ingestion_ignores_n2yo_only_predictions(self):
         now = datetime.now(timezone.utc)
-        n2yo_pass_time = now - timedelta(minutes=10)
-        hist_pass_time = now - timedelta(minutes=15)
-        both_pass_time = now + timedelta(hours=3)
+        n2yo_active_pass = now + timedelta(seconds=15)
 
         self.mock_predictor.predict.return_value = [
             {
-                "time": n2yo_pass_time.isoformat(),
+                "time": n2yo_active_pass.isoformat(),
                 "satellite": "Sentinel-1A",
                 "source": "N2YO",
                 "contribution": "n2yo",
             },
+        ]
+
+        self.schedule_use_case.execute(api_key="test_key")
+
+        # N2YO-only pass should NOT have been registered even during active flypast
+        n2yo_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, n2yo_active_pass)
+        self.assertIsNone(n2yo_job)
+
+        # Combined/historical pass during active flypast SHOULD have been registered
+        valid_active_pass = now + timedelta(seconds=20)
+        self.mock_predictor.predict.return_value = [
             {
-                "time": hist_pass_time.isoformat(),
-                "satellite": "Sentinel-1A",
-                "source": "HISTORICAL_MISSION",
-                "contribution": "historical",
-            },
-            {
-                "time": both_pass_time.isoformat(),
+                "time": valid_active_pass.isoformat(),
                 "satellite": "Sentinel-1C",
                 "source": "COMBINED",
                 "contribution": "both",
@@ -515,20 +579,9 @@ class TestCheckAndScheduleAOIsIntegration(unittest.TestCase):
         ]
 
         self.schedule_use_case.execute(api_key="test_key")
-
-        # N2YO-only pass should NOT have been registered
-        n2yo_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, n2yo_pass_time)
-        self.assertIsNone(n2yo_job)
-
-        # Historical pass SHOULD have been registered
-        hist_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, hist_pass_time)
-        self.assertIsNotNone(hist_job)
-        self.assertEqual(hist_job.status, "POLLING_CATALOG")
-
-        # Combined pass SHOULD have been registered
-        both_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, both_pass_time)
-        self.assertIsNotNone(both_job)
-        self.assertEqual(both_job.status, "PENDING_PASS")
+        valid_job = self.post_pass_repo.find_by_aoi_and_pass(self.aoi_id, valid_active_pass)
+        self.assertIsNotNone(valid_job)
+        self.assertEqual(valid_job.status, "PENDING_PASS")
 
 
 class TestPostPassWebAPI(unittest.TestCase):

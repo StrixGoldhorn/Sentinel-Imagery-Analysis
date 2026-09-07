@@ -273,15 +273,17 @@ class TestScheduleUseCasesSatelliteSelection(unittest.TestCase):
         aoi_repo = StubAOIRepository([aoi])
         post_pass_repo = StubPostPassRepo()
 
+        pass_time_c = now + timedelta(seconds=30)
+
         class MockPredictor:
             def predict(self, bbox, api_key, enabled_satellites=None):
                 return [
                     {
-                        "time": (now + timedelta(hours=2)).isoformat(),
+                        "time": (now + timedelta(seconds=10)).isoformat(),
                         "satellite": "Sentinel-1B",  # Disabled by default
                     },
                     {
-                        "time": (now + timedelta(hours=4)).isoformat(),
+                        "time": pass_time_c.isoformat(),
                         "satellite": "Sentinel-1C",  # Enabled
                     },
                 ]
@@ -291,8 +293,9 @@ class TestScheduleUseCasesSatelliteSelection(unittest.TestCase):
             def __init__(self):
                 self.calls = 0
 
-            def execute(self, aoi_id, bbox):
+            def execute(self, aoi_id, bbox, **kwargs):
                 self.calls += 1
+                return {"total_inserted": 5}
 
         class MockCreateScan:
             def execute(self, **kwargs):
@@ -315,13 +318,12 @@ class TestScheduleUseCasesSatelliteSelection(unittest.TestCase):
 
         scheduler.execute(api_key="test_key")
 
-        # Next scan time on AOI should be Sentinel-1C pass (+4 hours), NOT Sentinel-1B (+2 hours)
+        # Next scan time on AOI should be Sentinel-1C pass, NOT Sentinel-1B
         next_scan, _ = aoi_repo.updated_predictions[10]
-        expected_time = now + timedelta(hours=4)
         if hasattr(next_scan, "isoformat"):
-            self.assertEqual(next_scan, expected_time)
+            self.assertEqual(next_scan, pass_time_c)
         else:
-            self.assertEqual(next_scan, expected_time.isoformat())
+            self.assertEqual(next_scan, pass_time_c.isoformat())
 
         # Post-pass registered job should only be for Sentinel-1C
         self.assertEqual(len(post_pass_repo.registered_jobs), 1)
