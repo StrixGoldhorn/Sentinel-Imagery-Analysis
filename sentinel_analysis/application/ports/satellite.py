@@ -39,7 +39,7 @@ class PassPrediction(TypedDict, total=False):
     contribution: str | None  # "both", "n2yo", "historical"
     contribution_label: str | None  # e.g. "Both (N2YO + Historical)", "N2YO Tracking Only", "Historical Repeat Cycle Only"
     contribution_detail: str | None  # Description of factors contributing to forecast
-    satellite: str | None  # e.g. "Sentinel-1A", "Sentinel-1C"
+    satellite: str | None  # e.g. "Sentinel-1A", "Sentinel-1C", "Sentinel-1D"
     orbit_direction: str | None  # "ASCENDING", "DESCENDING"
     relative_orbit: int | None
     confidence_score: float | None

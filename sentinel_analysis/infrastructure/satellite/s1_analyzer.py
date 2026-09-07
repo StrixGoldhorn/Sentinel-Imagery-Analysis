@@ -316,12 +316,23 @@ class Sentinel1MissionAnalyzer:
         end_date = end_time.date()
 
         while cur_day <= end_date:
-            for utc_hour, direction, sat in [
+            candidates = [
                 (utc_desc, "DESCENDING", "Sentinel-1A"),
                 (utc_asc, "ASCENDING", "Sentinel-1A"),
                 ((utc_desc + 12) % 24, "DESCENDING", "Sentinel-1C"),
                 ((utc_asc + 12) % 24, "ASCENDING", "Sentinel-1C"),
-            ]:
+            ]
+            if active_sats is not None and "Sentinel-1D" in active_sats:
+                candidates.extend([
+                    (utc_desc, "DESCENDING", "Sentinel-1D"),
+                    (utc_asc, "ASCENDING", "Sentinel-1D"),
+                ])
+            if active_sats is not None and "Sentinel-1B" in active_sats:
+                candidates.extend([
+                    ((utc_desc + 12) % 24, "DESCENDING", "Sentinel-1B"),
+                    ((utc_asc + 12) % 24, "ASCENDING", "Sentinel-1B"),
+                ])
+            for utc_hour, direction, sat in candidates:
                 if active_sats is not None and sat not in active_sats:
                     continue
                 h = int(utc_hour)

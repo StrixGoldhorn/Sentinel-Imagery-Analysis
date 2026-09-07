@@ -330,10 +330,12 @@ class CopernicusImageryProvider:
                         platform = "Sentinel-1B"
                     elif prod_id.startswith("S1C"):
                         platform = "Sentinel-1C"
+                    elif prod_id.startswith("S1D"):
+                        platform = "Sentinel-1D"
                     else:
                         platform = "Sentinel-1"
                 else:
-                    platform = str(platform).replace("sentinel-", "Sentinel-").replace("1a", "1A").replace("1b", "1B").replace("1c", "1C")
+                    platform = str(platform).replace("sentinel-", "Sentinel-").replace("1a", "1A").replace("1b", "1B").replace("1c", "1C").replace("1d", "1D")
 
                 # Parse orbit direction
                 orbit_dir_raw = props.get("sat:orbit_state") or props.get("orbitDirection") or props.get("orbit_state")

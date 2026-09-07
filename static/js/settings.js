@@ -72,7 +72,7 @@ function populateForm(sections) {
                 const checkedSats = Array.isArray(rawVal)
                     ? rawVal
                     : (typeof rawVal === 'string' ? rawVal.split(',').map(s => s.trim()) : ['Sentinel-1A', 'Sentinel-1C']);
-                ['Sentinel-1A', 'Sentinel-1B', 'Sentinel-1C'].forEach(sat => {
+                ['Sentinel-1A', 'Sentinel-1B', 'Sentinel-1C', 'Sentinel-1D'].forEach(sat => {
                     const chk = document.getElementById(`sat_${sat}`);
                     if (chk) chk.checked = checkedSats.includes(sat);
                 });

@@ -394,6 +394,13 @@ body {
     font-weight: 600;
 }
 
+.badge-sat-s1d {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    font-weight: 600;
+}
+
 .badge-sat-s1b {
     background-color: rgba(239, 68, 68, 0.15);
     color: #f87171;

@@ -133,15 +133,15 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "description": "Automatically enable automated scan capture when creating new AOIs.",
         },
         "satellite_norad_ids": {
-            "value": "39634, 41456, 62232",
+            "value": "39634, 41456, 62232, 66315",
             "type": "string",
             "label": "Sentinel-1 NORAD IDs",
-            "description": "Comma-separated NORAD tracking IDs for Sentinel-1A, 1B, 1C.",
+            "description": "Comma-separated NORAD tracking IDs for Sentinel-1A, 1B, 1C, 1D.",
         },
         "enabled_satellites": {
             "value": ["Sentinel-1A", "Sentinel-1C"],
             "type": "multiselect",
-            "options": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"],
+            "options": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C", "Sentinel-1D"],
             "label": "Monitored Satellites",
             "description": "Select which Sentinel-1 satellites to track, schedule passes for, and ingest imagery from.",
         },

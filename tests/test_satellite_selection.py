@@ -101,8 +101,10 @@ class TestSatelliteSelectionCatalogAndSettings(unittest.TestCase):
         self.assertIn("Sentinel-1A", SATELLITE_CATALOG)
         self.assertIn("Sentinel-1B", SATELLITE_CATALOG)
         self.assertIn("Sentinel-1C", SATELLITE_CATALOG)
+        self.assertIn("Sentinel-1D", SATELLITE_CATALOG)
         self.assertEqual(SATELLITE_NAME_TO_NORAD["Sentinel-1A"], 39634)
         self.assertEqual(SATELLITE_NAME_TO_NORAD["Sentinel-1C"], 62232)
+        self.assertEqual(SATELLITE_NAME_TO_NORAD["Sentinel-1D"], 66315)
         self.assertEqual(DEFAULT_ENABLED_SATELLITES, ["Sentinel-1A", "Sentinel-1C"])
 
     def test_sqlite_settings_default_seeding(self):
@@ -111,17 +113,18 @@ class TestSatelliteSelectionCatalogAndSettings(unittest.TestCase):
         self.assertIn("Sentinel-1A", enabled)
         self.assertIn("Sentinel-1C", enabled)
         self.assertNotIn("Sentinel-1B", enabled)
+        self.assertNotIn("Sentinel-1D", enabled)
 
     def test_update_settings_validation(self):
         updater = UpdateSettings(self.repo)
 
-        # Valid update
+        # Valid update including Sentinel-1D
         updater.execute({
             "scheduler": {
-                "enabled_satellites": ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"]
+                "enabled_satellites": ["Sentinel-1A", "Sentinel-1C", "Sentinel-1D"]
             }
         })
-        self.assertEqual(self.repo.get("enabled_satellites"), ["Sentinel-1A", "Sentinel-1B", "Sentinel-1C"])
+        self.assertEqual(self.repo.get("enabled_satellites"), ["Sentinel-1A", "Sentinel-1C", "Sentinel-1D"])
 
         # Invalid satellite name should raise ValueError
         with self.assertRaises(ValueError):
@@ -149,6 +152,12 @@ class TestMissionAnalyzerSatelliteFiltering(unittest.TestCase):
         self.assertTrue(len(passes_s1c) > 0)
         for p in passes_s1c:
             self.assertEqual(p["satellite"], "Sentinel-1C")
+
+        # Only Sentinel-1D
+        passes_s1d = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=["Sentinel-1D"])
+        self.assertTrue(len(passes_s1d) > 0)
+        for p in passes_s1d:
+            self.assertEqual(p["satellite"], "Sentinel-1D")
 
         # Empty enabled satellites
         passes_none = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=[])

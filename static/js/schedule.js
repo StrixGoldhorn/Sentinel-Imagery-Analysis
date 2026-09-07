@@ -305,6 +305,7 @@ function createScheduleCard(event, index) {
     let satBadgeClass = 'badge-track';
     if (sat === 'Sentinel-1A') satBadgeClass = 'badge-sat-s1a';
     else if (sat === 'Sentinel-1C') satBadgeClass = 'badge-sat-s1c';
+    else if (sat === 'Sentinel-1D') satBadgeClass = 'badge-sat-s1d';
     else if (sat === 'Sentinel-1B') satBadgeClass = 'badge-sat-s1b';
 
     card.innerHTML = `

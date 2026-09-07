@@ -21,6 +21,12 @@ SATELLITE_CATALOG: dict[str, dict[str, Any]] = {
         "description": "Operational C-SAR launched Dec 2024, 180° phased constellation partner to S1A",
         "launched": "2024-12-04",
     },
+    "Sentinel-1D": {
+        "norad_id": 66315,
+        "status": "UPCOMING",
+        "description": "Planned C-SAR mission (Sentinel-1 constellation continuity)",
+        "launched": "2025-11-04",
+    },
 }
 
 ALL_SATELLITE_NAMES: list[str] = list(SATELLITE_CATALOG.keys())
