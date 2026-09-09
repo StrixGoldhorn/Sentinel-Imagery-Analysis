@@ -43,22 +43,31 @@ POST /api/ingest_ais
 
 POST /api/aoi/<id>/predict
   -> PredictAreaOfInterest
-     -> N2YOPassPredictor
+     -> Sentinel1MissionAnalyzer (historical acquisition cadence owns pass timing)
+     -> N2YOPassPredictor (optional corroboration only)
      -> SQLiteAreaOfInterestRepository
 
 Automatic Pass Scheduler
   -> CheckAndScheduleAOIs
-     -> N2YOPassPredictor
-     -> CreateScan (Triggered automatically on upcoming pass)
+     -> Historical or historically corroborated prediction
+     -> BackgroundPassMonitor
+     -> TriggerAutomaticAISScrape
+        -> IngestAIS
+        -> PostPassIngestionJob (idempotently created by the automatic trigger)
+     -> IngestPostPassImagery after the fly-past window
+        -> exact matched Copernicus acquisition
+        -> CreateScan
+
+Manual AOI AIS scrapes and manual imagery scans are independent workflows and do
+not create work in the other pipeline.
 ```
 
 ## Database Migrations
 
-SQLite database schema evolution is handled by `MigrationRunner` applying versioned migrations from `sentinel_analysis/infrastructure/persistence/migrations/`:
-- `001_initial_schema.py`: Core tables for AOIs and AIS telemetry.
-- `002_add_indexes.py`: Spatial and temporal indexes for query performance.
-- `003_add_auto_capture_to_aoi.py`: Adds `auto_capture_enabled` flag for scheduled scan capture.
-- `004_add_polygon_coords_to_aoi.py`: Stores arbitrary polygon geometry for complex maritime zones.
+SQLite database schema evolution is handled by `MigrationRunner` applying ordered
+SQL files from `sentinel_analysis/infrastructure/persistence/migrations/sql/`.
+The current schema includes AOIs, AIS telemetry and scraper logs, cached pass
+forecasts, durable background tasks, post-pass ingestion jobs, and runtime settings.
 
 
 `app.py` is the web entry point. The CLI is exposed through `python -m sentinel_analysis`; implementation code belongs under `sentinel_analysis/`.

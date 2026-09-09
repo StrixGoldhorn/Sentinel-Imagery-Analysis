@@ -27,7 +27,7 @@ Copy `.exampleenv` to `.env` and configure:
 ```text
 COP_USERNAME=<Copernicus username>
 COP_PASSWORD=<Copernicus password>
-N2YO_API_KEY=<N2YO API key>
+N2YO_API_KEY=<optional N2YO API key used only to corroborate historical pass predictions>
 ```
 
 Optional settings include `DATABASE_PATH`, `OUTPUT_ROOT`, `PORT`, and `FLASK_DEBUG`.
