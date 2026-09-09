@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ def _background_udp_listener(
         sock.bind((host, port))
         sock.settimeout(1.0)
         logger.info("Continuous AIS UDP listener started on %s:%d", host, port)
-        while not stop_event.is_set():
+        while not stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
             try:
                 data, _ = sock.recvfrom(4096)
                 lines = data.decode("utf-8", errors="ignore").splitlines()
@@ -102,7 +103,7 @@ class UDPListenerPlugin:
     def stop_listener(self) -> None:
         self._stop_event.set()
         if self._listener_thread is not None and self._listener_thread.is_alive():
-            self._listener_thread.join(timeout=2.0)
+            self._listener_thread.join(timeout=1.0)
         self._listener_thread = None
 
     def push_message(self, nmea_sentence: str) -> None:

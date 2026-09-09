@@ -12,6 +12,7 @@ from sentinel_analysis.application.ports.satellite import PassPredictor
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import PostPassIngestionJob
 from sentinel_analysis.domain.satellite import DEFAULT_ENABLED_SATELLITES
 
@@ -59,6 +60,8 @@ class CheckAndScheduleAOIs:
     def execute(self, api_key: str, check_post_pass: bool = False) -> list[dict[str, Any]]:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("Satellite prediction API key is required")
+        if shutdown_coordinator.is_shutting_down:
+            return []
         api_key = api_key.strip()
         now = datetime.now(timezone.utc)
         results: list[dict[str, Any]] = []
@@ -66,6 +69,9 @@ class CheckAndScheduleAOIs:
         active_sats = set(enabled_satellites) if enabled_satellites is not None else None
 
         for aoi in self._aois.list():
+            if shutdown_coordinator.is_shutting_down:
+                logger.info("AOI scheduling loop aborted due to application shutdown")
+                break
             if not getattr(aoi, "auto_capture_enabled", False):
                 continue
 
@@ -254,7 +260,7 @@ class CheckAndScheduleAOIs:
 
         # Process due post-pass catalog checks only if explicitly requested
         post_pass_results: list[dict[str, Any]] = []
-        if check_post_pass and self._ingest_post_pass is not None:
+        if check_post_pass and self._ingest_post_pass is not None and not shutdown_coordinator.is_shutting_down:
             try:
                 post_pass_results = self._ingest_post_pass.execute()
             except Exception:

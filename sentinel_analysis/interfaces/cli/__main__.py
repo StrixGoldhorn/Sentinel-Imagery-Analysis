@@ -30,7 +30,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = arguments[0]
     if command not in COMMANDS:
         parser.error(f"invalid choice: {command!r} (choose from {', '.join(COMMANDS)})")
-    return COMMANDS[command](arguments[1:])
+    try:
+        return COMMANDS[command](arguments[1:])
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

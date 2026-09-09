@@ -8,6 +8,7 @@ from sentinel_analysis.application.exceptions import PluginNotFoundError
 from sentinel_analysis.application.ports.ais import AISPluginRegistry, AISTimeRange
 from sentinel_analysis.application.ports.ais_repository import AISRepository
 from sentinel_analysis.application.results import IngestionLog, IngestionResult, IngestionStatus
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,8 @@ class IngestAIS:
         plugin_name: str | None = None,
         trigger_reason: str | None = None,
     ) -> IngestionResult:
+        if shutdown_coordinator.is_shutting_down:
+            return IngestionResult(total_inserted=0, logs=[])
         normalized_time_range = self._normalize_time_range(time_range)
         if plugin_name is not None:
             if not isinstance(plugin_name, str) or not plugin_name.strip():
@@ -117,6 +120,9 @@ class IngestAIS:
         now = datetime.now(timezone.utc)
 
         for plugin in plugins:
+            if shutdown_coordinator.is_shutting_down:
+                logger.info("AIS ingestion aborted due to application shutdown")
+                break
             detail = None
             if hasattr(self._repository, "get_scraper_config"):
                 try:

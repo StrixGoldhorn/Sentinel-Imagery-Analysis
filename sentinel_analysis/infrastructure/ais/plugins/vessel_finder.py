@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
@@ -31,7 +32,7 @@ class PlaywrightVesselFinderSession:
         self._is_running = False
 
     def start(self) -> None:
-        if self._is_running:
+        if self._is_running or shutdown_coordinator.is_shutting_down:
             return
 
         from playwright.sync_api import sync_playwright
@@ -78,18 +79,26 @@ class PlaywrightVesselFinderSession:
             except Exception:
                 pass
 
+        if shutdown_coordinator.is_shutting_down:
+            return
+
         self.page.goto("https://www.vesselfinder.com/", wait_until="domcontentloaded")
-        try:
-            self.page.wait_for_selector("div#map-container", timeout=10000)
-            time.sleep(2)
-        except Exception as exc:
-            logger.warning("VesselFinder WAF map wait notice: %s", exc)
+        if not shutdown_coordinator.is_shutting_down:
+            try:
+                self.page.wait_for_selector("div#map-container", timeout=4000)
+                shutdown_coordinator.sleep(1.0)
+            except Exception as exc:
+                logger.warning("VesselFinder WAF map wait notice: %s", exc)
 
         self._is_running = True
 
     def fetch_mp2(self, coords: dict[str, float], zoom: int = 15) -> bytes:
+        if shutdown_coordinator.is_shutting_down:
+            return b""
         if not self._is_running:
             self.start()
+        if shutdown_coordinator.is_shutting_down:
+            return b""
 
         long_min = round(coords["long_min"] * 600000)
         lat_min = round(coords["lat_min"] * 600000)
@@ -207,11 +216,15 @@ class VesselFinderPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
+        if shutdown_coordinator.is_shutting_down:
+            return []
         chunks = self._fetch_all_chunks(bbox)
         records = self.parse_data(chunks, time_range)
         return deduplicate_ais_records(records)
 
     def _fetch_all_chunks(self, bbox: BoundingBox) -> list[bytes]:
+        if shutdown_coordinator.is_shutting_down:
+            return []
         session = (
             self._session_factory()
             if self._session_factory
@@ -222,13 +235,21 @@ class VesselFinderPlugin:
             )
         )
         try:
+            if shutdown_coordinator.is_shutting_down:
+                return []
             session.start()
             zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
 
             all_chunks: list[bytes] = []
             for idx, zone in enumerate(zones):
+                if shutdown_coordinator.is_shutting_down:
+                    break
                 if idx > 0 and self.zone_delay > 0:
+                    if shutdown_coordinator.is_shutting_down:
+                        break
                     time.sleep(self.zone_delay)
+                    if shutdown_coordinator.is_shutting_down:
+                        break
                 chunk_coords = {
                     "lat_min": zone.min_latitude,
                     "lat_max": zone.max_latitude,

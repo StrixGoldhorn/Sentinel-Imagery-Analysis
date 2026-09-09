@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from sentinel_analysis.application.ports.annotation import AnnotationTile
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 
 
 def load_image(image_path: Path | str) -> np.ndarray:
@@ -242,17 +243,27 @@ class OpenCVBoxEditor:
         cv2.setMouseCallback(self.window_name, self.mouse_callback)
         try:
             while True:
+                if shutdown_coordinator.is_shutting_down:
+                    return False
                 cv2.imshow(self.window_name, self.render())
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord("s"):
+                key = cv2.waitKey(20) & 0xFF
+                if key in {ord("s"), ord("S")}:
                     self._save()
                     return True
-                if key == ord("z") and self.boxes:
+                if key in {ord("z"), ord("Z")} and self.boxes:
                     self.boxes.pop()
-                if key == ord("c"):
+                if key in {ord("c"), ord("C")}:
                     self.boxes.clear()
-                if key in {ord("q"), 27}:
+                # 3 is ASCII ETX (Ctrl+C), 27 is ESC
+                if key in {ord("q"), ord("Q"), 27, 3}:
                     return False
+                try:
+                    if cv2.getWindowProperty(self.window_name, cv2.WND_PROP_VISIBLE) < 1:
+                        return False
+                except Exception:
+                    pass
+        except KeyboardInterrupt:
+            return False
         finally:
             cv2.destroyWindow(self.window_name)
 

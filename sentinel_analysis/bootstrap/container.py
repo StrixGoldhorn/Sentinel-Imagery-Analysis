@@ -1,5 +1,9 @@
 """Dependency injection container at the outermost application boundary."""
 
+import logging
+
+from sentinel_analysis.application.shutdown import shutdown_coordinator
+
 from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
     AnalyzeMissionPasses,
@@ -53,9 +57,13 @@ from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedu
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
 
 
+logger = logging.getLogger(__name__)
+
+
 class ApplicationContainer:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        shutdown_coordinator.register_cleanup(self.shutdown, priority=10)
 
         self.scan_repository = FilesystemScanRepository(settings.output_root)
         self.aoi_repository = SQLiteAreaOfInterestRepository(settings.database_path)
@@ -177,6 +185,39 @@ class ApplicationContainer:
         self.get_settings = GetSettings(self.settings_repository)
         self.update_settings = UpdateSettings(self.settings_repository)
         self.reset_settings = ResetSettings(self.settings_repository)
+
+    def shutdown(self, timeout: float = 2.0) -> None:
+        """Gracefully shut down all background workers, schedulers, and active threads."""
+        logger.info("Shutting down ApplicationContainer components (timeout=%.1fs)...", timeout)
+
+        # 1. Stop scheduler and pass monitor
+        if hasattr(self, "pass_scheduler") and self.pass_scheduler is not None:
+            try:
+                self.pass_scheduler.stop(timeout=timeout)
+            except Exception as exc:
+                logger.debug("Error stopping pass scheduler: %s", exc)
+
+        if hasattr(self, "pass_monitor") and self.pass_monitor is not None:
+            try:
+                self.pass_monitor.stop_all()
+            except Exception as exc:
+                logger.debug("Error stopping pass monitor: %s", exc)
+
+        # 2. Stop task queue
+        if hasattr(self, "task_queue") and self.task_queue is not None:
+            try:
+                self.task_queue.shutdown(wait=False, cancel_futures=True)
+            except Exception as exc:
+                logger.debug("Error shutting down task queue: %s", exc)
+
+        # 3. Stop any running AIS plugins (e.g. UDP listener)
+        if hasattr(self, "ais_plugin_registry") and self.ais_plugin_registry is not None:
+            try:
+                for plugin in self.ais_plugin_registry.get_plugins():
+                    if hasattr(plugin, "stop_listener"):
+                        plugin.stop_listener()
+            except Exception as exc:
+                logger.debug("Error stopping AIS plugins: %s", exc)
 
 
 

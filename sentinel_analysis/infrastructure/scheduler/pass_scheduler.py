@@ -17,6 +17,7 @@ except ImportError:
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class PassSchedulerWorker:
         self._ingest_post_pass = ingest_post_pass or getattr(schedule_use_case, "_ingest_post_pass", None)
         self._use_apscheduler = use_apscheduler and APSCHEDULER_AVAILABLE
         self._running = False
+        self._stop_event = threading.Event()
 
         self._scheduler: Optional[Any] = None
         self._thread: Optional[threading.Thread] = None
@@ -146,6 +148,7 @@ class PassSchedulerWorker:
     def start(self) -> None:
         if self._running:
             return
+        self._stop_event.clear()
         self._running = True
 
         if self._use_apscheduler and BackgroundScheduler is not None and IntervalTrigger is not None:
@@ -192,7 +195,7 @@ class PassSchedulerWorker:
 
     def _run_aoi_check_cycle(self) -> None:
         """Run periodic AOI checks to detect flypasts and manage AIS scrapes."""
-        if not self._api_key:
+        if not self._api_key or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
             return
         try:
             self.trigger_check()
@@ -202,6 +205,8 @@ class PassSchedulerWorker:
 
     def _poll_due_post_pass_jobs(self) -> list[dict[str, Any]]:
         """Check and process any post-pass catalog jobs that are due for SAR imagery ingestion."""
+        if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+            return []
         ingest_uc = self._ingest_post_pass or getattr(self._schedule_use_case, "_ingest_post_pass", None)
         results: list[dict[str, Any]] = []
         if ingest_uc is not None and self._post_pass_repo is not None:
@@ -219,27 +224,32 @@ class PassSchedulerWorker:
 
     def _run_threading_loop(self) -> None:
         """Threading fallback loop maintaining independent 30s AOI checks and 1-hour SAR scans."""
-        # Run initial cycle upon starting
-        self._run_aoi_check_cycle()
-        self._poll_due_post_pass_jobs()
+        # Run initial cycle upon starting if not stopping
+        if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+            self._run_aoi_check_cycle()
+        if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+            self._poll_due_post_pass_jobs()
 
         aoi_elapsed = 0.0
         sar_elapsed = 0.0
 
-        while self._running:
-            time.sleep(1)
+        while self._running and not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+            if self._stop_event.wait(timeout=1.0):
+                break
             aoi_elapsed += 1.0
             sar_elapsed += 1.0
 
             aoi_interval = self.get_aoi_check_interval()
             if aoi_elapsed >= aoi_interval:
                 aoi_elapsed = 0.0
-                self._run_aoi_check_cycle()
+                if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+                    self._run_aoi_check_cycle()
 
             sar_interval = self.get_sar_scan_interval()
             if sar_elapsed >= sar_interval:
                 sar_elapsed = 0.0
-                self._poll_due_post_pass_jobs()
+                if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+                    self._poll_due_post_pass_jobs()
 
     def trigger_check(self) -> list[dict[str, Any]]:
         """Run an immediate AOI pass check cycle across active AOIs."""
@@ -313,8 +323,9 @@ class PassSchedulerWorker:
             "jobs": jobs_list,
         }
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 2.0) -> None:
         self._running = False
+        self._stop_event.set()
         if self._pass_monitor is not None and hasattr(self._pass_monitor, "stop_all"):
             try:
                 self._pass_monitor.stop_all()
@@ -323,14 +334,23 @@ class PassSchedulerWorker:
 
         if self._scheduler is not None:
             try:
+                if hasattr(self._scheduler, "remove_all_jobs"):
+                    self._scheduler.remove_all_jobs()
+            except Exception:
+                pass
+            try:
                 self._scheduler.shutdown(wait=False)
             except Exception:
                 pass
             self._scheduler = None
 
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=min(timeout, 1.0))
             self._thread = None
+
+
+# Alias for backward compatibility and concise import
+PassScheduler = PassSchedulerWorker
 
 
 

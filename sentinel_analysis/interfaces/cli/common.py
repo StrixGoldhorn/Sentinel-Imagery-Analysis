@@ -35,3 +35,6 @@ class CLICommand(ABC):
         except (ApplicationError, OSError, ValueError) as exc:
             print(f"Error: {exc}", file=errors)
             return 1
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user", file=errors)
+            return 130

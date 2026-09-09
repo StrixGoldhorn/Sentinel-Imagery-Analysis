@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
@@ -32,7 +33,7 @@ class PlaywrightAprsSession:
         self._is_running = False
 
     def start(self) -> None:
-        if self._is_running:
+        if self._is_running or shutdown_coordinator.is_shutting_down:
             return
 
         from playwright.sync_api import sync_playwright
@@ -77,17 +78,25 @@ class PlaywrightAprsSession:
             except Exception:
                 pass
 
+        if shutdown_coordinator.is_shutting_down:
+            return
+
         self.page.goto("https://aprs.fi/", wait_until="domcontentloaded")
-        try:
-            self.page.wait_for_selector("div#map", timeout=10000)
-        except Exception as exc:
-            logger.debug("aprs.fi map wait notice: %s", exc)
+        if not shutdown_coordinator.is_shutting_down:
+            try:
+                self.page.wait_for_selector("div#map", timeout=4000)
+            except Exception as exc:
+                logger.debug("aprs.fi map wait notice: %s", exc)
 
         self._is_running = True
 
     def fetch_xml2(self, coords: dict[str, float], timerange: int = 86400, tail: int = 0) -> str:
+        if shutdown_coordinator.is_shutting_down:
+            return ""
         if not self._is_running:
             self.start()
+        if shutdown_coordinator.is_shutting_down:
+            return ""
 
         base_url = "https://aprs.fi/xml2"
         req_url = (
@@ -199,6 +208,8 @@ class AprsFiPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
+        if shutdown_coordinator.is_shutting_down:
+            return []
         zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
         session = (
             self._session_factory()
@@ -211,11 +222,19 @@ class AprsFiPlugin:
         )
 
         try:
+            if shutdown_coordinator.is_shutting_down:
+                return []
             session.start()
             all_records: list[AISRecord] = []
             for idx, zone in enumerate(zones):
+                if shutdown_coordinator.is_shutting_down:
+                    break
                 if idx > 0 and self.zone_delay > 0:
+                    if shutdown_coordinator.is_shutting_down:
+                        break
                     time.sleep(self.zone_delay)
+                    if shutdown_coordinator.is_shutting_down:
+                        break
                 coords = {
                     "lat_min": zone.min_latitude,
                     "lat_max": zone.max_latitude,

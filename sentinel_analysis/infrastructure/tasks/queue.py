@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import BackgroundTask
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,23 @@ class ThreadedTaskQueue:
             self._tasks[actual_id] = initial
 
         def _worker() -> None:
+            if shutdown_coordinator.is_shutting_down:
+                logger.info("Skipping task %s (%s): application is shutting down", actual_id, task_type)
+                with self._lock:
+                    current = self._tasks.get(actual_id)
+                    self._tasks[actual_id] = BackgroundTask(
+                        task_id=actual_id,
+                        task_type=task_type,
+                        status="FAILED",
+                        progress=0.0,
+                        message="Cancelled: application is shutting down",
+                        scan_id=task_id,
+                        created_at=current.created_at if current else None,
+                        completed_at=datetime.now(timezone.utc),
+                        error="Application is shutting down",
+                    )
+                return
+
             try:
                 result = target(*args, **kwargs)
                 with self._lock:
@@ -100,5 +118,8 @@ class ThreadedTaskQueue:
                     created_at=current.created_at,
                 )
 
-    def shutdown(self, wait: bool = False) -> None:
-        self._executor.shutdown(wait=wait)
+    def shutdown(self, wait: bool = False, cancel_futures: bool = True) -> None:
+        try:
+            self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+        except TypeError:
+            self._executor.shutdown(wait=wait)

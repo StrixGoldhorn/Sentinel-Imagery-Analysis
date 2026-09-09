@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import BoundingBox
 from sentinel_analysis.infrastructure.satellite.constants import (
     DEFAULT_ENABLED_SATELLITES,
@@ -45,7 +46,7 @@ class HybridPassPredictor:
         if enabled_satellites is None:
             enabled_satellites = self.get_enabled_satellites()
 
-        if not enabled_satellites:
+        if not enabled_satellites or shutdown_coordinator.is_shutting_down:
             return []
 
         active_sats = set(enabled_satellites)
@@ -124,12 +125,21 @@ class HybridPassPredictor:
             except Exception:
                 return []
 
+        if shutdown_coordinator.is_shutting_down:
+            return []
+
         # Execute external sources in parallel to dramatically cut latency
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            fut_n2yo = executor.submit(_fetch_n2yo)
-            fut_hist = executor.submit(_fetch_hist)
-            n2yo_passes = fut_n2yo.result()
-            historical_passes = fut_hist.result()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                fut_n2yo = executor.submit(_fetch_n2yo)
+                fut_hist = executor.submit(_fetch_hist)
+                n2yo_passes = fut_n2yo.result()
+                historical_passes = fut_hist.result()
+        except (RuntimeError, Exception):
+            if shutdown_coordinator.is_shutting_down:
+                return []
+            n2yo_passes = _fetch_n2yo()
+            historical_passes = _fetch_hist()
 
         # 3. Merge and cross-validate both sources
         return self._merge_predictions(n2yo_passes, historical_passes, enabled_satellites=enabled_satellites)

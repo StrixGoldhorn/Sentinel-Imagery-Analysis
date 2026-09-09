@@ -6,6 +6,7 @@ import threading
 from typing import Any, Optional
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import AreaOfInterest, PostPassIngestionJob
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,7 @@ class BackgroundPassMonitor:
         window_minutes: float = 5.0,
     ) -> Optional[dict[str, Any]]:
         """Schedule or immediately start a 60-second AIS scrape monitor for a satellite pass."""
-        if aoi.id is None:
+        if aoi.id is None or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
             return None
 
         # Ensure UTC timezone
@@ -102,7 +103,7 @@ class BackgroundPassMonitor:
     ) -> None:
         with self._lock:
             entry = self._monitors.get(key)
-            if not entry or self._stop_event.is_set():
+            if not entry or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
                 return
             entry["status"] = "ACTIVE"
             thread = threading.Thread(
@@ -125,14 +126,14 @@ class BackgroundPassMonitor:
         active_pass_info: Optional[dict[str, Any]],
     ) -> None:
         """Runs the 60-second periodic AIS scraping loop across the active flypast window."""
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
             tick_now = datetime.now(timezone.utc)
             if tick_now > window_end:
                 break
 
             if tick_now < window_start:
                 sleep_secs = min(self._interval_seconds, (window_start - tick_now).total_seconds())
-                if self._stop_event.wait(timeout=max(0.1, sleep_secs)):
+                if self._stop_event.wait(timeout=max(0.1, sleep_secs)) or shutdown_coordinator.is_shutting_down:
                     break
                 continue
 
@@ -140,6 +141,9 @@ class BackgroundPassMonitor:
             start_time = max(window_start, tick_now - timedelta(minutes=1))
             end_time = min(window_end, tick_now + timedelta(minutes=1))
             records = 0
+
+            if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+                break
 
             if self._ingest_ais is not None:
                 try:

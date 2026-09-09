@@ -6,6 +6,7 @@ from typing import Any, Mapping
 import requests
 
 from sentinel_analysis.application.ports.ais import AISTimeRange
+from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, VesselPosition
 from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
@@ -103,6 +104,8 @@ class AISFriendsPlugin:
         bbox: BoundingBox,
         time_range: AISTimeRange = (None, None),
     ) -> list[AISRecord]:
+        if shutdown_coordinator.is_shutting_down:
+            return []
         zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
         ua = self.user_agent or (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -116,8 +119,14 @@ class AISFriendsPlugin:
 
         all_records: list[AISRecord] = []
         for idx, zone in enumerate(zones):
+            if shutdown_coordinator.is_shutting_down:
+                break
             if idx > 0 and self.zone_delay > 0:
+                if shutdown_coordinator.is_shutting_down:
+                    break
                 time.sleep(self.zone_delay)
+                if shutdown_coordinator.is_shutting_down:
+                    break
             params = {
                 "lon_min": zone.min_longitude,
                 "lat_min": zone.min_latitude,
