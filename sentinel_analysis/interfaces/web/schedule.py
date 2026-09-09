@@ -3,11 +3,29 @@
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 
+from sentinel_analysis.application.exceptions import (
+    InvalidStateTransitionError,
+    PostPassJobNotFoundError,
+)
+
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import RequestValidationError, json_object
 
 
 blueprint = Blueprint("schedule", __name__)
+
+
+def _enqueue_post_pass(job_id: int | None = None):
+    cnt = container()
+    ingest_use_case = getattr(cnt, "ingest_post_pass", None)
+    if ingest_use_case is None:
+        raise RequestValidationError("Post-pass ingestion use case not configured")
+
+    def _run() -> dict[str, object]:
+        results = ingest_use_case.execute(job_id=job_id) if job_id is not None else ingest_use_case.execute()
+        return {"job_id": job_id, "results": results}
+
+    return cnt.task_queue.submit("post_pass_ingestion", None, _run)
 
 
 @blueprint.get("/schedule")
@@ -27,7 +45,7 @@ def post_pass_page():
 @blueprint.get("/api/schedule/upcoming")
 def get_upcoming_scrapes():
     """Return aggregated, chronological list of upcoming satellite passes and scrape windows."""
-    api_key = container().settings.n2yo_api_key or "default_key"
+    api_key = container().settings.n2yo_api_key or ""
 
     auto_capture_only_raw = request.args.get("auto_capture_only", "false").strip().lower()
     auto_capture_only = auto_capture_only_raw in ("true", "1", "yes")
@@ -75,8 +93,8 @@ def get_scheduler_status():
             "scheduler_backend": "none",
             "api_key_configured": bool(container().settings.n2yo_api_key),
             "aoi_check_interval_seconds": 30.0,
-            "sar_scan_interval_seconds": 3600.0,
-            "poll_interval_seconds": 3600.0,
+            "sar_scan_interval_seconds": 60.0,
+            "poll_interval_seconds": 60.0,
             "last_run_at": None,
             "last_aoi_check_at": None,
             "last_sar_scan_at": None,
@@ -110,7 +128,7 @@ def get_scraper_logs():
 def trigger_schedule_poll():
     """Manually trigger an immediate scheduler poll and check cycle."""
     scheduler = getattr(container(), "pass_scheduler", None)
-    api_key = container().settings.n2yo_api_key or "default_key"
+    api_key = container().settings.n2yo_api_key or ""
 
     if scheduler is not None and hasattr(scheduler, "trigger_check"):
         try:
@@ -140,6 +158,8 @@ def get_post_pass_jobs():
     aoi_id_raw = request.args.get("aoi_id")
     aoi_id = int(aoi_id_raw) if aoi_id_raw and aoi_id_raw.isdigit() else None
 
+    if hasattr(repo, "expire_jobs"):
+        repo.expire_jobs(datetime.now(timezone.utc))
     stats = repo.get_stats() if hasattr(repo, "get_stats") else {}
     try:
         jobs = repo.list(limit=limit, status=status_filter, aoi_id=aoi_id)
@@ -148,15 +168,33 @@ def get_post_pass_jobs():
         if status_filter:
             sf = status_filter.strip().upper()
             if sf == "FAILED":
-                jobs = [j for j in jobs if j.status.upper() in ("FAILED", "TIMED_OUT", "WAIT_EXPIRED")]
+                jobs = [j for j in jobs if j.status.upper() == "FAILED"]
             elif sf in ("TIMED_OUT", "WAIT_EXPIRED"):
                 jobs = [j for j in jobs if j.status.upper() in ("TIMED_OUT", "WAIT_EXPIRED")]
             else:
                 jobs = [j for j in jobs if j.status.upper() == sf]
 
     def _job_dict(job):
+        ingest = getattr(container(), "ingest_post_pass", None)
+        max_wait_hours = float(getattr(ingest, "max_wait_hours", 24.0))
         exp_time = job.expected_imagery_time or job.pass_time
-        expires_at = (exp_time + timedelta(hours=24)) if exp_time else None
+        expires_at = (exp_time + timedelta(hours=max_wait_hours)) if exp_time else None
+        current = datetime.now(timezone.utc)
+        if job.status == "POLLING_CATALOG":
+            display_status = (
+                "WAITING_FOR_POLL"
+                if job.next_poll_at is not None and job.next_poll_at > current
+                else "DUE_FOR_POLL"
+            )
+        else:
+            display_status = job.status
+        allowed_actions: list[str] = []
+        if job.status == "POLLING_CATALOG":
+            allowed_actions.append("poll")
+        if job.status in ("FAILED", "TIMED_OUT", "WAIT_EXPIRED"):
+            allowed_actions.append("retry")
+        if job.status in ("COMPLETED", "FAILED", "TIMED_OUT", "WAIT_EXPIRED"):
+            allowed_actions.append("delete")
         return {
             "id": job.id,
             "aoi_id": job.aoi_id,
@@ -165,12 +203,24 @@ def get_post_pass_jobs():
             "expected_imagery_time": job.expected_imagery_time.isoformat() if job.expected_imagery_time else (job.pass_time.isoformat() if job.pass_time else None),
             "satellite": job.satellite,
             "orbit_direction": job.orbit_direction,
+            "relative_orbit": job.relative_orbit,
+            "trigger_type": job.trigger_type,
+            "prediction_source": job.prediction_source,
+            "workflow_id": job.workflow_id,
+            "basis_product_id": job.basis_product_id,
+            "basis_acquisition_time": job.basis_acquisition_time.isoformat() if job.basis_acquisition_time else None,
+            "basis_satellite": job.basis_satellite,
+            "basis_relative_orbit": job.basis_relative_orbit,
             "status": job.status,
+            "effective_status": job.status,
+            "display_status": display_status,
+            "allowed_actions": allowed_actions,
+            "terminal": job.status in ("COMPLETED", "FAILED", "TIMED_OUT", "WAIT_EXPIRED"),
             "attempts": job.attempts,
             "last_polled_at": job.last_polled_at.isoformat() if job.last_polled_at else None,
             "next_poll_at": job.next_poll_at.isoformat() if job.next_poll_at else None,
             "expires_at": expires_at.isoformat() if expires_at else None,
-            "max_wait_hours": 24.0,
+            "max_wait_hours": max_wait_hours,
             "scan_folder": job.scan_folder,
             "error_message": job.error_message,
             "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -264,35 +314,43 @@ def create_custom_post_pass_job():
 
     job_id = repo.add(job)
 
-    results = []
+    task = None
     if poll_immediately:
-        ingest_use_case = getattr(container(), "ingest_post_pass", None)
-        if ingest_use_case is not None:
-            try:
-                results = ingest_use_case.execute(job_id=job_id)
-            except Exception:
-                pass
+        task = _enqueue_post_pass(job_id)
 
     return jsonify(
         status="success",
         job_id=job_id,
         message=f"Post-pass job #{job_id} for '{aoi.name}' queued successfully",
-        results=results,
-    ), 201
+        task_id=task.task_id if task else None,
+        task_status=task.status if task else None,
+    ), 202 if task else 201
+
+
+@blueprint.get("/api/schedule/post_pass_jobs/<int:job_id>/events")
+def get_post_pass_job_events(job_id: int):
+    """Return auditable state transitions for a post-pass job."""
+    repo = getattr(container(), "post_pass_repository", None)
+    job = repo.get(job_id) if repo is not None else None
+    if job is None:
+        raise PostPassJobNotFoundError(f"Post-pass job #{job_id} not found")
+    events = repo.list_events(job_id) if hasattr(repo, "list_events") else []
+    return jsonify(status="success", job_id=job_id, events=events)
 
 
 @blueprint.post("/api/schedule/post_pass_jobs/<int:job_id>/poll")
 def poll_post_pass_job(job_id: int):
     """Trigger an immediate catalog check for a specific post-pass ingestion job."""
-    ingest_use_case = getattr(container(), "ingest_post_pass", None)
-    if ingest_use_case is None:
-        raise RequestValidationError("Post-pass ingestion use case not configured")
-
-    try:
-        results = ingest_use_case.execute(job_id=job_id)
-        return jsonify(status="success", results=results)
-    except Exception as exc:
-        return jsonify(status="error", error=str(exc)), 500
+    repo = getattr(container(), "post_pass_repository", None)
+    job = repo.get(job_id) if repo is not None else None
+    if job is None:
+        raise PostPassJobNotFoundError(f"Post-pass job #{job_id} not found")
+    if job.status != "POLLING_CATALOG":
+        raise InvalidStateTransitionError(
+            f"Job #{job_id} cannot be polled while in {job.status} state"
+        )
+    task = _enqueue_post_pass(job_id)
+    return jsonify(status="accepted", job_id=job_id, task_id=task.task_id, task_status=task.status), 202
 
 
 @blueprint.post("/api/schedule/post_pass_jobs/<int:job_id>/retry")
@@ -304,39 +362,24 @@ def retry_post_pass_job(job_id: int):
 
     job = repo.get(job_id)
     if job is None:
-        raise RequestValidationError(f"Post-pass job #{job_id} not found")
+        raise PostPassJobNotFoundError(f"Post-pass job #{job_id} not found")
+    if not hasattr(repo, "reset_for_retry"):
+        raise InvalidStateTransitionError("Repository does not support atomic retry")
+    reset_job = repo.reset_for_retry(job_id, datetime.now(timezone.utc))
+    if reset_job is None:
+        current = repo.get(job_id)
+        raise InvalidStateTransitionError(
+            f"Job #{job_id} cannot be retried while in {current.status if current else 'missing'} state"
+        )
 
-    from datetime import datetime, timezone
-    from sentinel_analysis.domain.entities import PostPassIngestionJob
-
-    reset_job = PostPassIngestionJob(
-        id=job.id,
-        aoi_id=job.aoi_id,
-        pass_time=job.pass_time,
-        satellite=job.satellite,
-        orbit_direction=job.orbit_direction,
-        status="POLLING_CATALOG",
-        attempts=0,
-        last_polled_at=None,
-        next_poll_at=None,
-        scan_folder=None,
-        error_message=None,
-        created_at=job.created_at or datetime.now(timezone.utc),
-        completed_at=None,
-        aoi_name=job.aoi_name,
-        expected_imagery_time=job.expected_imagery_time or job.pass_time,
-    )
-    repo.update(reset_job)
-
-    ingest_use_case = getattr(container(), "ingest_post_pass", None)
-    results = []
-    if ingest_use_case is not None:
-        try:
-            results = ingest_use_case.execute(job_id=job_id)
-        except Exception:
-            pass
-
-    return jsonify(status="success", message="Job reset to polling", results=results)
+    task = _enqueue_post_pass(job_id)
+    return jsonify(
+        status="accepted",
+        message="Job reset to polling",
+        job_id=job_id,
+        task_id=task.task_id,
+        task_status=task.status,
+    ), 202
 
 
 @blueprint.delete("/api/schedule/post_pass_jobs/<int:job_id>")
@@ -346,6 +389,11 @@ def delete_post_pass_job(job_id: int):
     if repo is None:
         raise RequestValidationError("Post-pass repository not configured")
 
+    job = repo.get(job_id)
+    if job is None:
+        raise PostPassJobNotFoundError(f"Post-pass job #{job_id} not found")
+    if job.status in ("PENDING_PASS", "POLLING_CATALOG", "QUERYING_CATALOG", "INGESTING"):
+        raise InvalidStateTransitionError(f"Job #{job_id} is active and must finish before deletion")
     repo.delete(job_id)
     return jsonify(status="success", message=f"Job #{job_id} deleted successfully")
 
@@ -353,14 +401,7 @@ def delete_post_pass_job(job_id: int):
 @blueprint.post("/api/schedule/post_pass_jobs/poll_all")
 def poll_all_post_pass_jobs():
     """Trigger an immediate catalog check for all due post-pass ingestion jobs."""
-    ingest_use_case = getattr(container(), "ingest_post_pass", None)
-    if ingest_use_case is None:
-        raise RequestValidationError("Post-pass ingestion use case not configured")
-
-    try:
-        results = ingest_use_case.execute()
-        return jsonify(status="success", count=len(results), results=results)
-    except Exception as exc:
-        return jsonify(status="error", error=str(exc)), 500
+    task = _enqueue_post_pass()
+    return jsonify(status="accepted", task_id=task.task_id, task_status=task.status), 202
 
 

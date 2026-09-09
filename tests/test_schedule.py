@@ -298,15 +298,12 @@ def test_check_and_schedule_aois_ignores_n2yo_only_predictions() -> None:
     ).total_seconds() > 14000
 
 
-def test_missing_api_key_raises_error() -> None:
+def test_missing_n2yo_key_still_allows_historical_schedule() -> None:
     repo = StubAOIRepo([])
     predictor = StubPredictor([])
     use_case = GetUpcomingScrapes(repo, predictor)
-    try:
-        use_case.execute(api_key="")
-        assert False, "Should have raised ValueError"
-    except ValueError:
-        pass
+    result = use_case.execute(api_key="")
+    assert result["events"] == []
 
 
 def test_scraper_logs_in_memory_repository() -> None:
@@ -345,19 +342,19 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status_after["last_error"] is None
 
 
-def test_pass_scheduler_worker_default_intervals_30s_aoi_and_1h_sar() -> None:
+def test_pass_scheduler_worker_default_intervals_30s_aoi_and_60s_sar() -> None:
     aoi_repo = StubAOIRepo([])
     check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
     worker = PassSchedulerWorker(check_aois, api_key="dummy_key")
 
     assert worker.get_aoi_check_interval() == 30.0
-    assert worker.get_sar_scan_interval() == 3600.0
-    assert worker.get_poll_interval() == 3600.0
+    assert worker.get_sar_scan_interval() == 60.0
+    assert worker.get_poll_interval() == 60.0
 
     status = worker.get_status()
     assert status["aoi_check_interval_seconds"] == 30.0
-    assert status["sar_scan_interval_seconds"] == 3600.0
-    assert status["poll_interval_seconds"] == 3600.0
+    assert status["sar_scan_interval_seconds"] == 60.0
+    assert status["poll_interval_seconds"] == 60.0
 
 
 def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
@@ -468,4 +465,3 @@ def load_tests(loader, standard_tests, pattern):
         if name.startswith("test_") and inspect.isfunction(obj):
             suite.addTest(unittest.FunctionTestCase(obj))
     return suite
-

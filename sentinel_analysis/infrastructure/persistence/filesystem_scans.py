@@ -74,6 +74,8 @@ class FilesystemScanRepository:
                 str(metadata.get("satellite", "Sentinel-1")),
                 str(metadata.get("settings", {}).get("datasource", "sentinel-1-grd")),
                 metadata.get("product_id"),
+                orbit_direction=metadata.get("orbit_direction"),
+                relative_orbit=metadata.get("relative_orbit"),
             )
             image_dir = directory / "images"
             configured_name = str(metadata.get("image_filename", ""))

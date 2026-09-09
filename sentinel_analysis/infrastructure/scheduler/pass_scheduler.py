@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 import threading
 import time
+import uuid
 from typing import Any, Optional
 
 try:
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class PassSchedulerWorker:
-    """Runs periodic AOI pass checks (every 30s) and SAR imagery catalog ingestion (every 1h).
+    """Runs 30-second AOI checks and dispatches due SAR catalog jobs every minute.
 
     Uses APScheduler (BackgroundScheduler) when available, falling back cleanly
     to threading timers if APScheduler is not installed.
@@ -33,7 +34,7 @@ class PassSchedulerWorker:
         self,
         schedule_use_case: CheckAndScheduleAOIs,
         api_key: Optional[str] = None,
-        poll_interval_seconds: float = 3600.0,
+        poll_interval_seconds: float = 60.0,
         post_pass_repo: Optional[PostPassIngestionRepository] = None,
         settings_repo: Optional[Any] = None,
         pass_monitor: Optional[Any] = None,
@@ -45,7 +46,7 @@ class PassSchedulerWorker:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
         self._aoi_check_interval = max(1.0, float(aoi_check_interval_seconds))
-        # Default SAR scan interval is 3600s (1 hour), or poll_interval_seconds if explicitly set
+        # A one-minute dispatcher cadence makes the 2/3/5/10-minute job backoff real.
         self._sar_scan_interval = max(
             1.0,
             float(sar_scan_interval_seconds if sar_scan_interval_seconds is not None else poll_interval_seconds),
@@ -66,6 +67,20 @@ class PassSchedulerWorker:
         self._last_sar_scan_at: Optional[datetime] = None
         self._last_results: list[dict[str, Any]] = []
         self._last_error: Optional[str] = None
+        self._last_aoi_error: Optional[str] = None
+        self._last_sar_error: Optional[str] = None
+        self._owner_id = str(uuid.uuid4())
+        self._is_leader = False
+
+    def _acquire_leadership(self) -> bool:
+        if self._post_pass_repo is None or not hasattr(self._post_pass_repo, "try_acquire_scheduler_lease"):
+            self._is_leader = True
+            return True
+        self._is_leader = self._post_pass_repo.try_acquire_scheduler_lease(
+            "pass_scheduler", self._owner_id, datetime.now(timezone.utc),
+            ttl_seconds=90.0,
+        )
+        return self._is_leader
 
     @property
     def backend_type(self) -> str:
@@ -103,7 +118,7 @@ class PassSchedulerWorker:
                 logger.warning("Failed to reschedule APScheduler aoi_check_job: %s", exc)
 
     def get_sar_scan_interval(self) -> float:
-        """Return effective interval in seconds for SAR imagery catalog polling (default: 3600s = 1 hour)."""
+        """Return effective interval in seconds for SAR imagery catalog polling (default: 60s)."""
         if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
             try:
                 val = self._settings_repo.get("sar_scan_interval_seconds")
@@ -162,15 +177,17 @@ class PassSchedulerWorker:
                     replace_existing=True,
                     max_instances=1,
                     coalesce=True,
+                    next_run_time=datetime.now(timezone.utc),
                 )
                 self._scheduler.add_job(
                     self._poll_due_post_pass_jobs,
                     trigger=IntervalTrigger(seconds=self.get_sar_scan_interval()),
                     id="sar_scan_job",
-                    name="SAR Imagery Ingestion (1h)",
+                    name="SAR Imagery Ingestion Dispatcher",
                     replace_existing=True,
                     max_instances=1,
                     coalesce=True,
+                    next_run_time=datetime.now(timezone.utc),
                 )
                 self._scheduler.start()
                 logger.info(
@@ -195,11 +212,14 @@ class PassSchedulerWorker:
 
     def _run_aoi_check_cycle(self) -> None:
         """Run periodic AOI checks to detect flypasts and manage AIS scrapes."""
-        if not self._api_key or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+        if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+            return
+        if not self._acquire_leadership():
             return
         try:
             self.trigger_check()
         except Exception as exc:
+            self._last_aoi_error = str(exc)
             self._last_error = str(exc)
             logger.warning("Error during periodic AOI scan check: %s", exc)
 
@@ -207,23 +227,30 @@ class PassSchedulerWorker:
         """Check and process any post-pass catalog jobs that are due for SAR imagery ingestion."""
         if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
             return []
+        if not self._acquire_leadership():
+            return []
         ingest_uc = self._ingest_post_pass or getattr(self._schedule_use_case, "_ingest_post_pass", None)
         results: list[dict[str, Any]] = []
         if ingest_uc is not None and self._post_pass_repo is not None:
             try:
                 now = datetime.now(timezone.utc)
+                if hasattr(self._post_pass_repo, "expire_jobs"):
+                    self._post_pass_repo.expire_jobs(now)
                 due_jobs = self._post_pass_repo.get_jobs_due_for_poll(now)
                 if due_jobs:
                     logger.info("Polling %d due post-pass catalog jobs for SAR imagery...", len(due_jobs))
                     results = ingest_uc.execute()
                 self._last_sar_scan_at = now
+                self._last_sar_error = None
                 return results
             except Exception as exc:
+                self._last_sar_error = str(exc)
+                self._last_error = str(exc)
                 logger.warning("Error during periodic SAR imagery catalog check: %s", exc)
         return results
 
     def _run_threading_loop(self) -> None:
-        """Threading fallback loop maintaining independent 30s AOI checks and 1-hour SAR scans."""
+        """Maintain independent 30-second AOI checks and one-minute SAR dispatches."""
         # Run initial cycle upon starting if not stopping
         if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
             self._run_aoi_check_cycle()
@@ -253,17 +280,22 @@ class PassSchedulerWorker:
 
     def trigger_check(self) -> list[dict[str, Any]]:
         """Run an immediate AOI pass check cycle across active AOIs."""
-        if not self._api_key:
-            raise ValueError("Satellite prediction API key is not configured")
         now = datetime.now(timezone.utc)
         try:
-            results = self._schedule_use_case.execute(self._api_key, check_post_pass=False)
+            results = self._schedule_use_case.execute(self._api_key or "", check_post_pass=False)
             self._last_run_at = now
             self._last_aoi_check_at = now
             self._last_results = results
-            self._last_error = None
+            failed = [item for item in results if item.get("status") == "ERROR"]
+            self._last_error = (
+                f"{len(failed)} AOI check(s) failed: "
+                + "; ".join(str(item.get("error") or "unknown error") for item in failed[:3])
+                if failed else None
+            )
+            self._last_aoi_error = self._last_error
             return results
         except Exception as exc:
+            self._last_aoi_error = str(exc)
             self._last_error = str(exc)
             raise
 
@@ -305,8 +337,12 @@ class PassSchedulerWorker:
             except Exception:
                 pass
 
+        subsystem_errors = [error for error in (self._last_aoi_error, self._last_sar_error) if error]
+        health = "STOPPED" if not self._running else ("DEGRADED" if subsystem_errors else "HEALTHY")
+        current_error = "; ".join(subsystem_errors) if subsystem_errors else None
         return {
             "is_running": self._running,
+            "health": health,
             "scheduler_backend": self.backend_type,
             "api_key_configured": bool(self._api_key),
             "aoi_check_interval_seconds": self.get_aoi_check_interval(),
@@ -315,7 +351,11 @@ class PassSchedulerWorker:
             "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
             "last_aoi_check_at": self._last_aoi_check_at.isoformat() if self._last_aoi_check_at else None,
             "last_sar_scan_at": self._last_sar_scan_at.isoformat() if self._last_sar_scan_at else None,
-            "last_error": self._last_error,
+            "last_error": current_error,
+            "last_aoi_error": self._last_aoi_error,
+            "last_sar_error": self._last_sar_error,
+            "is_leader": self._is_leader,
+            "worker_id": self._owner_id,
             "last_results_count": len(self._last_results),
             "active_post_pass_jobs_count": active_jobs_count,
             "active_pass_monitors": active_monitors,
@@ -326,6 +366,12 @@ class PassSchedulerWorker:
     def stop(self, timeout: float = 2.0) -> None:
         self._running = False
         self._stop_event.set()
+        if self._post_pass_repo is not None and hasattr(self._post_pass_repo, "release_scheduler_lease"):
+            try:
+                self._post_pass_repo.release_scheduler_lease("pass_scheduler", self._owner_id)
+            except Exception:
+                pass
+        self._is_leader = False
         if self._pass_monitor is not None and hasattr(self._pass_monitor, "stop_all"):
             try:
                 self._pass_monitor.stop_all()

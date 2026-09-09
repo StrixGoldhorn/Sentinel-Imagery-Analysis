@@ -12,6 +12,9 @@ from sentinel_analysis.application.exceptions import (
     PluginNotFoundError,
     ScanNotFoundError,
     VesselNotFoundError,
+    TaskNotFoundError,
+    PostPassJobNotFoundError,
+    InvalidStateTransitionError,
 )
 from sentinel_analysis.domain.exceptions import DomainValidationError
 from sentinel_analysis.interfaces.web.request_data import RequestValidationError
@@ -34,8 +37,14 @@ def register_error_handlers(app: Flask) -> None:
     @app.errorhandler(AreaOfInterestNotFoundError)
     @app.errorhandler(VesselNotFoundError)
     @app.errorhandler(NoImageryFoundError)
+    @app.errorhandler(TaskNotFoundError)
+    @app.errorhandler(PostPassJobNotFoundError)
     def not_found(exc: Exception):
         return _error(str(exc), 404)
+
+    @app.errorhandler(InvalidStateTransitionError)
+    def conflict(exc: Exception):
+        return _error(str(exc), 409)
 
     @app.errorhandler(ExternalServiceError)
     @app.errorhandler(AuthenticationError)

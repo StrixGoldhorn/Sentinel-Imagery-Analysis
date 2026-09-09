@@ -480,11 +480,14 @@ async function loadSchedulerStatus() {
         const lastRun = document.getElementById('schedulerLastRun');
 
         if (s.is_running && s.thread_alive) {
-            if (badge) badge.className = 'scheduler-badge scheduler-running';
-            if (text) text.textContent = s.scheduler_backend === 'apscheduler' ? 'APScheduler Active' : 'Scheduler Active';
+            const degraded = String(s.health || '').toUpperCase() === 'DEGRADED' || Boolean(s.last_error);
+            if (badge) badge.className = degraded ? 'scheduler-badge scheduler-stopped' : 'scheduler-badge scheduler-running';
+            if (text) text.textContent = degraded
+                ? `Scheduler Degraded: ${s.last_error || 'one or more checks failed'}`
+                : (s.scheduler_backend === 'apscheduler' ? 'APScheduler Active' : 'Scheduler Active');
         } else {
             if (badge) badge.className = 'scheduler-badge scheduler-stopped';
-            if (text) text.textContent = s.api_key_configured ? 'Scheduler Paused' : 'Scheduler Disabled (No API Key)';
+            if (text) text.textContent = 'Scheduler Paused';
         }
 
         if (pollRate) {
@@ -802,5 +805,4 @@ function showToast(message, type = 'info', options = {}) {
         }
     };
 }
-
 

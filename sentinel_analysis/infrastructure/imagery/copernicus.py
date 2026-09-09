@@ -177,10 +177,7 @@ class CopernicusImageryProvider:
         self._backoff = backoff_factor
 
     def _get_token(self, force_refresh: bool = False) -> str:
-        try:
-            return self._token_provider.get(force_refresh=force_refresh)
-        except TypeError:
-            return self._token_provider.get()
+        return self._token_provider.get(force_refresh=force_refresh)
 
     def find_latest_acquisition(
         self,
@@ -275,7 +272,17 @@ class CopernicusImageryProvider:
             raise
         except (KeyError, TypeError, ValueError) as exc:
             raise ExternalServiceError("Copernicus catalog response invalid") from exc
-        return Acquisition(acquired_at, "Sentinel-1", "sentinel-1-grd", str(product_id) if product_id else None)
+        platform = properties.get("platform") or "Sentinel-1"
+        orbit_direction = properties.get("sat:orbit_state") or properties.get("orbitDirection")
+        relative_orbit = properties.get("sat:relative_orbit") or properties.get("relativeOrbitNumber")
+        return Acquisition(
+            acquired_at=acquired_at,
+            satellite=str(platform),
+            product_type="sentinel-1-grd",
+            product_id=str(product_id) if product_id else None,
+            orbit_direction=str(orbit_direction).upper() if orbit_direction else None,
+            relative_orbit=int(relative_orbit) if relative_orbit is not None else None,
+        )
 
     def search_historical_acquisitions(
         self,
@@ -326,13 +333,14 @@ class CopernicusImageryProvider:
                     if attempt < self._max_retries and _is_transient_error(exc):
                         self._sleep(self._backoff * (2 ** attempt))
                         continue
-                    return []
+                    msg = _format_service_error(exc, "Copernicus historical catalog request failed")
+                    raise ExternalServiceError(msg) from exc
 
             if not isinstance(payload, Mapping):
-                return []
+                raise ExternalServiceError("Copernicus historical catalog response invalid")
             features = payload.get("features", [])
             if not isinstance(features, list):
-                return []
+                raise ExternalServiceError("Copernicus historical catalog features must be a list")
 
             results: list[dict[str, Any]] = []
             for feat in features:
@@ -407,8 +415,10 @@ class CopernicusImageryProvider:
                 })
 
             return results
-        except Exception:
-            return []
+        except ExternalServiceError:
+            raise
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ExternalServiceError("Copernicus historical catalog response invalid") from exc
 
     def calculate_tiles(self, bbox: BoundingBox) -> list[ImageTile]:
         return self._tiler.calculate(bbox)
@@ -434,8 +444,10 @@ class CopernicusImageryProvider:
                 except (OSError, ValueError):
                     pass
 
-        range_start = acquisition.acquired_at - timedelta(hours=1)
-        range_end = acquisition.acquired_at + timedelta(hours=1)
+        # Keep the processing interval tight so "mostRecent" cannot silently select
+        # another pass that merely falls in the old ±1 hour catalog window.
+        range_start = acquisition.acquired_at - timedelta(seconds=1)
+        range_end = acquisition.acquired_at + timedelta(seconds=1)
         payload = {
             "input": {
                 "bounds": {
@@ -462,6 +474,8 @@ class CopernicusImageryProvider:
             },
             "evalscript": self._evalscript,
         }
+        if acquisition.orbit_direction:
+            payload["input"]["data"][0]["dataFilter"]["orbitDirection"] = acquisition.orbit_direction.upper()
 
         response = None
         for attempt in range(self._max_retries + 1):

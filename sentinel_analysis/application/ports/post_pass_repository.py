@@ -1,5 +1,7 @@
 """Port interface for post-pass imagery ingestion jobs repository."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional, Protocol
 
@@ -22,11 +24,19 @@ class PostPassIngestionRepository(Protocol):
         ...
 
     def get_active_jobs(self) -> list[PostPassIngestionJob]:
-        """Return all jobs that are currently active (PENDING_PASS, POLLING_CATALOG, INGESTING)."""
+        """Return all jobs that are currently active."""
         ...
 
     def get_jobs_due_for_poll(self, now: datetime) -> list[PostPassIngestionJob]:
         """Return all jobs in POLLING_CATALOG status where next_poll_at <= now or next_poll_at is NULL."""
+        ...
+
+    def claim_jobs_due_for_poll(self, now: datetime, limit: int = 1) -> list[PostPassIngestionJob]:
+        """Atomically claim due jobs so only one worker can process each job."""
+        ...
+
+    def claim_job(self, job_id: int, now: datetime) -> Optional[PostPassIngestionJob]:
+        """Atomically claim one polling job, returning None if it is not claimable."""
         ...
 
     def update(self, job: PostPassIngestionJob) -> None:
@@ -39,4 +49,12 @@ class PostPassIngestionRepository(Protocol):
 
     def delete(self, job_id: int) -> None:
         """Delete an ingestion job by ID."""
+        ...
+
+    def reset_for_retry(self, job_id: int, now: datetime) -> Optional[PostPassIngestionJob]:
+        """Atomically reset a terminal job if it remains retryable."""
+        ...
+
+    def list_events(self, job_id: int, limit: int = 100) -> list[dict[str, object]]:
+        """Return the recorded state-transition history for one job."""
         ...

@@ -127,18 +127,18 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "max": 3600.0,
         },
         "sar_scan_interval_seconds": {
-            "value": 3600.0,
+            "value": 60.0,
             "type": "number",
             "label": "SAR Imagery Scan Interval (Seconds)",
-            "description": "Frequency in seconds at which the background worker scans Copernicus for newly published SAR imagery (default: 3600s = 1 hour).",
+            "description": "Frequency in seconds at which the dispatcher checks for due Copernicus polling jobs (default: 60s).",
             "min": 60.0,
             "max": 86400.0,
         },
         "poll_interval_seconds": {
-            "value": 3600.0,
+            "value": 60.0,
             "type": "number",
             "label": "Scheduler Poll Interval (Seconds) [Legacy]",
-            "description": "Legacy interval in seconds (default: 3600s = 1 hour).",
+            "description": "Legacy dispatcher interval in seconds (default: 60s).",
             "min": 10.0,
             "max": 86400.0,
         },
@@ -263,18 +263,6 @@ class SQLiteSettingsRepository:
 
             # Ensure credentials are kept strictly in .env and never persisted in database
             connection.execute("DELETE FROM system_settings WHERE key IN ('copernicus_username', 'copernicus_password')")
-
-            # Upgrade legacy 60s default to 3600s (1 hour)
-            if "poll_interval_seconds" in existing:
-                try:
-                    val = json.loads(existing["poll_interval_seconds"]["value_json"])
-                    if val in (60, 60.0):
-                        connection.execute(
-                            "UPDATE system_settings SET value_json = ? WHERE key = 'poll_interval_seconds'",
-                            (json.dumps(3600.0),),
-                        )
-                except Exception:
-                    pass
 
             for section, keys in DEFAULT_SETTINGS_DEFINITIONS.items():
                 for key, definition in keys.items():

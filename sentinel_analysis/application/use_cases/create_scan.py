@@ -1,12 +1,13 @@
 import logging
 import re
 from datetime import datetime, timezone
+from collections.abc import Callable
 
 from sentinel_analysis.application.exceptions import NoImageryFoundError
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
-from sentinel_analysis.domain.entities import BoundingBox, Scan
+from sentinel_analysis.domain.entities import Acquisition, BoundingBox, Scan
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,13 @@ class CreateScan:
         aoi_name: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        acquisition: Acquisition | None = None,
+        progress_callback: Callable[[float, str], None] | None = None,
     ) -> Scan:
+        def report(progress: float, message: str) -> None:
+            if progress_callback is not None:
+                progress_callback(progress, message)
+
         if days_ago is not None:
             if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
                 raise ValueError("Imagery search window must be a positive number of days")
@@ -48,18 +55,18 @@ class CreateScan:
         if start_date is not None and end_date is not None and start_date > end_date:
             raise ValueError("start_date cannot be after end_date")
 
-        try:
+        if acquisition is None:
+            report(5, "Searching the imagery catalog")
             acquisition = self._imagery.find_latest_acquisition(
                 bbox,
                 days_ago=days_ago,
                 start_date=start_date,
                 end_date=end_date,
             )
-        except TypeError:
-            acquisition = self._imagery.find_latest_acquisition(bbox, days_ago)
 
         if acquisition is None:
             raise NoImageryFoundError("No SAR coverage found for this area")
+        report(15, f"Selected acquisition {acquisition.product_id or acquisition.acquired_at.isoformat()}")
 
         now = datetime.now(timezone.utc)
         if aoi_name and isinstance(aoi_name, str) and aoi_name.strip():
@@ -87,12 +94,15 @@ class CreateScan:
                 raise NoImageryFoundError("The imagery provider returned no downloadable tiles")
 
             downloaded: list[TileImage] = []
-            for tile in tiles:
+            report(20, f"Downloading {len(tiles)} imagery tile(s)")
+            for index, tile in enumerate(tiles, start=1):
                 tile_path = image_dir / f"tile_{tile.x}_{tile.y}.png"
                 self._imagery.download_tile(tile, acquisition, tile_path)
                 downloaded.append((tile, tile_path))
+                report(20 + (50 * index / len(tiles)), f"Downloaded tile {index} of {len(tiles)}")
 
             output_path = image_dir / f"{folder_name}_stitched_sar.png"
+            report(75, "Stitching imagery tiles")
             self._stitcher.stitch(downloaded, output_path)
             for _, tile_path in downloaded:
                 tile_path.unlink(missing_ok=True)
@@ -102,6 +112,7 @@ class CreateScan:
             if hasattr(self._imagery, "download_dem_tile"):
                 downloaded_dem: list[TileImage] = []
                 try:
+                    report(82, "Generating DEM land mask")
                     for tile in tiles:
                         dem_tile_path = image_dir / f"dem_tile_{tile.x}_{tile.y}.png"
                         self._imagery.download_dem_tile(tile, dem_tile_path)
@@ -143,7 +154,12 @@ class CreateScan:
                 metadata["aoi_name"] = aoi_name.strip()
             if acquisition.product_id is not None:
                 metadata["product_id"] = acquisition.product_id
+            if acquisition.orbit_direction is not None:
+                metadata["orbit_direction"] = acquisition.orbit_direction
+            if acquisition.relative_orbit is not None:
+                metadata["relative_orbit"] = acquisition.relative_orbit
             scan = Scan(folder_name, bbox, acquisition, str(output_path), metadata)
+            report(95, "Saving scan metadata")
             self._scans.save(scan)
             return scan
         except Exception:

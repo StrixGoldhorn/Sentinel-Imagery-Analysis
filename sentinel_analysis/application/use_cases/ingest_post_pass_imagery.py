@@ -7,6 +7,7 @@ from typing import Any, Optional
 from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRepository
 from sentinel_analysis.application.ports.imagery import ImageryProvider
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
+from sentinel_analysis.application.exceptions import InvalidStateTransitionError, PostPassJobNotFoundError
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.domain.entities import Acquisition, PostPassIngestionJob
@@ -40,7 +41,11 @@ def _extract_acq_datetime(acq) -> Optional[datetime]:
         elif isinstance(dt, datetime):
             return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
     if isinstance(acq, dict):
-        raw = acq.get("properties", {}).get("datetime") or acq.get("datetime")
+        raw = (
+            acq.get("properties", {}).get("datetime")
+            or acq.get("datetime")
+            or acq.get("acquisition_time")
+        )
         if raw is not None:
             if isinstance(raw, datetime):
                 return raw.astimezone(timezone.utc) if raw.tzinfo else raw.replace(tzinfo=timezone.utc)
@@ -53,6 +58,75 @@ def _extract_acq_datetime(acq) -> Optional[datetime]:
             except Exception:
                 return None
     return None
+
+
+def _extract_value(acq: Any, *names: str) -> Any:
+    if isinstance(acq, dict):
+        props = acq.get("properties") if isinstance(acq.get("properties"), dict) else {}
+        for name in names:
+            if acq.get(name) is not None:
+                return acq.get(name)
+            if props.get(name) is not None:
+                return props.get(name)
+        return None
+    for name in names:
+        value = getattr(acq, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _normalize_satellite(value: Any) -> str:
+    return str(value or "").strip().upper().replace("SENTINEL-1", "S1")
+
+
+def _matches_job(acq: Any, job: PostPassIngestionJob) -> bool:
+    expected_sat = _normalize_satellite(job.satellite)
+    actual_sat = _normalize_satellite(_extract_value(acq, "satellite", "platform"))
+    if expected_sat not in ("", "S1") and actual_sat and actual_sat != expected_sat:
+        return False
+    expected_orbit = str(job.orbit_direction or "").strip().upper()
+    actual_orbit = str(_extract_value(acq, "orbit_direction", "sat:orbit_state") or "").strip().upper()
+    if expected_orbit and actual_orbit not in ("", "UNKNOWN") and actual_orbit != expected_orbit:
+        return False
+    actual_relative_orbit = _extract_value(acq, "relative_orbit", "sat:relative_orbit", "relativeOrbitNumber")
+    if job.relative_orbit is not None and actual_relative_orbit is not None:
+        try:
+            if int(actual_relative_orbit) != job.relative_orbit:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _as_acquisition(acq: Any) -> Acquisition:
+    if isinstance(acq, Acquisition):
+        return acq
+    acquired_at = _extract_acq_datetime(acq)
+    if acquired_at is None:
+        raise ValueError("Matched catalog acquisition has no valid acquisition time")
+    product_id = _extract_value(acq, "product_id", "id")
+    satellite = _extract_value(acq, "satellite", "platform") or "Sentinel-1"
+    product_type = _extract_value(acq, "product_type", "collection") or "sentinel-1-grd"
+    polarisation = _extract_value(acq, "polarisation", "polarization", "sar:polarizations")
+    if isinstance(polarisation, str):
+        polarizations = tuple(p.strip() for p in polarisation.replace("+", ",").split(",") if p.strip()) or ("VH",)
+    elif isinstance(polarisation, (list, tuple)):
+        polarizations = tuple(str(p) for p in polarisation) or ("VH",)
+    else:
+        polarizations = ("VH",)
+    relative_orbit = _extract_value(acq, "relative_orbit", "sat:relative_orbit", "relativeOrbitNumber")
+    if relative_orbit is not None:
+        relative_orbit = int(relative_orbit)
+    return Acquisition(
+        acquired_at=acquired_at,
+        satellite=str(satellite),
+        product_type=str(product_type),
+        product_id=str(product_id) if product_id else None,
+        polarizations=polarizations,
+        orbit_direction=_extract_value(acq, "orbit_direction", "sat:orbit_state"),
+        relative_orbit=relative_orbit,
+    )
 
 
 class IngestPostPassImagery:
@@ -74,14 +148,33 @@ class IngestPostPassImagery:
         self._create_scan = create_scan
         self._detect_ships = detect_ships
         self._max_wait_hours = max_wait_hours
+        if hasattr(self._jobs, "configure_max_wait_hours"):
+            self._jobs.configure_max_wait_hours(max_wait_hours)
+
+    @property
+    def max_wait_hours(self) -> float:
+        return self._max_wait_hours
 
     def execute(self, job_id: Optional[int] = None) -> list[dict[str, Any]]:
         now = datetime.now(timezone.utc)
         if job_id is not None:
-            job = self._jobs.get(job_id)
+            if hasattr(self._jobs, "claim_job"):
+                job = self._jobs.claim_job(job_id, now)
+                if job is None:
+                    existing = self._jobs.get(job_id)
+                    if existing is None:
+                        raise PostPassJobNotFoundError(f"Post-pass job #{job_id} not found")
+                    raise InvalidStateTransitionError(
+                        f"Job #{job_id} cannot be polled while in {existing.status} state"
+                    )
+            else:
+                job = self._jobs.get(job_id)
             jobs_to_process = [job] if job is not None else []
         else:
-            jobs_to_process = self._jobs.get_jobs_due_for_poll(now)
+            if hasattr(self._jobs, "claim_jobs_due_for_poll"):
+                jobs_to_process = self._jobs.claim_jobs_due_for_poll(now)
+            else:
+                jobs_to_process = self._jobs.get_jobs_due_for_poll(now)
 
         results: list[dict[str, Any]] = []
 
@@ -125,102 +218,35 @@ class IngestPostPassImagery:
                 window_end = expected_time + timedelta(hours=1)
 
                 time_range_imagery = None
-                matched_acq_time = None
 
                 if hasattr(self._imagery, "search_historical_acquisitions"):
                     acquisitions = self._imagery.search_historical_acquisitions(
                         aoi.bbox,
                         start_date=window_start,
                         end_date=window_end,
-                        limit=5,
+                        limit=100,
                     )
+                    eligible = []
                     for acq in (acquisitions or []):
                         a_dt = _extract_acq_datetime(acq)
-                        if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600:
-                            time_range_imagery = acq
-                            matched_acq_time = a_dt
-                            break
+                        if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600 and _matches_job(acq, job):
+                            eligible.append((abs((a_dt - expected_time).total_seconds()), acq))
+                    if eligible:
+                        eligible.sort(key=lambda item: item[0])
+                        time_range_imagery = eligible[0][1]
 
                 if time_range_imagery is None and hasattr(self._imagery, "find_latest_acquisition"):
-                    try:
-                        acq = self._imagery.find_latest_acquisition(
-                            aoi.bbox,
-                            start_date=window_start,
-                            end_date=window_end,
-                        )
-                        a_dt = _extract_acq_datetime(acq)
-                        if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600:
-                            time_range_imagery = acq
-                            matched_acq_time = a_dt
-                    except Exception:
-                        pass
-
-                # 2. AS WELL AS query for the latest imagery of the location
-                latest_imagery = None
-                latest_acq_time = None
-
-                if hasattr(self._imagery, "find_latest_acquisition"):
-                    try:
-                        latest_candidate = self._imagery.find_latest_acquisition(aoi.bbox)
-                        l_dt = _extract_acq_datetime(latest_candidate)
-                        if l_dt is not None:
-                            latest_imagery = latest_candidate
-                            latest_acq_time = l_dt
-                    except Exception:
-                        pass
-
-                # Also check search_historical_acquisitions for latest imagery
-                if hasattr(self._imagery, "search_historical_acquisitions"):
-                    try:
-                        recent_acquisitions = self._imagery.search_historical_acquisitions(
-                            aoi.bbox,
-                            start_date=window_end,
-                            end_date=now + timedelta(days=1),
-                            limit=5,
-                        )
-                        for acq in (recent_acquisitions or []):
-                            a_dt = _extract_acq_datetime(acq)
-                            if a_dt and (latest_acq_time is None or a_dt > latest_acq_time):
-                                latest_imagery = acq
-                                latest_acq_time = a_dt
-                    except Exception:
-                        pass
-
-                # 3. IF THE LATEST IMAGERY OF THE LOCATION EXCEEDS THE EXPECTED TIME RANGE AND THERE IS NO TIME RANGE RESULT, mark it as failed.
-                if latest_acq_time is not None and latest_acq_time > window_end and time_range_imagery is None:
-                    # Pass missed: a newer pass was already acquired and published, but target pass imagery was not acquired
-                    err_msg = (
-                        f"Timing mismatch: Detected more recent imagery acquired at "
-                        f"{latest_acq_time.strftime('%Y-%m-%d %H:%M:%S UTC')}, which is outside the expected window "
-                        f"({expected_time.strftime('%Y-%m-%d %H:%M:%S UTC')} ± 1h). Target pass imagery was not acquired."
+                    acq = self._imagery.find_latest_acquisition(
+                        aoi.bbox,
+                        start_date=window_start,
+                        end_date=window_end,
                     )
-                    failed_job = PostPassIngestionJob(
-                        id=job.id,
-                        aoi_id=job.aoi_id,
-                        pass_time=job.pass_time,
-                        satellite=job.satellite,
-                        orbit_direction=job.orbit_direction,
-                        status="FAILED",
-                        attempts=job.attempts + 1,
-                        last_polled_at=now,
-                        next_poll_at=None,
-                        scan_folder=job.scan_folder,
-                        error_message=err_msg,
-                        created_at=job.created_at,
-                        completed_at=now,
-                        aoi_name=aoi.name,
-                        expected_imagery_time=expected_time,
-                    )
-                    self._jobs.update(failed_job)
-                    results.append({
-                        "job_id": job.id,
-                        "aoi_id": job.aoi_id,
-                        "status": "FAILED",
-                        "error": err_msg,
-                    })
+                    a_dt = _extract_acq_datetime(acq)
+                    if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600 and _matches_job(acq, job):
+                        time_range_imagery = acq
 
-                # 4. OTHERWISE, IF THERE IS IMAGERY FOR THE +- 1HR, mark it as completed.
-                elif time_range_imagery is not None:
+                # The exact matched acquisition is passed through to CreateScan.
+                if time_range_imagery is not None:
                     # Mark as INGESTING
                     ingesting_job = PostPassIngestionJob(
                         id=job.id,
@@ -241,10 +267,14 @@ class IngestPostPassImagery:
                     )
                     self._jobs.update(ingesting_job)
 
-                    # Trigger CreateScan
-                    scan = self._create_scan.execute(aoi.bbox, aoi_name=aoi.name)
-
+                    matched_acquisition = _as_acquisition(time_range_imagery)
+                    scan = self._create_scan.execute(
+                        aoi.bbox,
+                        aoi_name=aoi.name,
+                        acquisition=matched_acquisition,
+                    )
                     # Optionally trigger ship detection on the new scan
+                    detection_error: str | None = None
                     if self._detect_ships is not None:
                         try:
                             image_path = Path(scan.image_path)
@@ -254,8 +284,8 @@ class IngestPostPassImagery:
                                 dem_candidates[0] if dem_candidates else None,
                                 threshold=40,
                             )
-                        except Exception:
-                            pass  # Detection failure does not invalidate successful scan ingestion
+                        except Exception as exc:
+                            detection_error = str(exc) or "Unknown ship-detection error"
 
                     completed_job = PostPassIngestionJob(
                         id=job.id,
@@ -268,7 +298,10 @@ class IngestPostPassImagery:
                         last_polled_at=now,
                         next_poll_at=None,
                         scan_folder=scan.folder_name,
-                        error_message=None,
+                        error_message=(
+                            f"Imagery ingested, but ship detection failed: {detection_error}"
+                            if detection_error else None
+                        ),
                         created_at=job.created_at,
                         completed_at=now,
                         aoi_name=aoi.name,
@@ -280,6 +313,12 @@ class IngestPostPassImagery:
                         "aoi_id": job.aoi_id,
                         "status": "COMPLETED",
                         "scan_folder": scan.folder_name,
+                        "product_id": matched_acquisition.product_id,
+                        "imagery_status": "COMPLETED",
+                        "detection_status": "FAILED" if detection_error else (
+                            "COMPLETED" if self._detect_ships is not None else "NOT_REQUESTED"
+                        ),
+                        "warning": detection_error,
                     })
 
                 # 5. OTHERWISE, mark as wait expired (if timeout exceeded) or continue polling.

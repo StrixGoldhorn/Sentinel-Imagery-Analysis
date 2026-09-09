@@ -82,7 +82,7 @@ function updateLiveCountdowns() {
                         nextLine.innerHTML = `
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span class="badge" style="background: #e0f2fe; color: #0369a1; animation: pulse 1.5s infinite; font-size: 0.78rem; padding: 3px 6px;">
-                                    🔄 Due for Poll (Checking...)
+                                    🔄 Due, waiting for worker
                                 </span>
                                 <span style="font-size: 0.78rem; color: #64748b;">Polled #${attempts}</span>
                             </div>
@@ -246,26 +246,21 @@ function updateMetrics(jobs, serverStats) {
     if (serverStats && typeof serverStats.polling === 'number') {
         polling = serverStats.polling;
         pending = serverStats.pending;
-        ingesting = serverStats.ingesting;
+        ingesting = (serverStats.ingesting || 0) + (serverStats.querying || 0);
         completed = serverStats.completed;
         failed = serverStats.failed;
         timedOut = serverStats.timed_out;
     } else {
         const now = new Date();
         jobs.forEach(job => {
-            const expDt = parseUtcDate(job.expected_imagery_time) || parseUtcDate(job.pass_time);
-            const maxWaitHours = job.max_wait_hours || 24.0;
-            const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
-            const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDt && (invalidDt - now <= 0);
-            const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
+            const effectiveStatus = (job.effective_status || job.status || '').toUpperCase();
 
             if (effectiveStatus === 'POLLING_CATALOG') polling++;
             else if (effectiveStatus === 'PENDING_PASS') pending++;
-            else if (effectiveStatus === 'INGESTING') ingesting++;
+            else if (effectiveStatus === 'INGESTING' || effectiveStatus === 'QUERYING_CATALOG') ingesting++;
             else if (effectiveStatus === 'COMPLETED') completed++;
             else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
                 timedOut++;
-                failed++;
             }
             else if (effectiveStatus === 'FAILED') failed++;
         });
@@ -304,8 +299,7 @@ function applyPostPassFilters() {
         const expDt = parseUtcDate(job.expected_imagery_time) || parseUtcDate(job.pass_time);
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
-        const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDt && (invalidDt - now <= 0);
-        const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
+        const effectiveStatus = (job.display_status || job.effective_status || job.status || '').toUpperCase();
 
         if (selectedStatus) {
             if (selectedStatus === 'FAILED') {
@@ -371,8 +365,7 @@ function renderPostPassTable(jobs) {
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
         const invalidDiffSec = invalidDt ? Math.round((invalidDt - now) / 1000) : null;
-        const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDiffSec !== null && invalidDiffSec <= 0;
-        const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
+        const effectiveStatus = (job.display_status || job.effective_status || job.status || '').toUpperCase();
 
         // Relative pass timing
         let timingContent = '';
@@ -406,6 +399,15 @@ function renderPostPassTable(jobs) {
             case 'POLLING_CATALOG':
                 statusBadge = '<span class="badge badge-primary" style="background: #dbeafe; color: #1d4ed8; animation: pulse 2s infinite;">🔄 Polling Catalog</span>';
                 break;
+            case 'WAITING_FOR_POLL':
+                statusBadge = '<span class="badge badge-primary" style="background: #e0f2fe; color: #0369a1;">⏱ Waiting for Next Catalog Check</span>';
+                break;
+            case 'DUE_FOR_POLL':
+                statusBadge = '<span class="badge badge-primary" style="background: #dbeafe; color: #1d4ed8;">Ready for Catalog Check</span>';
+                break;
+            case 'QUERYING_CATALOG':
+                statusBadge = '<span class="badge badge-primary" style="background: #dbeafe; color: #1d4ed8; animation: pulse 2s infinite;">🔎 Querying Catalog Now</span>';
+                break;
             case 'INGESTING':
                 statusBadge = '<span class="badge badge-warning" style="background: #fef3c7; color: #b45309;">📥 Ingesting &amp; Stitching</span>';
                 break;
@@ -414,7 +416,7 @@ function renderPostPassTable(jobs) {
                 break;
             case 'TIMED_OUT':
             case 'WAIT_EXPIRED':
-                statusBadge = '<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; font-weight: 600;">❌ Failed (Wait Expired 24h)</span>';
+                statusBadge = `<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; font-weight: 600;">❌ Failed (Wait Expired ${escapeHtml(String(job.max_wait_hours || 24))}h)</span>`;
                 break;
             case 'FAILED':
                 if (isTimingMismatch) {
@@ -428,7 +430,7 @@ function renderPostPassTable(jobs) {
         }
 
         let nextPollContent = '-';
-        if (effectiveStatus === 'POLLING_CATALOG') {
+        if (job.status === 'POLLING_CATALOG') {
             let nextPollLine = '';
             if (job.next_poll_at) {
                 const nextDt = parseUtcDate(job.next_poll_at);
@@ -447,7 +449,7 @@ function renderPostPassTable(jobs) {
                     nextPollLine = `
                         <div style="display: flex; align-items: center; gap: 6px;">
                             <span class="badge" style="background: #e0f2fe; color: #0369a1; animation: pulse 1.5s infinite; font-size: 0.78rem; padding: 3px 6px;">
-                                🔄 Due for Poll (Checking...)
+                                🔄 Due, waiting for worker
                             </span>
                             <span style="font-size: 0.78rem; color: #64748b;">Polled #${job.attempts}</span>
                         </div>
@@ -526,6 +528,8 @@ function renderPostPassTable(jobs) {
                     ${passLine}
                 </div>
             `;
+        } else if (effectiveStatus === 'QUERYING_CATALOG') {
+            nextPollContent = '<div style="color: #1d4ed8; font-weight: 600;">Checking Copernicus catalog...</div>';
         } else if (effectiveStatus === 'INGESTING') {
             nextPollContent = `
                 <div style="color: #b45309; font-weight: 600; display: flex; align-items: center; gap: 5px;">
@@ -542,11 +546,12 @@ function renderPostPassTable(jobs) {
                     ✓ Acquired on Check #${job.attempts || 1}
                 </div>
                 <div style="font-size: 0.78rem; color: #64748b;">Completed at ${timeStr}</div>
+                ${job.error_message ? `<div style="font-size: 0.78rem; color: #b45309; margin-top: 3px;" title="${escapeHtml(job.error_message)}">⚠️ ${escapeHtml(job.error_message)}</div>` : ''}
             `;
         } else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
             nextPollContent = `
                 <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window (24h)')}">
-                    ⏱️ <strong>Wait window expired:</strong> Timed out after 24h (not published by Copernicus).
+                    ⏱️ <strong>Wait window expired:</strong> Timed out after ${escapeHtml(String(job.max_wait_hours || 24))}h.
                 </div>
             `;
         } else if (isTimingMismatch) {
@@ -571,19 +576,22 @@ function renderPostPassTable(jobs) {
         }
 
         let actionBtns = '';
-        if (effectiveStatus === 'POLLING_CATALOG' || effectiveStatus === 'PENDING_PASS') {
+        const allowedActions = Array.isArray(job.allowed_actions) ? job.allowed_actions : [];
+        if (allowedActions.includes('poll')) {
             actionBtns += `<button class="btn btn-outline-primary btn-sm" onclick="pollJobNow(${job.id})" title="Query Copernicus STAC catalog now" style="padding: 3px 8px; font-size: 0.78rem;">
                 🔍 Poll Now
             </button>`;
-        } else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED' || effectiveStatus === 'FAILED') {
+        }
+        if (allowedActions.includes('retry')) {
             actionBtns += `<button class="btn btn-outline-warning btn-sm" onclick="retryJob(${job.id})" title="Reset to POLLING_CATALOG and re-poll" style="padding: 3px 8px; font-size: 0.78rem;">
                 🔄 Retry
             </button>`;
         }
 
-        actionBtns += ` <button class="btn btn-outline-danger btn-sm" onclick="deleteJob(${job.id})" title="Delete job" style="padding: 3px 6px; font-size: 0.78rem;">
-            🗑️
-        </button>`;
+        actionBtns += ` <button class="btn btn-outline-secondary btn-sm" onclick="viewJobHistory(${job.id})" title="View state history" style="padding: 3px 6px; font-size: 0.78rem;">📜</button>`;
+        if (allowedActions.includes('delete')) {
+            actionBtns += ` <button class="btn btn-outline-danger btn-sm" onclick="deleteJob(${job.id})" title="Delete job" style="padding: 3px 6px; font-size: 0.78rem;">🗑️</button>`;
+        }
 
         return `
             <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
@@ -620,8 +628,8 @@ async function pollJobNow(jobId) {
     try {
         const response = await fetch(`/api/schedule/post_pass_jobs/${jobId}/poll`, { method: 'POST' });
         const data = await response.json();
-        if (data.status === 'success') {
-            showToast(`Catalog check finished for job #${jobId}`, 'success');
+        if (response.ok && data.status === 'accepted') {
+            showToast(`Catalog check queued for job #${jobId}`, 'success');
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Failed to poll catalog', 'error');
@@ -637,8 +645,8 @@ async function retryJob(jobId) {
     try {
         const response = await fetch(`/api/schedule/post_pass_jobs/${jobId}/retry`, { method: 'POST' });
         const data = await response.json();
-        if (data.status === 'success') {
-            showToast(`Job #${jobId} reset to POLLING_CATALOG`, 'success');
+        if (response.ok && data.status === 'accepted') {
+            showToast(`Job #${jobId} reset and queued for polling`, 'success');
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Failed to retry job', 'error');
@@ -667,6 +675,26 @@ async function deleteJob(jobId) {
     }
 }
 
+async function viewJobHistory(jobId) {
+    try {
+        const response = await fetch(`/api/schedule/post_pass_jobs/${jobId}/events`);
+        const data = await response.json();
+        if (!response.ok || data.status !== 'success') {
+            throw new Error(data.error || 'Could not load job history');
+        }
+        const lines = (data.events || []).map(event => {
+            const when = parseUtcDate(event.created_at);
+            const timestamp = when ? when.toLocaleString() : (event.created_at || 'Unknown time');
+            const transition = `${event.old_status || 'NEW'} → ${event.new_status}`;
+            return `${timestamp}\n${transition}: ${event.reason}${event.message ? `\n${event.message}` : ''}`;
+        });
+        alert(lines.length ? lines.join('\n\n') : `No state history is available for job #${jobId}.`);
+    } catch (err) {
+        console.error('Error loading post-pass job history:', err);
+        showToast(err.message || 'Error loading job history', 'error');
+    }
+}
+
 async function pollDueJobsNow() {
     const btn = document.getElementById('btnPollDueNow');
     if (btn) {
@@ -678,8 +706,8 @@ async function pollDueJobsNow() {
     try {
         const response = await fetch('/api/schedule/post_pass_jobs/poll_all', { method: 'POST' });
         const data = await response.json();
-        if (data.status === 'success') {
-            showToast(`Checked ${data.count || 0} post-pass jobs successfully`, 'success');
+        if (response.ok && data.status === 'accepted') {
+            showToast('Catalog checks queued for all due jobs', 'success');
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Catalog polling failed', 'error');
@@ -782,7 +810,7 @@ async function submitCustomPostPassJob(event) {
         });
         const data = await response.json();
 
-        if (response.ok && data.status === 'success') {
+        if (response.ok && (data.status === 'success' || data.status === 'accepted')) {
             showToast(data.message || 'Custom post-pass job created successfully', 'success');
             closeAddPostPassModal();
             loadPostPassJobs();

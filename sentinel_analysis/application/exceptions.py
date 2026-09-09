@@ -37,3 +37,15 @@ class ScanNotFoundError(ApplicationError):
 
 class VesselNotFoundError(ApplicationError, LookupError):
     """Raised when a vessel command targets a missing record."""
+
+
+class TaskNotFoundError(ApplicationError, LookupError):
+    """Raised when a background task cannot be found."""
+
+
+class PostPassJobNotFoundError(ApplicationError, LookupError):
+    """Raised when a post-pass ingestion job cannot be found."""
+
+
+class InvalidStateTransitionError(ApplicationError):
+    """Raised when an operation is not valid for the current workflow state."""
