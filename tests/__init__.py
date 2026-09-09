@@ -4,8 +4,9 @@ import os
 import tempfile
 from pathlib import Path
 
-# Ensure all temporary directories created by tests reside within the workspace
-_RUNTIME_TMP = Path(__file__).resolve().parent / "runtime" / "tmp"
+# Keep concurrent test processes and leaked background workers from sharing the
+# same temporary directory. The workspace root remains sandbox-compatible.
+_RUNTIME_TMP = Path(__file__).resolve().parent / "runtime" / f"tmp_{os.getpid()}"
 _RUNTIME_TMP.mkdir(parents=True, exist_ok=True)
 
 os.environ["TMPDIR"] = str(_RUNTIME_TMP)
