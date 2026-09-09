@@ -15,3 +15,5 @@ progress.json
 .cache/
 tests/runtime/
 
+*.pdf
+*.md

@@ -153,7 +153,6 @@ class SQLitePostPassIngestionRepository:
             raise RuntimeError("Failed to insert or retrieve post-pass ingestion job ID")
 
     def get(self, job_id: int) -> Optional[PostPassIngestionJob]:
-        self._auto_expire_jobs()
         with self._database.connection(rows=True) as conn:
             row = conn.execute(
                 """
@@ -167,7 +166,6 @@ class SQLitePostPassIngestionRepository:
         return self._from_row(row) if row else None
 
     def find_by_aoi_and_pass(self, aoi_id: int, pass_time: datetime) -> Optional[PostPassIngestionJob]:
-        self._auto_expire_jobs()
         pass_time_str = _format_dt(pass_time)
         with self._database.connection(rows=True) as conn:
             row = conn.execute(
@@ -182,7 +180,6 @@ class SQLitePostPassIngestionRepository:
         return self._from_row(row) if row else None
 
     def get_active_jobs(self) -> list[PostPassIngestionJob]:
-        self._auto_expire_jobs()
         with self._database.connection(rows=True) as conn:
             rows = conn.execute(
                 """
@@ -196,7 +193,6 @@ class SQLitePostPassIngestionRepository:
         return [self._from_row(row) for row in rows]
 
     def get_jobs_due_for_poll(self, now: datetime) -> list[PostPassIngestionJob]:
-        self._auto_expire_jobs(now)
         now_str = _format_dt(now)
         with self._database.connection(rows=True) as conn:
             # Transition any PENDING_PASS jobs whose flypast window has now completed
