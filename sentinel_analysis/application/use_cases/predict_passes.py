@@ -12,8 +12,8 @@ class PredictPasses:
         self._predictor = predictor
 
     def execute(self, bbox: BoundingBox, api_key: str) -> list[PassPrediction]:
-        if not isinstance(api_key, str) or not api_key.strip():
-            raise ValueError("Satellite prediction API key is required")
+        if not isinstance(api_key, str):
+            raise ValueError("Satellite prediction API key must be a string")
 
         normalized: list[tuple[datetime, PassPrediction]] = []
         for prediction in self._predictor.predict(bbox, api_key.strip()):
@@ -49,12 +49,19 @@ class PredictPasses:
                         time=predicted_at.isoformat(),
                         max_elevation=elevation,
                         source=prediction.get("source"),
+                        contribution=prediction.get("contribution"),
+                        contribution_label=prediction.get("contribution_label"),
+                        contribution_detail=prediction.get("contribution_detail"),
                         satellite=prediction.get("satellite"),
                         orbit_direction=prediction.get("orbit_direction"),
                         relative_orbit=rel_orbit,
                         confidence_score=conf_score,
                         swath_mode=prediction.get("swath_mode"),
                         historical_match=prediction.get("historical_match"),
+                        basis_product_id=prediction.get("basis_product_id"),
+                        basis_acquisition_time=prediction.get("basis_acquisition_time"),
+                        basis_satellite=prediction.get("basis_satellite"),
+                        basis_relative_orbit=prediction.get("basis_relative_orbit"),
                     ),
                 )
             )

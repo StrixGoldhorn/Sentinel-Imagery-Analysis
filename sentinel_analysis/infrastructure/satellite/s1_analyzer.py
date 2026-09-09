@@ -16,7 +16,6 @@ from sentinel_analysis.domain.entities import BoundingBox
 S1_REPEAT_CYCLE_DAYS = 12
 S1_REPEAT_CYCLE_SECONDS = S1_REPEAT_CYCLE_DAYS * 86400  # 1,036,800 seconds
 S1_ORBIT_PERIOD_MINUTES = 98.6  # Orbital period
-S1_CONSTELLATION_PHASE_OFFSET_DAYS = 6  # S1A and S1C operate with 180° orbital separation (6-day shift)
 
 
 class HistoricalDataProvider(Protocol):
@@ -183,26 +182,24 @@ class Sentinel1MissionAnalyzer:
         max_time = now + timedelta(days=max(1, days_ahead))
 
         if not history:
-            # When no catalog history is available, synthesize nominal orbital flypasts based on bbox
-            return self._synthesize_nominal_passes(
-                bbox, now, max_time, limit=limit, enabled_satellites=enabled_satellites
-            )
+            return []
 
         # Group by relative orbit track and platform to find the latest pass for each track
-        latest_by_track: dict[tuple[int | None, str, str], datetime] = {}
+        latest_by_track: dict[tuple[int | None, str, str], tuple[datetime, HistoricalMissionPass]] = {}
         for p in history:
             track = p.get("relative_orbit")
             direction = p.get("orbit_direction") or "ASCENDING"
             platform = p.get("platform") or "Sentinel-1A"
             dt = datetime.fromisoformat(p["acquisition_time"].replace("Z", "+00:00"))
             key = (track, direction, platform)
-            if key not in latest_by_track or dt > latest_by_track[key]:
-                latest_by_track[key] = dt
+            if key not in latest_by_track or dt > latest_by_track[key][0]:
+                latest_by_track[key] = (dt, p)
 
         predicted_passes: list[PassPrediction] = []
 
-        for (track, direction, platform), last_dt in latest_by_track.items():
-            # 1. Project primary satellite along 12-day repeat cycle
+        for (track, direction, platform), (last_dt, basis) in latest_by_track.items():
+            # A prediction is only projected from the most recent acquisition of
+            # this exact satellite/track/direction tuple.
             if active_sats is None or platform in active_sats:
                 candidate_dt = last_dt
                 while candidate_dt < max_time:
@@ -226,38 +223,13 @@ class Sentinel1MissionAnalyzer:
                                 confidence_score=0.94,
                                 swath_mode="IW",
                                 historical_match=hist_desc,
+                                basis_product_id=basis.get("product_id"),
+                                basis_acquisition_time=basis.get("acquisition_time"),
+                                basis_satellite=basis.get("platform"),
+                                basis_relative_orbit=basis.get("relative_orbit"),
                             )
                         )
                     candidate_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
-
-            # 2. Project twin constellation satellite (e.g. S1C shifted by 6 days)
-            twin_platform = "Sentinel-1C" if platform == "Sentinel-1A" else "Sentinel-1A"
-            if active_sats is None or twin_platform in active_sats:
-                twin_dt = last_dt + timedelta(days=S1_CONSTELLATION_PHASE_OFFSET_DAYS)
-                while twin_dt < max_time:
-                    if twin_dt >= now:
-                        twin_desc = (
-                            f"Constellation 180° offset for Track #{track}"
-                            if track is not None
-                            else "Constellation 6d offset"
-                        )
-                        predicted_passes.append(
-                            PassPrediction(
-                                time=twin_dt.isoformat(),
-                                max_elevation=70.0,
-                                source="HISTORICAL_MISSION",
-                                contribution="historical",
-                                contribution_label="Historical Repeat Cycle Only",
-                                contribution_detail=twin_desc,
-                                satellite=twin_platform,
-                                orbit_direction=direction,
-                                relative_orbit=track,
-                                confidence_score=0.90,
-                                swath_mode="IW",
-                                historical_match=twin_desc,
-                            )
-                        )
-                    twin_dt += timedelta(days=S1_REPEAT_CYCLE_DAYS)
 
         predicted_passes.sort(key=lambda p: datetime.fromisoformat(str(p["time"]).replace("Z", "+00:00")))
         return predicted_passes[:limit]
@@ -265,31 +237,29 @@ class Sentinel1MissionAnalyzer:
     def _fetch_history(self, bbox: BoundingBox, limit: int = 100) -> list[HistoricalMissionPass]:
         if self._provider is None:
             return []
-        try:
-            now = datetime.now(timezone.utc)
-            # Query the past 120 days of acquisitions (~10 full repeat cycles) for fast catalog lookups
-            start_dt = now - timedelta(days=120)
-            raw_results = self._provider.search_historical_acquisitions(
-                bbox,
-                start_date=start_dt,
-                end_date=now,
-                limit=limit,
+        now = datetime.now(timezone.utc)
+        # Query the past 120 days of acquisitions (~10 full repeat cycles).
+        # Provider failures must remain distinguishable from a genuine empty history.
+        start_dt = now - timedelta(days=120)
+        raw_results = self._provider.search_historical_acquisitions(
+            bbox,
+            start_date=start_dt,
+            end_date=now,
+            limit=limit,
+        )
+        return [
+            HistoricalMissionPass(
+                product_id=r.get("product_id"),
+                platform=r.get("platform") or "Sentinel-1",
+                acquisition_time=r.get("acquisition_time"),
+                orbit_direction=r.get("orbit_direction") or "UNKNOWN",
+                relative_orbit=r.get("relative_orbit"),
+                polarisation=r.get("polarisation"),
+                instrument_mode=r.get("instrument_mode") or "IW",
             )
-            return [
-                HistoricalMissionPass(
-                    product_id=r.get("product_id"),
-                    platform=r.get("platform") or "Sentinel-1",
-                    acquisition_time=r.get("acquisition_time"),
-                    orbit_direction=r.get("orbit_direction") or "UNKNOWN",
-                    relative_orbit=r.get("relative_orbit"),
-                    polarisation=r.get("polarisation"),
-                    instrument_mode=r.get("instrument_mode") or "IW",
-                )
-                for r in raw_results
-                if r.get("acquisition_time")
-            ]
-        except Exception:
-            return []
+            for r in raw_results
+            if r.get("acquisition_time")
+        ]
 
     def _synthesize_nominal_passes(
         self,

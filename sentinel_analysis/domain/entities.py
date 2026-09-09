@@ -131,12 +131,19 @@ class Acquisition:
     product_type: str
     product_id: Optional[str] = None
     polarizations: tuple[str, ...] = ("VH",)
+    orbit_direction: Optional[str] = None
+    relative_orbit: Optional[int] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "acquired_at", _utc_datetime(self.acquired_at, "Acquisition time"))
         object.__setattr__(self, "satellite", _required_text(self.satellite, "Satellite"))
         object.__setattr__(self, "product_type", _required_text(self.product_type, "Product type"))
         object.__setattr__(self, "product_id", _optional_text(self.product_id, "Product ID"))
+        if self.orbit_direction is not None:
+            object.__setattr__(self, "orbit_direction", _optional_text(self.orbit_direction, "Orbit direction").upper())
+        if self.relative_orbit is not None:
+            if isinstance(self.relative_orbit, bool) or not isinstance(self.relative_orbit, int) or self.relative_orbit <= 0:
+                raise DomainValidationError("Relative orbit must be a positive integer")
         if not isinstance(self.polarizations, (list, tuple)) or not self.polarizations:
             raise DomainValidationError("Polarizations must be a non-empty sequence of strings")
         object.__setattr__(self, "polarizations", tuple(str(p).strip().upper() for p in self.polarizations if str(p).strip()))
@@ -342,6 +349,14 @@ class PostPassIngestionJob:
     pass_time: datetime
     satellite: str = "Sentinel-1"
     orbit_direction: Optional[str] = None
+    relative_orbit: Optional[int] = None
+    trigger_type: str = "MANUAL"
+    prediction_source: Optional[str] = None
+    workflow_id: Optional[str] = None
+    basis_product_id: Optional[str] = None
+    basis_acquisition_time: Optional[datetime] = None
+    basis_satellite: Optional[str] = None
+    basis_relative_orbit: Optional[int] = None
     status: str = "POLLING_CATALOG"
     attempts: int = 0
     last_polled_at: Optional[datetime] = None
@@ -361,8 +376,24 @@ class PostPassIngestionJob:
         object.__setattr__(self, "satellite", _required_text(self.satellite, "Satellite"))
         if self.orbit_direction is not None:
             object.__setattr__(self, "orbit_direction", _optional_text(self.orbit_direction, "Orbit direction"))
+        if self.relative_orbit is not None:
+            if isinstance(self.relative_orbit, bool) or not isinstance(self.relative_orbit, int) or self.relative_orbit <= 0:
+                raise DomainValidationError("Relative orbit must be a positive integer")
+        object.__setattr__(self, "trigger_type", _required_text(self.trigger_type, "Trigger type").upper())
+        object.__setattr__(self, "prediction_source", _optional_text(self.prediction_source, "Prediction source"))
+        object.__setattr__(self, "workflow_id", _optional_text(self.workflow_id, "Workflow ID"))
+        object.__setattr__(self, "basis_product_id", _optional_text(self.basis_product_id, "Basis product ID"))
+        if self.basis_acquisition_time is not None:
+            object.__setattr__(self, "basis_acquisition_time", _utc_datetime(self.basis_acquisition_time, "Basis acquisition time"))
+        object.__setattr__(self, "basis_satellite", _optional_text(self.basis_satellite, "Basis satellite"))
+        if self.basis_relative_orbit is not None:
+            if isinstance(self.basis_relative_orbit, bool) or not isinstance(self.basis_relative_orbit, int) or self.basis_relative_orbit <= 0:
+                raise DomainValidationError("Basis relative orbit must be a positive integer")
         status = _required_text(self.status, "Job status").upper()
-        valid_statuses = {"PENDING_PASS", "POLLING_CATALOG", "INGESTING", "COMPLETED", "TIMED_OUT", "WAIT_EXPIRED", "FAILED"}
+        valid_statuses = {
+            "PENDING_PASS", "POLLING_CATALOG", "QUERYING_CATALOG", "INGESTING",
+            "COMPLETED", "TIMED_OUT", "WAIT_EXPIRED", "FAILED",
+        }
         if status not in valid_statuses:
             raise DomainValidationError(f"Invalid job status: {status}. Must be one of {valid_statuses}")
         object.__setattr__(self, "status", status)
@@ -387,4 +418,3 @@ class PostPassIngestionJob:
             object.__setattr__(self, "expected_imagery_time", _utc_datetime(self.expected_imagery_time, "Expected imagery time"))
         else:
             object.__setattr__(self, "expected_imagery_time", self.pass_time)
-

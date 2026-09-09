@@ -7,6 +7,10 @@ from typing import Any, Optional
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.shutdown import shutdown_coordinator
+from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
+    TriggerAutomaticAISScrape,
+    is_historical_prediction,
+)
 from sentinel_analysis.domain.entities import AreaOfInterest, PostPassIngestionJob
 
 logger = logging.getLogger(__name__)
@@ -20,9 +24,13 @@ class BackgroundPassMonitor:
         ingest_ais: Optional[Any] = None,
         post_pass_repo: Optional[PostPassIngestionRepository] = None,
         interval_seconds: float = 60.0,
+        automatic_scrape: Optional[TriggerAutomaticAISScrape] = None,
     ) -> None:
         self._ingest_ais = ingest_ais
         self._post_pass_repo = post_pass_repo
+        self._automatic_scrape = automatic_scrape
+        if self._automatic_scrape is None and ingest_ais is not None and post_pass_repo is not None:
+            self._automatic_scrape = TriggerAutomaticAISScrape(ingest_ais, post_pass_repo)
         self._interval_seconds = max(0.5, float(interval_seconds))
         self._monitors: dict[tuple[int, str], dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -37,6 +45,9 @@ class BackgroundPassMonitor:
     ) -> Optional[dict[str, Any]]:
         """Schedule or immediately start a 60-second AIS scrape monitor for a satellite pass."""
         if aoi.id is None or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+            return None
+        if not is_historical_prediction(active_pass_info):
+            logger.debug("Ignoring N2YO-only pass for AOI %s", aoi.id)
             return None
 
         # Ensure UTC timezone
@@ -64,12 +75,17 @@ class BackgroundPassMonitor:
                 "window_end": window_end,
                 "active_pass_info": active_pass_info,
                 "status": "SCHEDULED",
+                "scrape_attempts": 0,
                 "scrapes_completed": 0,
+                "scrapes_failed": 0,
+                "scrapes_skipped": 0,
                 "records_ingested": 0,
                 "last_scraped_at": None,
                 "thread": None,
                 "timer": None,
                 "error": None,
+                "post_pass_job_id": None,
+                "cancel_event": threading.Event(),
             }
             self._monitors[key] = monitor_entry
 
@@ -105,10 +121,13 @@ class BackgroundPassMonitor:
             entry = self._monitors.get(key)
             if not entry or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
                 return
+            cancel_event = entry["cancel_event"]
+            if cancel_event.is_set():
+                return
             entry["status"] = "ACTIVE"
             thread = threading.Thread(
                 target=self._run_pass_loop,
-                args=(key, aoi, pass_time, window_start, window_end, active_pass_info),
+                args=(key, aoi, pass_time, window_start, window_end, active_pass_info, cancel_event),
                 daemon=True,
                 name=f"pass-monitor-aoi-{aoi.id}",
             )
@@ -124,106 +143,73 @@ class BackgroundPassMonitor:
         window_start: datetime,
         window_end: datetime,
         active_pass_info: Optional[dict[str, Any]],
+        cancel_event: threading.Event,
     ) -> None:
         """Runs the 60-second periodic AIS scraping loop across the active flypast window."""
-        while not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
+        while not self._stop_event.is_set() and not cancel_event.is_set() and not shutdown_coordinator.is_shutting_down:
             tick_now = datetime.now(timezone.utc)
             if tick_now > window_end:
                 break
 
             if tick_now < window_start:
                 sleep_secs = min(self._interval_seconds, (window_start - tick_now).total_seconds())
-                if self._stop_event.wait(timeout=max(0.1, sleep_secs)) or shutdown_coordinator.is_shutting_down:
+                if cancel_event.wait(timeout=max(0.1, sleep_secs)) or self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
                     break
                 continue
 
-            # Scrape 1-minute window around current minute
-            start_time = max(window_start, tick_now - timedelta(minutes=1))
-            end_time = min(window_end, tick_now + timedelta(minutes=1))
             records = 0
 
-            if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+            if self._stop_event.is_set() or cancel_event.is_set() or shutdown_coordinator.is_shutting_down:
                 break
 
-            if self._ingest_ais is not None:
+            if self._automatic_scrape is not None:
+                with self._lock:
+                    if key in self._monitors:
+                        self._monitors[key]["scrape_attempts"] += 1
                 try:
-                    try:
-                        res = self._ingest_ais.execute(
-                            aoi.bbox,
-                            (start_time, end_time),
-                            trigger_reason=f"Satellite Flypast ({aoi.name}) [Minute Scan]",
-                        )
-                    except TypeError:
-                        res = self._ingest_ais.execute(aoi.bbox, (start_time, end_time))
+                    res = self._automatic_scrape.execute(
+                        aoi,
+                        pass_time,
+                        active_pass_info,
+                        window_end,
+                        now=tick_now,
+                    )
                     records = res.get("total_inserted", 0) if isinstance(res, dict) else 0
+                    with self._lock:
+                        if key in self._monitors:
+                            self._monitors[key]["post_pass_job_id"] = res.get("post_pass_job_id")
+                            if res.get("skipped"):
+                                self._monitors[key]["scrapes_skipped"] += 1
+                            else:
+                                self._monitors[key]["scrapes_completed"] += 1
+                            self._monitors[key]["error"] = None
                 except Exception as exc:
                     logger.warning("AIS minute scrape failed for AOI %s (%s): %s", aoi.id, aoi.name, exc)
                     with self._lock:
                         if key in self._monitors:
                             self._monitors[key]["error"] = str(exc)
-
-            # Register or update PostPassIngestionJob once an autoscan has occurred
-            if self._post_pass_repo is not None and aoi.id is not None:
-                self._ensure_post_pass_job(aoi, pass_time, active_pass_info, window_end)
+                            self._monitors[key]["scrapes_failed"] += 1
 
             with self._lock:
                 if key in self._monitors:
-                    self._monitors[key]["scrapes_completed"] += 1
                     self._monitors[key]["records_ingested"] += records
                     self._monitors[key]["last_scraped_at"] = tick_now
 
             # Wait for next 60s interval or remaining time until window_end
             remaining_to_end = (window_end - datetime.now(timezone.utc)).total_seconds()
             sleep_duration = min(self._interval_seconds, max(0.1, remaining_to_end))
-            if self._stop_event.wait(timeout=sleep_duration):
+            if cancel_event.wait(timeout=sleep_duration) or self._stop_event.is_set():
                 break
 
         # Pass window has completed
         with self._lock:
             if key in self._monitors:
-                self._monitors[key]["status"] = "CANCELLED" if self._stop_event.is_set() else "COMPLETED"
+                self._monitors[key]["status"] = "CANCELLED" if (self._stop_event.is_set() or cancel_event.is_set()) else "COMPLETED"
+                self._monitors[key]["completed_at"] = datetime.now(timezone.utc)
 
         # Transition post-pass job to POLLING_CATALOG once pass window ends
-        if not self._stop_event.is_set() and self._post_pass_repo is not None and aoi.id is not None:
+        if not self._stop_event.is_set() and not cancel_event.is_set() and self._post_pass_repo is not None and aoi.id is not None:
             self._transition_job_to_polling(aoi.id, pass_time)
-
-    def _ensure_post_pass_job(
-        self,
-        aoi: AreaOfInterest,
-        pass_time: datetime,
-        active_pass_info: Optional[dict[str, Any]],
-        window_end: datetime,
-    ) -> None:
-        """Ensure a post-pass ingestion job is added upon active autoscan."""
-        if active_pass_info and active_pass_info.get("contribution") == "n2yo":
-            return  # Optical-only passes are not tracked for SAR catalog polling
-
-        try:
-            existing = self._post_pass_repo.find_by_aoi_and_pass(aoi.id, pass_time)
-            now = datetime.now(timezone.utc)
-            is_completed = now >= window_end
-            status = "POLLING_CATALOG" if is_completed else "PENDING_PASS"
-            next_poll = now if is_completed else window_end
-            satellite = (active_pass_info.get("satellite") if active_pass_info else None) or "Sentinel-1"
-            orbit_dir = active_pass_info.get("orbit_direction") if active_pass_info else None
-
-            if existing is None:
-                new_job = PostPassIngestionJob(
-                    aoi_id=aoi.id,
-                    pass_time=pass_time,
-                    satellite=satellite,
-                    orbit_direction=orbit_dir,
-                    status=status,
-                    attempts=0,
-                    next_poll_at=next_poll,
-                    created_at=now,
-                    aoi_name=aoi.name,
-                    expected_imagery_time=pass_time,
-                )
-                self._post_pass_repo.add(new_job)
-                logger.info("Registered post-pass job for AOI %s (%s) at pass %s", aoi.id, aoi.name, pass_time)
-        except Exception as exc:
-            logger.warning("Failed to register post-pass job for AOI %s: %s", aoi.id, exc)
 
     def _transition_job_to_polling(self, aoi_id: int, pass_time: datetime) -> None:
         """Transition post-pass job to POLLING_CATALOG when window ends."""
@@ -265,7 +251,12 @@ class BackgroundPassMonitor:
         """Return serialized list of all active or scheduled pass monitors."""
         with self._lock:
             result = []
-            for entry in self._monitors.values():
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+            for key, entry in list(self._monitors.items()):
+                completed_at = entry.get("completed_at")
+                if completed_at and completed_at < cutoff:
+                    self._monitors.pop(key, None)
+                    continue
                 result.append({
                     "aoi_id": entry["aoi_id"],
                     "aoi_name": entry["aoi_name"],
@@ -273,10 +264,14 @@ class BackgroundPassMonitor:
                     "window_start": entry["window_start"].isoformat(),
                     "window_end": entry["window_end"].isoformat(),
                     "status": entry["status"],
+                    "scrape_attempts": entry["scrape_attempts"],
                     "scrapes_completed": entry["scrapes_completed"],
+                    "scrapes_failed": entry["scrapes_failed"],
+                    "scrapes_skipped": entry["scrapes_skipped"],
                     "records_ingested": entry["records_ingested"],
                     "last_scraped_at": entry["last_scraped_at"].isoformat() if entry["last_scraped_at"] else None,
                     "error": entry["error"],
+                    "post_pass_job_id": entry["post_pass_job_id"],
                 })
             return result
 
@@ -287,7 +282,23 @@ class BackgroundPassMonitor:
                 if aid == aoi_id:
                     if entry.get("timer"):
                         entry["timer"].cancel()
+                    entry["cancel_event"].set()
                     entry["status"] = "CANCELLED"
+
+    def reconcile_enabled_satellites(self, enabled_satellites: list[str] | None) -> None:
+        """Cancel monitors whose satellite was disabled after scheduling."""
+        if enabled_satellites is None:
+            return
+        enabled = set(enabled_satellites)
+        with self._lock:
+            for entry in self._monitors.values():
+                satellite = (entry.get("active_pass_info") or {}).get("satellite")
+                if satellite and satellite not in enabled and entry.get("status") in ("SCHEDULED", "ACTIVE"):
+                    if entry.get("timer"):
+                        entry["timer"].cancel()
+                    entry["cancel_event"].set()
+                    entry["status"] = "CANCELLED"
+                    entry["completed_at"] = datetime.now(timezone.utc)
 
     def stop_all(self) -> None:
         """Stop all running monitors and cancel all scheduled timers."""
@@ -296,4 +307,5 @@ class BackgroundPassMonitor:
             for entry in self._monitors.values():
                 if entry.get("timer"):
                     entry["timer"].cancel()
+                entry["cancel_event"].set()
                 entry["status"] = "CANCELLED"

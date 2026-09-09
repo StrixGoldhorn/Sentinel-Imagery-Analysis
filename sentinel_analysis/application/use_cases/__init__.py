@@ -43,6 +43,10 @@ from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
     ScrapeAreaOfInterestAIS,
     calculate_pass_window,
 )
+from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
+    TriggerAutomaticAISScrape,
+    is_historical_prediction,
+)
 
 __all__ = [
     "AddAreaOfInterest",
@@ -74,12 +78,13 @@ __all__ = [
     "ResetSettings",
     "ScrapeAreaOfInterestAIS",
     "ToggleScraper",
+    "TriggerAutomaticAISScrape",
     "UpdateScraper",
     "UpdateScraperConfig",
     "UpdateSettings",
     "UpdateVesselDetails",
     "calculate_pass_window",
+    "is_historical_prediction",
 ]
-
 
 

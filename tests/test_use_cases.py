@@ -310,12 +310,12 @@ def test_invalid_provider_prediction_is_an_expected_application_error() -> None:
         pass
 
 
-def test_predict_aoi_updates_repository_with_earliest_pass() -> None:
+def test_predict_aoi_updates_repository_with_earliest_historical_pass() -> None:
     repository = MemoryAOIRepository(AreaOfInterest("Harbour", BBOX, id=1))
     predictor = FakePredictor(
         [
-            {"time": "2026-08-29T00:00:00Z", "max_elevation": 20},
-            {"time": "2026-08-28T00:00:00Z", "max_elevation": 30},
+            {"time": "2026-08-29T00:00:00Z", "max_elevation": 20, "contribution": "historical"},
+            {"time": "2026-08-28T00:00:00Z", "max_elevation": 30, "contribution": "historical"},
         ]
     )
 
@@ -437,7 +437,11 @@ def test_check_and_schedule_aois_triggers_scans() -> None:
 
     repo = MultiAOIRepository()
     pass_time = (now + timedelta(days=2)).isoformat()
-    predictor = FakePredictor([{"time": pass_time}])
+    predictor = FakePredictor([{
+        "time": pass_time,
+        "source": "HISTORICAL_MISSION",
+        "contribution": "historical",
+    }])
     scheduler = CheckAndScheduleAOIs(repo, predictor)
     results = scheduler.execute("api_key")
 
@@ -499,6 +503,7 @@ def test_predict_aoi_returns_separate_n2yo_and_historical_extrapolation_lists() 
     assert res["n2yo_predictions"][0]["source"] == "N2YO"
     assert len(res["historical_predictions"]) == 1
     assert res["historical_predictions"][0]["relative_orbit"] == 171
+    assert res["next_scan"] == "2026-09-02T10:30:00Z"
     assert res["mission_analysis"]["total_acquisitions"] == 25
 
 
@@ -556,10 +561,10 @@ def test_predict_aoi_force_refresh_bypasses_cache_and_updates_db() -> None:
     result = use_case.execute_with_analysis(1, "test_key", force_refresh=True)
 
     assert result["cached"] is False
-    assert result["next_scan"] == "2026-09-01T18:00:00+00:00"
+    assert result["next_scan"] is None
     assert len(repository.saved_forecasts) == 1
     assert repository.saved_forecasts[0][0] == 1
-    assert repository.cached_forecast["next_scan"] == "2026-09-01T18:00:00+00:00"
+    assert repository.cached_forecast["next_scan"] is None
 
 
 def test_predict_aoi_cache_ttl_defaults_to_3_hours() -> None:
@@ -654,6 +659,4 @@ def load_tests(loader, standard_tests, pattern):
 
 if __name__ == "__main__":
     unittest.main()
-
-
 

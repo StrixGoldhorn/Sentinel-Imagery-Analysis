@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sentinel_analysis.domain.entities import AreaOfInterest, BoundingBox
+from sentinel_analysis.domain.satellite import is_historical_prediction
 from sentinel_analysis.infrastructure.persistence.migrations.runner import MigrationRunner
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
 
@@ -127,20 +128,18 @@ class SQLiteAreaOfInterestRepository:
             return filtered
 
         n2yo_filtered = _filter_upcoming(n2yo_preds)
-        hist_filtered = _filter_upcoming(hist_preds)
-        comb_filtered = _filter_upcoming(comb_preds)
+        hist_filtered = [p for p in _filter_upcoming(hist_preds) if is_historical_prediction(p)]
+        comb_filtered = [p for p in _filter_upcoming(comb_preds) if is_historical_prediction(p)]
 
         next_scan_val = None
         if comb_filtered:
             next_scan_val = comb_filtered[0]["time"]
-        elif n2yo_filtered:
-            next_scan_val = n2yo_filtered[0]["time"]
         elif hist_filtered:
             next_scan_val = hist_filtered[0]["time"]
 
         return {
             "aoi_id": aoi_id,
-            "predictions": comb_filtered if comb_filtered else (hist_filtered or n2yo_filtered),
+            "predictions": comb_filtered if comb_filtered else hist_filtered,
             "n2yo_predictions": n2yo_filtered,
             "historical_predictions": hist_filtered,
             "mission_analysis": mission_summary,
@@ -211,4 +210,3 @@ class SQLiteAreaOfInterestRepository:
             cursor = connection.execute("DELETE FROM aoi WHERE id = ?", (aoi_id,))
             if cursor.rowcount == 0:
                 raise LookupError(f"Area of interest not found: {aoi_id}")
-

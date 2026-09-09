@@ -45,6 +45,10 @@ class PassPrediction(TypedDict, total=False):
     confidence_score: float | None
     swath_mode: str | None
     historical_match: str | None
+    basis_product_id: str | None
+    basis_acquisition_time: str | None
+    basis_satellite: str | None
+    basis_relative_orbit: int | None
 
 
 @runtime_checkable

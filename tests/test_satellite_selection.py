@@ -23,7 +23,7 @@ from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1Miss
 
 
 class DummyImageryProvider:
-    def search_acquisitions(self, bbox, start_date, end_date):
+    def search_historical_acquisitions(self, bbox, start_date, end_date, limit=100):
         return []
 
 
@@ -136,32 +136,18 @@ class TestSatelliteSelectionCatalogAndSettings(unittest.TestCase):
 
 
 class TestMissionAnalyzerSatelliteFiltering(unittest.TestCase):
-    def test_synthesize_nominal_passes_filtering(self):
+    def test_empty_history_does_not_synthesize_automatic_passes(self):
         analyzer = Sentinel1MissionAnalyzer(DummyImageryProvider())
         bbox = BoundingBox(103.8, 1.2, 103.9, 1.3)
-        now = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
 
-        # Only Sentinel-1A
-        passes_s1a = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=["Sentinel-1A"])
-        self.assertTrue(len(passes_s1a) > 0)
-        for p in passes_s1a:
-            self.assertEqual(p["satellite"], "Sentinel-1A")
-
-        # Only Sentinel-1C
-        passes_s1c = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=["Sentinel-1C"])
-        self.assertTrue(len(passes_s1c) > 0)
-        for p in passes_s1c:
-            self.assertEqual(p["satellite"], "Sentinel-1C")
-
-        # Only Sentinel-1D
-        passes_s1d = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=["Sentinel-1D"])
-        self.assertTrue(len(passes_s1d) > 0)
-        for p in passes_s1d:
-            self.assertEqual(p["satellite"], "Sentinel-1D")
-
-        # Empty enabled satellites
-        passes_none = analyzer.predict_from_history(bbox, days_ahead=7, enabled_satellites=[])
-        self.assertEqual(len(passes_none), 0)
+        for enabled in (["Sentinel-1A"], ["Sentinel-1C"], ["Sentinel-1D"], []):
+            with self.subTest(enabled=enabled):
+                passes = analyzer.predict_from_history(
+                    bbox,
+                    days_ahead=7,
+                    enabled_satellites=enabled,
+                )
+                self.assertEqual(passes, [])
 
 
 class TestHybridPredictorSatelliteSelection(unittest.TestCase):
@@ -196,8 +182,9 @@ class TestHybridPredictorSatelliteSelection(unittest.TestCase):
         )
 
         self.assertEqual(n2yo_mock.called_satellites, ["Sentinel-1C"])
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["satellite"], "Sentinel-1C")
+        # N2YO was queried as supporting evidence, but it cannot create a
+        # primary prediction without a matching historical projection.
+        self.assertEqual(results, [])
 
 
 class TestScheduleUseCasesSatelliteSelection(unittest.TestCase):
@@ -281,10 +268,14 @@ class TestScheduleUseCasesSatelliteSelection(unittest.TestCase):
                     {
                         "time": (now + timedelta(seconds=10)).isoformat(),
                         "satellite": "Sentinel-1B",  # Disabled by default
+                        "source": "HISTORICAL_MISSION",
+                        "contribution": "historical",
                     },
                     {
                         "time": pass_time_c.isoformat(),
                         "satellite": "Sentinel-1C",  # Enabled
+                        "source": "HISTORICAL_MISSION",
+                        "contribution": "historical",
                     },
                 ]
 

@@ -2,6 +2,25 @@
 
 from typing import Any
 
+
+def is_historical_prediction(prediction: dict[str, Any] | None) -> bool:
+    """Return True only for predictions explicitly grounded in acquisition history.
+
+    Missing/unknown provenance fails closed. N2YO may corroborate a historical
+    projection (``both``/``COMBINED``), but can never make a prediction eligible
+    by itself.
+    """
+    if not prediction:
+        return False
+    contribution = str(prediction.get("contribution") or "").strip().lower()
+    source = str(prediction.get("source") or "").strip().upper()
+    if contribution == "n2yo" or source == "N2YO":
+        return False
+    return contribution in {"historical", "both"} or source in {
+        "HISTORICAL_MISSION",
+        "COMBINED",
+    }
+
 SATELLITE_CATALOG: dict[str, dict[str, Any]] = {
     "Sentinel-1A": {
         "norad_id": 39634,

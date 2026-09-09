@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 from sentinel_analysis.application.ports.satellite import (
     HistoricalMissionPass,
@@ -137,6 +138,42 @@ def test_analyzer_predicts_future_passes_using_12_day_repeat_cycle() -> None:
     assert any(abs((t - (hist_time + timedelta(days=12))).total_seconds()) < 2 for t in projected_times)
     assert predictions[0]["source"] == "HISTORICAL_MISSION"
     assert predictions[0]["relative_orbit"] == 142
+    assert predictions[0]["basis_product_id"] == "S1A_IW_GRDH_1SDV_001"
+    assert predictions[0]["basis_acquisition_time"] == hist_time.isoformat()
+    assert predictions[0]["basis_satellite"] == "Sentinel-1A"
+    assert predictions[0]["basis_relative_orbit"] == 142
+
+
+def test_analyzer_does_not_invent_predictions_without_history() -> None:
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([]))
+    assert analyzer.predict_from_history(BBOX, days_ahead=15) == []
+
+
+def test_analyzer_does_not_project_one_satellites_history_as_its_twin() -> None:
+    now = datetime.now(timezone.utc)
+    hist_time = (now - timedelta(days=10)).replace(microsecond=0)
+    analyzer = Sentinel1MissionAnalyzer(MockHistoryProvider([{
+        "product_id": "S1A_ONLY",
+        "platform": "Sentinel-1A",
+        "acquisition_time": hist_time.isoformat(),
+        "orbit_direction": "ASCENDING",
+        "relative_orbit": 142,
+    }]))
+    predictions = analyzer.predict_from_history(
+        BBOX, days_ahead=15, enabled_satellites=["Sentinel-1A", "Sentinel-1C"]
+    )
+    assert predictions
+    assert {p["satellite"] for p in predictions} == {"Sentinel-1A"}
+
+
+def test_analyzer_surfaces_history_provider_failures() -> None:
+    class BrokenHistoryProvider:
+        def search_historical_acquisitions(self, *args, **kwargs):
+            raise RuntimeError("catalog unavailable")
+
+    analyzer = Sentinel1MissionAnalyzer(BrokenHistoryProvider())
+    with unittest.TestCase().assertRaisesRegex(RuntimeError, "catalog unavailable"):
+        analyzer.predict_from_history(BBOX)
 
 
 def test_hybrid_predictor_merges_overlapping_passes_into_combined() -> None:
@@ -174,9 +211,10 @@ def test_hybrid_predictor_merges_overlapping_passes_into_combined() -> None:
     assert combined["relative_orbit"] == 142
     assert combined["orbit_direction"] == "ASCENDING"
     assert combined["confidence_score"] == 0.98
+    assert combined["time"] == hist_pass["time"]
 
 
-def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
+def test_hybrid_predictor_excludes_standalone_n2yo_from_primary_predictions() -> None:
     now = datetime.now(timezone.utc)
     pass_1 = PassPrediction(time=(now + timedelta(days=1)).isoformat(), max_elevation=45.0, source="N2YO")
     pass_2 = PassPrediction(time=(now + timedelta(days=3)).isoformat(), max_elevation=75.0, source="HISTORICAL_MISSION", relative_orbit=88, confidence_score=0.94)
@@ -189,13 +227,10 @@ def test_hybrid_predictor_keeps_standalone_passes_from_both_sources() -> None:
     hybrid = HybridPassPredictor(n2yo_predictor, StubAnalyzer())
     results = hybrid.predict(BBOX, "api_key")
 
-    assert len(results) == 2
-    assert results[0]["source"] == "N2YO"
-    assert results[0]["contribution"] == "n2yo"
-    assert results[0]["confidence_score"] == 0.68  # Lower weight
-    assert results[1]["source"] == "HISTORICAL_MISSION"
-    assert results[1]["contribution"] == "historical"
-    assert results[1]["confidence_score"] == 0.94  # Higher weight
+    assert len(results) == 1
+    assert results[0]["source"] == "HISTORICAL_MISSION"
+    assert results[0]["contribution"] == "historical"
+    assert results[0]["confidence_score"] == 0.94
 
 
 def test_analyze_mission_passes_use_case() -> None:
@@ -225,25 +260,39 @@ def test_predict_area_of_interest_with_analysis() -> None:
     assert "n2yo_predictions" in result
     assert "historical_predictions" in result
     assert result["mission_analysis"] is not None
-    assert len(repo.updates) == 1
+    assert len(repo.updates) == 0
+    assert result["next_scan"] is None
 
 
 
-def test_check_and_schedule_aois_executes_1_minute_cadence_ais_scraping_during_flypast() -> None:
+def test_historical_flypast_automatic_ais_trigger_creates_post_pass_job() -> None:
     now = datetime.now(timezone.utc)
     active_pass_time = now + timedelta(minutes=2)
     aoi = AreaOfInterest("Active AOI", BBOX, id=1, auto_capture_enabled=True)
     repo = MockAOIRepository([aoi])
-    predictor = MockPassPredictor([{"time": active_pass_time.isoformat()}])
+    predictor = MockPassPredictor([{
+        "time": active_pass_time.isoformat(),
+        "source": "HISTORICAL_MISSION",
+        "contribution": "historical",
+    }])
     mock_ingest = MockIngestAIS()
+    post_pass_repo = MagicMock()
+    post_pass_repo.find_by_aoi_and_pass.return_value = None
+    post_pass_repo.add.return_value = 42
 
-    scheduler = CheckAndScheduleAOIs(repo, predictor, ingest_ais=mock_ingest)
+    scheduler = CheckAndScheduleAOIs(
+        repo,
+        predictor,
+        ingest_ais=mock_ingest,
+        post_pass_repository=post_pass_repo,
+    )
     results = scheduler.execute("api_key")
 
     assert len(results) == 1
     assert results[0]["flypast_active"] is True
     assert results[0]["status"] == "FLYPAST_ACTIVE"
     assert results[0]["ais_records"] == 12
+    post_pass_repo.add.assert_called_once()
 def test_dynamic_history_limit_scales_with_latitude() -> None:
     equatorial = BoundingBox(103.5, 1.0, 104.5, 2.0)
     subtropical = BoundingBox(120.0, 22.0, 122.0, 24.0)
@@ -340,4 +389,3 @@ def load_tests(loader, standard_tests, pattern):
 
 if __name__ == "__main__":
     unittest.main()
-

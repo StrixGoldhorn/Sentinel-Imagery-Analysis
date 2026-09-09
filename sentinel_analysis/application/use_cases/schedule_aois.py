@@ -1,6 +1,7 @@
 """Evaluate active AOIs, update satellite pass forecasts, and trigger automated scans / AIS scrapes / post-pass ingestion."""
 
 import logging
+import inspect
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -12,8 +13,11 @@ from sentinel_analysis.application.ports.satellite import PassPredictor
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
+from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
+    TriggerAutomaticAISScrape,
+    is_historical_prediction,
+)
 from sentinel_analysis.application.shutdown import shutdown_coordinator
-from sentinel_analysis.domain.entities import PostPassIngestionJob
 from sentinel_analysis.domain.satellite import DEFAULT_ENABLED_SATELLITES
 
 
@@ -30,6 +34,7 @@ class CheckAndScheduleAOIs:
         ingest_post_pass: Optional[IngestPostPassImagery] = None,
         settings_repo: Optional[Any] = None,
         pass_monitor: Optional[Any] = None,
+        automatic_scrape: Optional[TriggerAutomaticAISScrape] = None,
     ) -> None:
         self._aois = aoi_repository
         self._predictor = pass_predictor
@@ -39,6 +44,9 @@ class CheckAndScheduleAOIs:
         self._ingest_post_pass = ingest_post_pass
         self._settings_repo = settings_repo
         self._pass_monitor = pass_monitor
+        self._automatic_scrape = automatic_scrape
+        if self._automatic_scrape is None and ingest_ais is not None and post_pass_repository is not None:
+            self._automatic_scrape = TriggerAutomaticAISScrape(ingest_ais, post_pass_repository)
 
     @property
     def pass_monitor(self) -> Optional[Any]:
@@ -58,8 +66,8 @@ class CheckAndScheduleAOIs:
         return None
 
     def execute(self, api_key: str, check_post_pass: bool = False) -> list[dict[str, Any]]:
-        if not isinstance(api_key, str) or not api_key.strip():
-            raise ValueError("Satellite prediction API key is required")
+        if not isinstance(api_key, str):
+            raise ValueError("Satellite prediction API key must be a string")
         if shutdown_coordinator.is_shutting_down:
             return []
         api_key = api_key.strip()
@@ -67,6 +75,8 @@ class CheckAndScheduleAOIs:
         results: list[dict[str, Any]] = []
         enabled_satellites = self.get_enabled_satellites()
         active_sats = set(enabled_satellites) if enabled_satellites is not None else None
+        if self._pass_monitor is not None and hasattr(self._pass_monitor, "reconcile_enabled_satellites"):
+            self._pass_monitor.reconcile_enabled_satellites(enabled_satellites)
 
         for aoi in self._aois.list():
             if shutdown_coordinator.is_shutting_down:
@@ -76,14 +86,13 @@ class CheckAndScheduleAOIs:
                 continue
 
             try:
-                raw_predictions: list[dict[str, Any]] = []
-                try:
-                    try:
-                        raw_predictions = list(self._predictor.predict(aoi.bbox, api_key, enabled_satellites=enabled_satellites))
-                    except TypeError:
-                        raw_predictions = list(self._predictor.predict(aoi.bbox, api_key))
-                except Exception as pred_exc:
-                    logger.warning("Predictor call failed for AOI %s (%s): %s", aoi.id, aoi.name, pred_exc)
+                predictor_parameters = inspect.signature(self._predictor.predict).parameters
+                if "enabled_satellites" in predictor_parameters:
+                    raw_predictions = list(
+                        self._predictor.predict(aoi.bbox, api_key, enabled_satellites=enabled_satellites)
+                    )
+                else:
+                    raw_predictions = list(self._predictor.predict(aoi.bbox, api_key))
 
                 if not raw_predictions and hasattr(self._aois, "get_cached_forecast") and aoi.id is not None:
                     try:
@@ -110,7 +119,8 @@ class CheckAndScheduleAOIs:
                     elif src == "N2YO":
                         contrib_norm = "n2yo"
                     else:
-                        contrib_norm = "both"
+                        # Unknown provenance is never eligible for automatic AIS.
+                        contrib_norm = "unknown"
 
                     pass_time_raw = pred.get("time")
                     if pass_time_raw:
@@ -123,8 +133,13 @@ class CheckAndScheduleAOIs:
                                 "time": p_time_utc,
                                 "satellite": sat_name,
                                 "orbit_direction": pred.get("orbit_direction"),
-                                "source": src or ("COMBINED" if contrib_norm == "both" else ("N2YO" if contrib_norm == "n2yo" else "HISTORICAL_MISSION")),
+                                "relative_orbit": pred.get("relative_orbit"),
+                                "source": src or ("COMBINED" if contrib_norm == "both" else ("N2YO" if contrib_norm == "n2yo" else ("HISTORICAL_MISSION" if contrib_norm == "historical" else "UNKNOWN"))),
                                 "contribution": contrib_norm,
+                                "basis_product_id": pred.get("basis_product_id"),
+                                "basis_acquisition_time": pred.get("basis_acquisition_time"),
+                                "basis_satellite": pred.get("basis_satellite"),
+                                "basis_relative_orbit": pred.get("basis_relative_orbit"),
                             })
                         except Exception:
                             continue
@@ -132,17 +147,10 @@ class CheckAndScheduleAOIs:
                 parsed_passes.sort(key=lambda p: p["time"])
                 sar_future_passes = [
                     p["time"] for p in parsed_passes 
-                    if p.get("contribution") != "n2yo" and p["time"] >= (now - timedelta(minutes=5))
+                    if is_historical_prediction(p) and p["time"] >= (now - timedelta(minutes=5))
                 ]
-                valid_future_passes = sar_future_passes if sar_future_passes else [
-                    p["time"] for p in parsed_passes if p["time"] >= (now - timedelta(minutes=5))
-                ]
+                valid_future_passes = sar_future_passes
                 next_pass = valid_future_passes[0] if valid_future_passes else None
-
-                if not next_pass and getattr(aoi, "next_scan", None):
-                    scan_dt = aoi.next_scan if aoi.next_scan.tzinfo else aoi.next_scan.replace(tzinfo=timezone.utc)
-                    if scan_dt >= (now - timedelta(minutes=5)):
-                        next_pass = scan_dt
 
                 ais_records_scraped = 0
                 is_flypast_active = False
@@ -154,15 +162,10 @@ class CheckAndScheduleAOIs:
                 active_flypast_time: datetime | None = None
                 active_pass_info: dict[str, Any] | None = None
                 for p in parsed_passes:
-                    if -300 <= (p["time"] - now).total_seconds() <= 300:
+                    if is_historical_prediction(p) and -300 <= (p["time"] - now).total_seconds() <= 300:
                         active_flypast_time = p["time"]
                         active_pass_info = p
                         break
-
-                if not active_flypast_time and getattr(aoi, "next_scan", None):
-                    scan_dt = aoi.next_scan if aoi.next_scan.tzinfo else aoi.next_scan.replace(tzinfo=timezone.utc)
-                    if -300 <= (scan_dt - now).total_seconds() <= 300:
-                        active_flypast_time = scan_dt
 
                 if active_flypast_time:
                     is_flypast_active = True
@@ -172,68 +175,16 @@ class CheckAndScheduleAOIs:
                             pass_time=active_flypast_time,
                             active_pass_info=active_pass_info,
                         )
-                    if self._ingest_ais is not None:
-                        # 1-minute scrape window around current minute within the pass window
-                        start_time = max(active_flypast_time - timedelta(minutes=5), now - timedelta(minutes=1))
-                        end_time = min(active_flypast_time + timedelta(minutes=5), now + timedelta(minutes=1))
-                        try:
-                            ingest_res = self._ingest_ais.execute(
-                                aoi.bbox,
-                                (start_time, end_time),
-                                trigger_reason=f"Satellite Flypast ({aoi.name})",
-                            )
-                        except TypeError:
-                            ingest_res = self._ingest_ais.execute(
-                                aoi.bbox,
-                                (start_time, end_time),
-                            )
-                        ais_records_scraped = ingest_res["total_inserted"]
-                    # Once an AOI is auto scanned, the job is added.
-                    # Otherwise, if no AOI autoscan happens (e.g. if the application was not running at that time), DO NOT ADD JOB.
-                    if self._post_pass_repo is not None and aoi.id is not None:
-                        # Skip n2yo-only predicted passes for imagery catalog polling
-                        if not (active_pass_info and active_pass_info.get("contribution") == "n2yo"):
-                            existing = self._post_pass_repo.find_by_aoi_and_pass(aoi.id, active_flypast_time)
-                            is_completed = (active_flypast_time + timedelta(minutes=5)) <= now
-                            target_status = "POLLING_CATALOG" if is_completed else "PENDING_PASS"
-                            next_poll = now if is_completed else (active_flypast_time + timedelta(minutes=5))
-
-                            satellite = (active_pass_info.get("satellite") if active_pass_info else None) or "Sentinel-1"
-                            orbit_dir = active_pass_info.get("orbit_direction") if active_pass_info else None
-
-                            if existing is None:
-                                new_job = PostPassIngestionJob(
-                                    aoi_id=aoi.id,
-                                    pass_time=active_flypast_time,
-                                    satellite=satellite,
-                                    orbit_direction=orbit_dir,
-                                    status=target_status,
-                                    attempts=0,
-                                    next_poll_at=next_poll,
-                                    created_at=now,
-                                    aoi_name=aoi.name,
-                                    expected_imagery_time=active_flypast_time,
-                                )
-                                self._post_pass_repo.add(new_job)
-                            elif existing.status == "PENDING_PASS" and is_completed:
-                                updated_job = PostPassIngestionJob(
-                                    id=existing.id,
-                                    aoi_id=existing.aoi_id,
-                                    pass_time=existing.pass_time,
-                                    satellite=existing.satellite,
-                                    orbit_direction=existing.orbit_direction,
-                                    status="POLLING_CATALOG",
-                                    attempts=existing.attempts,
-                                    last_polled_at=existing.last_polled_at,
-                                    next_poll_at=now,
-                                    scan_folder=existing.scan_folder,
-                                    error_message=existing.error_message,
-                                    created_at=existing.created_at,
-                                    completed_at=existing.completed_at,
-                                    aoi_name=aoi.name,
-                                    expected_imagery_time=existing.expected_imagery_time,
-                                )
-                                self._post_pass_repo.update(updated_job)
+                    elif self._automatic_scrape is not None:
+                        # Non-background callers still use the same causal workflow.
+                        automatic_result = self._automatic_scrape.execute(
+                            aoi,
+                            active_flypast_time,
+                            active_pass_info,
+                            active_flypast_time + timedelta(minutes=5),
+                            now=now,
+                        )
+                        ais_records_scraped = automatic_result["total_inserted"]
                 elif next_pass and self._pass_monitor is not None:
                     next_info = next((p for p in parsed_passes if p["time"] == next_pass), None)
                     self._pass_monitor.schedule_or_start(
@@ -248,7 +199,10 @@ class CheckAndScheduleAOIs:
                     "next_pass": next_pass.isoformat() if next_pass else None,
                     "flypast_active": is_flypast_active,
                     "ais_records": ais_records_scraped,
-                    "status": "FLYPAST_ACTIVE" if is_flypast_active else "SCHEDULED",
+                    "status": (
+                        "FLYPAST_ACTIVE" if is_flypast_active
+                        else ("SCHEDULED" if next_pass else "NO_HISTORICAL_PREDICTION")
+                    ),
                 })
             except Exception as exc:
                 results.append({
@@ -263,7 +217,9 @@ class CheckAndScheduleAOIs:
         if check_post_pass and self._ingest_post_pass is not None and not shutdown_coordinator.is_shutting_down:
             try:
                 post_pass_results = self._ingest_post_pass.execute()
-            except Exception:
-                pass
+            except Exception as exc:
+                post_pass_results = [{"status": "ERROR", "error": str(exc)}]
+
+        results.extend(post_pass_results)
 
         return results

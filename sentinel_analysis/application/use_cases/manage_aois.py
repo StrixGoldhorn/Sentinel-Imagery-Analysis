@@ -10,6 +10,7 @@ from sentinel_analysis.application.ports.satellite import (
 )
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.domain.entities import AreaOfInterest, BoundingBox
+from sentinel_analysis.domain.satellite import is_historical_prediction
 
 
 class ListAreasOfInterest:
@@ -21,11 +22,19 @@ class ListAreasOfInterest:
 
 
 class AddAreaOfInterest:
-    def __init__(self, repository: AreaOfInterestRepository) -> None:
+    def __init__(self, repository: AreaOfInterestRepository, settings_repo: Optional[Any] = None) -> None:
         self._repository = repository
+        self._settings_repo = settings_repo
 
-    def execute(self, name: str, bbox: BoundingBox) -> int:
-        return self._repository.add(AreaOfInterest(name, bbox))
+    def execute(self, name: str, bbox: BoundingBox, auto_capture_enabled: bool | None = None) -> int:
+        if auto_capture_enabled is None:
+            auto_capture_enabled = False
+            if self._settings_repo is not None:
+                try:
+                    auto_capture_enabled = bool(self._settings_repo.get("auto_capture_default", False))
+                except Exception:
+                    auto_capture_enabled = False
+        return self._repository.add(AreaOfInterest(name, bbox, auto_capture_enabled=auto_capture_enabled))
 
 
 class DeleteAreaOfInterest:
@@ -66,8 +75,9 @@ class PredictAreaOfInterest:
         if aoi is None:
             raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
         predictions = self._predict_passes.execute(aoi.bbox, api_key)
-        if predictions:
-            next_scan = datetime.fromisoformat(str(predictions[0]["time"]).replace("Z", "+00:00"))
+        eligible_predictions = [prediction for prediction in predictions if is_historical_prediction(prediction)]
+        if eligible_predictions:
+            next_scan = datetime.fromisoformat(str(eligible_predictions[0]["time"]).replace("Z", "+00:00"))
             self._repository.update_prediction(aoi_id, next_scan, datetime.now(timezone.utc))
         return predictions
 
@@ -131,12 +141,11 @@ class PredictAreaOfInterest:
                 mission_summary = None
 
         next_scan_val = None
-        if predictions:
-            next_scan_val = predictions[0]["time"]
-        elif historical_predictions:
+        if historical_predictions:
             next_scan_val = historical_predictions[0]["time"]
-        elif n2yo_predictions:
-            next_scan_val = n2yo_predictions[0]["time"]
+            if not any(is_historical_prediction(prediction) for prediction in predictions):
+                next_scan_dt = datetime.fromisoformat(str(next_scan_val).replace("Z", "+00:00"))
+                self._repository.update_prediction(aoi_id, next_scan_dt, datetime.now(timezone.utc))
 
         now = datetime.now(timezone.utc)
         fetched_at = now

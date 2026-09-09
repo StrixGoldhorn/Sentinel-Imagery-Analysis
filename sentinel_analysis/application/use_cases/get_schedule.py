@@ -1,6 +1,7 @@
 """Use case to aggregate and forecast upcoming satellite passes and AIS scrape windows."""
 
 import concurrent.futures
+import inspect
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -10,6 +11,7 @@ from sentinel_analysis.domain.entities import AreaOfInterest
 from sentinel_analysis.domain.satellite import (
     DEFAULT_ENABLED_SATELLITES,
     SATELLITE_CATALOG,
+    is_historical_prediction,
 )
 
 
@@ -47,8 +49,8 @@ class GetUpcomingScrapes:
         days_ahead: int = 14,
         satellite: Optional[str] = None,
     ) -> dict[str, Any]:
-        if not isinstance(api_key, str) or not api_key.strip():
-            raise ValueError("Satellite prediction API key is required")
+        if not isinstance(api_key, str):
+            raise ValueError("Satellite prediction API key must be a string")
         api_key = api_key.strip()
         now = datetime.now(timezone.utc)
         forecast_days = max(1, int(days_ahead))
@@ -89,9 +91,12 @@ class GetUpcomingScrapes:
         if uncached_aois:
             def _fetch_for_aoi(target: AreaOfInterest) -> tuple[int, list[dict[str, Any]]]:
                 try:
-                    try:
-                        preds = self._predictor.predict(target.bbox, api_key, enabled_satellites=enabled_satellites)
-                    except TypeError:
+                    parameters = inspect.signature(self._predictor.predict).parameters
+                    if "enabled_satellites" in parameters:
+                        preds = self._predictor.predict(
+                            target.bbox, api_key, enabled_satellites=enabled_satellites
+                        )
+                    else:
                         preds = self._predictor.predict(target.bbox, api_key)
                     # Automatically populate SQLite cache if available
                     if target.id is not None and hasattr(self._aoi_repository, "save_cached_forecast"):
@@ -120,6 +125,8 @@ class GetUpcomingScrapes:
             raw_predictions = aoi_predictions_map.get(aoi.id, [])
 
             for pred in raw_predictions:
+                if not is_historical_prediction(pred):
+                    continue
                 sat_name = pred.get("satellite") or "Sentinel-1A"
                 if active_sats and sat_name not in active_sats:
                     continue
@@ -165,7 +172,7 @@ class GetUpcomingScrapes:
                 elif src == "N2YO":
                     contrib_norm = "n2yo"
                 else:
-                    contrib_norm = "both"
+                    continue
 
                 # For planned scrapes, only plan for those which are either historical, or both.
                 # Do not plan scrape for n2yo-only predictions.
@@ -205,6 +212,10 @@ class GetUpcomingScrapes:
                     "contribution_label": contrib_label,
                     "contribution_detail": contrib_detail,
                     "historical_match": pred.get("historical_match"),
+                    "basis_product_id": pred.get("basis_product_id"),
+                    "basis_acquisition_time": pred.get("basis_acquisition_time"),
+                    "basis_satellite": pred.get("basis_satellite"),
+                    "basis_relative_orbit": pred.get("basis_relative_orbit"),
                     "swath_mode": pred.get("swath_mode"),
                     "status": status,
                     "is_active": is_active,
