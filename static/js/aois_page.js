@@ -163,12 +163,13 @@ async function pollSarTaskStatus(taskId, aoiId) {
                 return;
             }
 
-            if (data.status === "completed") {
+            const taskStatus = String(data.status || '').toUpperCase();
+            if (taskStatus === "COMPLETED") {
                 clearInterval(interval);
                 if (btn) btn.disabled = false;
                 if (statusEl) statusEl.innerHTML = '✅ Scan complete! <a href="/" style="font-weight: 600; color: #16a34a; text-decoration: underline;">View on Main Map</a>';
                 showToast(`SAR imagery successfully acquired for AOI #${aoiId}!`, "success");
-            } else if (data.status === "failed") {
+            } else if (taskStatus === "FAILED" || taskStatus === "CANCELLED") {
                 clearInterval(interval);
                 if (btn) btn.disabled = false;
                 const errMsg = data.error || data.message || "Acquisition failed";
@@ -621,7 +622,9 @@ async function scrapePassAIS(aoiId, passTime) {
         const data = await res.json();
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            showToast(`Scraped and ingested ${total} AIS records for pass window!`, 'success');
+            const outcome = String(data.ingestion_outcome || 'SUCCESS').toUpperCase();
+            const kind = outcome === 'SUCCESS' ? 'success' : (outcome === 'PARTIAL' ? 'warning' : 'error');
+            showToast(`AIS scrape ${outcome.toLowerCase()}: ${total} records ingested.`, kind);
         } else {
             showToast('AIS Scrape failed: ' + (data.error || 'Unknown error'), 'error');
         }
@@ -658,7 +661,8 @@ async function forceScanAOIAIS(aoiId) {
 
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            showToast(`Force AIS scan complete: ${total} vessel records ingested!`, 'success', {
+            const outcome = String(data.ingestion_outcome || 'SUCCESS').toUpperCase();
+            showToast(`Force AIS scan ${outcome.toLowerCase()}: ${total} vessel records ingested.`, outcome === 'SUCCESS' ? 'success' : (outcome === 'PARTIAL' ? 'warning' : 'error'), {
                 autoClose: false,
                 title: '✅ Force Scan Results'
             });

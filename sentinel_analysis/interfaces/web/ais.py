@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 
 from sentinel_analysis.application.use_cases.scrape_aoi_ais import calculate_pass_window
+from sentinel_analysis.application.results import summarize_ingestion_outcome
 from sentinel_analysis.domain.entities import BoundingBox
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -37,7 +38,11 @@ def ingest_ais():
         plugin,
         trigger_reason=f"Direct API Ingest Request{f' ({plugin})' if plugin else ''}",
     )
-    return jsonify(status="success", results=results)
+    return jsonify(
+        status="success",
+        ingestion_outcome=summarize_ingestion_outcome(results),
+        results=results,
+    )
 
 
 @blueprint.route("/api/ais/vessels", methods=["GET", "POST"])

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
+import uuid
 
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -12,6 +13,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     required_string,
 )
 from sentinel_analysis.interfaces.web.serialization import scan_image_url, serialize_aoi
+from sentinel_analysis.application.results import summarize_ingestion_outcome
 
 
 blueprint = Blueprint("aois", __name__)
@@ -32,14 +34,26 @@ def list_aois():
 def add_aoi():
     payload = json_object()
     bbox = bounding_box(payload)
-    aoi_id = container().add_aoi.execute(required_string(payload, "name"), bbox)
+    auto_capture = (
+        boolean(payload, "auto_capture_enabled")
+        if "auto_capture_enabled" in payload else None
+    )
+    aoi_id = container().add_aoi.execute(
+        required_string(payload, "name"),
+        bbox,
+        auto_capture_enabled=auto_capture,
+    )
     return jsonify(status="success", id=aoi_id), 201
 
 
 @blueprint.delete("/api/aoi/<int:aoi_id>")
 @blueprint.post("/api/aoi/<int:aoi_id>/delete")
 def delete_aoi(aoi_id: int):
-    container().delete_aoi.execute(aoi_id)
+    cnt = container()
+    pass_monitor = getattr(cnt, "pass_monitor", None)
+    if pass_monitor is not None and hasattr(pass_monitor, "stop_for_aoi"):
+        pass_monitor.stop_for_aoi(aoi_id)
+    cnt.delete_aoi.execute(aoi_id)
     return jsonify(status="success", message=f"Area of interest #{aoi_id} deleted successfully")
 
 
@@ -71,21 +85,15 @@ def predict_aoi(aoi_id: int):
         except Exception:
             pass
 
-    api_key = container().settings.n2yo_api_key or "default_key"
+    api_key = container().settings.n2yo_api_key or ""
     use_case = container().predict_aoi
     if hasattr(use_case, "execute_with_analysis"):
-        try:
-            result = use_case.execute_with_analysis(
-                aoi_id,
-                api_key,
-                force_refresh=force_refresh,
-                cache_ttl_seconds=custom_ttl,
-            )
-        except TypeError:
-            try:
-                result = use_case.execute_with_analysis(aoi_id, api_key, force_refresh=force_refresh)
-            except TypeError:
-                result = use_case.execute_with_analysis(aoi_id, api_key)
+        result = use_case.execute_with_analysis(
+            aoi_id,
+            api_key,
+            force_refresh=force_refresh,
+            cache_ttl_seconds=custom_ttl,
+        )
 
         predictions = result.get("predictions", [])
         n2yo_predictions = result.get("n2yo_predictions", [])
@@ -135,6 +143,10 @@ def toggle_auto_capture(aoi_id: int):
     repo = container().aoi_repository
     if hasattr(repo, "update_auto_capture"):
         repo.update_auto_capture(aoi_id, enabled)
+    if not enabled:
+        monitor = getattr(container(), "pass_monitor", None)
+        if monitor is not None and hasattr(monitor, "stop_for_aoi"):
+            monitor.stop_for_aoi(aoi_id)
     return jsonify(status="success", auto_capture_enabled=enabled)
 
 
@@ -160,7 +172,11 @@ def scrape_aoi_ais(aoi_id: int):
         pass_time=pass_time,
         force_now=force_now,
     )
-    return jsonify(status="success", results=results)
+    return jsonify(
+        status="success",
+        ingestion_outcome=summarize_ingestion_outcome(results),
+        results=results,
+    )
 
 
 @blueprint.post("/api/aoi/<int:aoi_id>/force_ais_scan")
@@ -172,7 +188,12 @@ def force_ais_scan(aoi_id: int):
         plugin_name=plugin,
         force_now=True,
     )
-    return jsonify(status="success", results=results, forced=True)
+    return jsonify(
+        status="success",
+        ingestion_outcome=summarize_ingestion_outcome(results),
+        results=results,
+        forced=True,
+    )
 
 
 @blueprint.post("/api/aoi/<int:aoi_id>/scan")
@@ -268,6 +289,7 @@ def scan_aoi(aoi_id: int):
         queue = cnt.task_queue
         bbox = aoi.bbox
         aoi_name = aoi.name
+        task_id = str(uuid.uuid4())
 
         def _run_scan() -> dict[str, object]:
             scan = cnt.create_scan.execute(
@@ -275,6 +297,7 @@ def scan_aoi(aoi_id: int):
                 aoi_name=aoi_name,
                 start_date=start_date,
                 end_date=end_date,
+                progress_callback=lambda progress, message: queue.update_progress(task_id, progress, message),
             )
             return {
                 "folderName": scan.folder_name,
@@ -288,7 +311,7 @@ def scan_aoi(aoi_id: int):
                 "end_date": end_date.isoformat(),
             }
 
-        task = queue.submit("scan", None, _run_scan)
+        task = queue.submit("scan", task_id, _run_scan)
         return jsonify({
             "status": "success",
             "task_id": task.task_id,
