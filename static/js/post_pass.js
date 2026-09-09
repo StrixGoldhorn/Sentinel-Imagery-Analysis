@@ -118,6 +118,10 @@ function updateLiveCountdowns() {
             } else {
                 el.textContent = 'Expired';
                 el.style.color = '#dc2626';
+                if (!el.dataset.expiredHandled) {
+                    el.dataset.expiredHandled = 'true';
+                    setTimeout(() => loadPostPassJobs(true), 1000);
+                }
             }
         }
     });
@@ -247,14 +251,23 @@ function updateMetrics(jobs, serverStats) {
         failed = serverStats.failed;
         timedOut = serverStats.timed_out;
     } else {
+        const now = new Date();
         jobs.forEach(job => {
-            const st = (job.status || '').toUpperCase();
-            if (st === 'POLLING_CATALOG') polling++;
-            else if (st === 'PENDING_PASS') pending++;
-            else if (st === 'INGESTING') ingesting++;
-            else if (st === 'COMPLETED') completed++;
-            else if (st === 'TIMED_OUT') timedOut++;
-            else if (st === 'FAILED') failed++;
+            const expDt = parseUtcDate(job.expected_imagery_time) || parseUtcDate(job.pass_time);
+            const maxWaitHours = job.max_wait_hours || 24.0;
+            const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
+            const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDt && (invalidDt - now <= 0);
+            const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
+
+            if (effectiveStatus === 'POLLING_CATALOG') polling++;
+            else if (effectiveStatus === 'PENDING_PASS') pending++;
+            else if (effectiveStatus === 'INGESTING') ingesting++;
+            else if (effectiveStatus === 'COMPLETED') completed++;
+            else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
+                timedOut++;
+                failed++;
+            }
+            else if (effectiveStatus === 'FAILED') failed++;
         });
     }
 
@@ -281,19 +294,37 @@ function applyPostPassFilters() {
     const selectedAoiId = aoiSelect && aoiSelect.value ? parseInt(aoiSelect.value, 10) : null;
     const selectedStatus = statusSelect ? statusSelect.value.trim().toUpperCase() : '';
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const now = new Date();
 
     filteredPostPassJobs = allPostPassJobs.filter(job => {
         if (selectedAoiId !== null && job.aoi_id !== selectedAoiId) {
             return false;
         }
-        if (selectedStatus && (job.status || '').toUpperCase() !== selectedStatus) {
-            return false;
+
+        const expDt = parseUtcDate(job.expected_imagery_time) || parseUtcDate(job.pass_time);
+        const maxWaitHours = job.max_wait_hours || 24.0;
+        const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
+        const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDt && (invalidDt - now <= 0);
+        const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
+
+        if (selectedStatus) {
+            if (selectedStatus === 'FAILED') {
+                if (effectiveStatus !== 'FAILED' && effectiveStatus !== 'TIMED_OUT' && effectiveStatus !== 'WAIT_EXPIRED') {
+                    return false;
+                }
+            } else if (selectedStatus === 'TIMED_OUT') {
+                if (effectiveStatus !== 'TIMED_OUT' && effectiveStatus !== 'WAIT_EXPIRED') {
+                    return false;
+                }
+            } else if (effectiveStatus !== selectedStatus) {
+                return false;
+            }
         }
         if (query) {
             const aoiMatch = (job.aoi_name || '').toLowerCase().includes(query);
             const satMatch = (job.satellite || '').toLowerCase().includes(query);
             const scanMatch = (job.scan_folder || '').toLowerCase().includes(query);
-            const statusMatch = (job.status || '').toLowerCase().includes(query);
+            const statusMatch = (job.status || '').toLowerCase().includes(query) || effectiveStatus.toLowerCase().includes(query);
             const errMatch = (job.error_message || '').toLowerCase().includes(query);
             if (!aoiMatch && !satMatch && !scanMatch && !statusMatch && !errMatch) {
                 return false;
@@ -340,6 +371,8 @@ function renderPostPassTable(jobs) {
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
         const invalidDiffSec = invalidDt ? Math.round((invalidDt - now) / 1000) : null;
+        const isWaitExpired = (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') && invalidDiffSec !== null && invalidDiffSec <= 0;
+        const effectiveStatus = isWaitExpired ? 'TIMED_OUT' : (job.status || '').toUpperCase();
 
         // Relative pass timing
         let timingContent = '';
@@ -364,9 +397,9 @@ function renderPostPassTable(jobs) {
         }
 
         let statusBadge = '';
-        const isTimingMismatch = job.status === 'FAILED' && (job.error_message || '').toLowerCase().includes('more recent imagery');
+        const isTimingMismatch = effectiveStatus === 'FAILED' && (job.error_message || '').toLowerCase().includes('more recent imagery');
 
-        switch (job.status) {
+        switch (effectiveStatus) {
             case 'PENDING_PASS':
                 statusBadge = '<span class="badge badge-secondary" style="background: #e2e8f0; color: #475569;">⏳ Queued (Flypast Pending)</span>';
                 break;
@@ -380,7 +413,8 @@ function renderPostPassTable(jobs) {
                 statusBadge = '<span class="badge badge-success" style="background: #dcfce7; color: #15803d;">✅ Ingested Successfully</span>';
                 break;
             case 'TIMED_OUT':
-                statusBadge = '<span class="badge badge-danger" style="background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1;">⏱️ Wait Expired (24h)</span>';
+            case 'WAIT_EXPIRED':
+                statusBadge = '<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; font-weight: 600;">❌ Failed (Wait Expired 24h)</span>';
                 break;
             case 'FAILED':
                 if (isTimingMismatch) {
@@ -390,11 +424,11 @@ function renderPostPassTable(jobs) {
                 }
                 break;
             default:
-                statusBadge = `<span class="badge badge-secondary">${escapeHtml(job.status || 'UNKNOWN')}</span>`;
+                statusBadge = `<span class="badge badge-secondary">${escapeHtml(effectiveStatus || 'UNKNOWN')}</span>`;
         }
 
         let nextPollContent = '-';
-        if (job.status === 'POLLING_CATALOG') {
+        if (effectiveStatus === 'POLLING_CATALOG') {
             let nextPollLine = '';
             if (job.next_poll_at) {
                 const nextDt = parseUtcDate(job.next_poll_at);
@@ -492,7 +526,7 @@ function renderPostPassTable(jobs) {
                     ${passLine}
                 </div>
             `;
-        } else if (job.status === 'INGESTING') {
+        } else if (effectiveStatus === 'INGESTING') {
             nextPollContent = `
                 <div style="color: #b45309; font-weight: 600; display: flex; align-items: center; gap: 5px;">
                     <span class="loading-spinner" style="width: 12px; height: 12px; border-color: #b45309; border-top-color: transparent;"></span>
@@ -500,7 +534,7 @@ function renderPostPassTable(jobs) {
                 </div>
                 <div style="font-size: 0.78rem; color: #64748b;">Downloading SAR product &amp; stitching DEM</div>
             `;
-        } else if (job.status === 'COMPLETED') {
+        } else if (effectiveStatus === 'COMPLETED') {
             const compDt = parseUtcDate(job.completed_at);
             const timeStr = compDt ? compDt.toLocaleTimeString() : 'N/A';
             nextPollContent = `
@@ -509,10 +543,10 @@ function renderPostPassTable(jobs) {
                 </div>
                 <div style="font-size: 0.78rem; color: #64748b;">Completed at ${timeStr}</div>
             `;
-        } else if (job.status === 'TIMED_OUT') {
+        } else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
             nextPollContent = `
-                <div style="color: #64748b; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window')}">
-                    ⏱️ <strong>Wait window expired:</strong> Product not published by Copernicus within 24h.
+                <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window (24h)')}">
+                    ⏱️ <strong>Wait window expired:</strong> Timed out after 24h (not published by Copernicus).
                 </div>
             `;
         } else if (isTimingMismatch) {
@@ -537,11 +571,11 @@ function renderPostPassTable(jobs) {
         }
 
         let actionBtns = '';
-        if (job.status === 'POLLING_CATALOG' || job.status === 'PENDING_PASS') {
+        if (effectiveStatus === 'POLLING_CATALOG' || effectiveStatus === 'PENDING_PASS') {
             actionBtns += `<button class="btn btn-outline-primary btn-sm" onclick="pollJobNow(${job.id})" title="Query Copernicus STAC catalog now" style="padding: 3px 8px; font-size: 0.78rem;">
                 🔍 Poll Now
             </button>`;
-        } else if (job.status === 'TIMED_OUT' || job.status === 'FAILED') {
+        } else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED' || effectiveStatus === 'FAILED') {
             actionBtns += `<button class="btn btn-outline-warning btn-sm" onclick="retryJob(${job.id})" title="Reset to POLLING_CATALOG and re-poll" style="padding: 3px 8px; font-size: 0.78rem;">
                 🔄 Retry
             </button>`;

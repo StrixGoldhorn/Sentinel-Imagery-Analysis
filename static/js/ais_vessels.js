@@ -28,7 +28,7 @@ const aisTimelineState = {
     isPlaying: false,
     playbackSpeed: 1,
     playbackInterval: null,
-    windowHours: 6,
+    windowHours: 12,
     isMinimized: false
 };
 
@@ -210,7 +210,7 @@ function setSliderValue(val) {
 function updateTimelineLabels(targetTs) {
     const isLive = aisTimelineState.isLive;
     const displayStr = isLive 
-        ? 'Live Positions (Current)' 
+        ? 'Live Positions (Last 12h)' 
         : `Historical: ${formatAisDateTime(targetTs)}`;
 
     const sidebarDisplay = document.getElementById('aisSelectedDateDisplay');
@@ -224,7 +224,7 @@ function updateTimelineLabels(targetTs) {
         sidebarDisplay.style.borderColor = isLive ? '#28a745' : '#007bff';
     }
     if (floatingDisplay) {
-        floatingDisplay.textContent = isLive ? 'Live Positions' : formatAisDateTime(targetTs);
+        floatingDisplay.textContent = isLive ? 'Live Positions (12h)' : formatAisDateTime(targetTs);
     }
     if (sidebarBadge) {
         sidebarBadge.textContent = isLive ? 'LIVE' : 'HISTORY';
@@ -289,6 +289,14 @@ function setAisTimelinePreset(preset) {
     if (preset === 'live') {
         aisTimelineState.isLive = true;
         aisTimelineState.selectedTime = now;
+        aisTimelineState.windowHours = 12;
+        setSliderValue(100);
+        updateTimelineLabels(now);
+    } else if (preset === '12h') {
+        aisTimelineState.isLive = false;
+        aisTimelineState.minTime = now - 12 * 3600 * 1000;
+        aisTimelineState.selectedTime = now;
+        aisTimelineState.windowHours = 12;
         setSliderValue(100);
         updateTimelineLabels(now);
     } else if (preset === '24h') {
@@ -508,7 +516,12 @@ async function loadAISVessels(mapInstance, bbox = null) {
             requestBody.bbox = activeBbox;
         }
 
-        if (!aisTimelineState.isLive) {
+        if (aisTimelineState.isLive) {
+            // Live view: request vessels scanned within the last 12 hours
+            const twelveHoursAgo = new Date(Date.now() - 12 * 3600 * 1000).toISOString();
+            requestBody.start = twelveHoursAgo;
+            requestBody.within_hours = 12;
+        } else {
             if (aisTimelineState.preset === 'custom' && aisTimelineState.customStart && aisTimelineState.customEnd) {
                 requestBody.start = aisTimelineState.customStart;
                 requestBody.end = aisTimelineState.customEnd;
@@ -532,15 +545,26 @@ async function loadAISVessels(mapInstance, bbox = null) {
 
         if (res.ok && data.status === 'success') {
             const rawVessels = data.vessels || [];
+            const twelveHoursAgoMs = Date.now() - 12 * 3600 * 1000;
             const latestByMmsi = new Map();
             for (const v of rawVessels) {
                 if (!v || !v.mmsi) continue;
+
+                // When in live view, only include vessels scanned within the last 12 hours
+                if (aisTimelineState.isLive) {
+                    const rawTs = v.timestamp ? String(v.timestamp).replace(' ', 'T') : null;
+                    const vTs = rawTs ? new Date(rawTs).getTime() : 0;
+                    if (!vTs || isNaN(vTs) || vTs < twelveHoursAgoMs) {
+                        continue;
+                    }
+                }
+
                 const existing = latestByMmsi.get(v.mmsi);
                 if (!existing) {
                     latestByMmsi.set(v.mmsi, v);
                 } else {
-                    const existingTs = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
-                    const newTs = v.timestamp ? new Date(v.timestamp).getTime() : 0;
+                    const existingTs = existing.timestamp ? new Date(String(existing.timestamp).replace(' ', 'T')).getTime() : 0;
+                    const newTs = v.timestamp ? new Date(String(v.timestamp).replace(' ', 'T')).getTime() : 0;
                     if (newTs >= existingTs) {
                         latestByMmsi.set(v.mmsi, v);
                     }
@@ -570,17 +594,27 @@ function renderVesselsOnMap(mapInstance) {
 
     // Retain only the latest position per unique MMSI after category filtering
     const latestFilteredByMmsi = new Map();
+    const twelveHoursAgoMs = Date.now() - 12 * 3600 * 1000;
     aisVesselsData.forEach(vessel => {
         if (!vessel || !vessel.mmsi) return;
         const category = classifyVesselType(vessel.type);
         if (!activeTypeFilters.has(category)) return;
 
+        // In live mode, only show if scanned within the last 12 hours
+        if (aisTimelineState.isLive) {
+            const rawTs = vessel.timestamp ? String(vessel.timestamp).replace(' ', 'T') : null;
+            const vTs = rawTs ? new Date(rawTs).getTime() : 0;
+            if (!vTs || isNaN(vTs) || vTs < twelveHoursAgoMs) {
+                return;
+            }
+        }
+
         const existing = latestFilteredByMmsi.get(vessel.mmsi);
         if (!existing) {
             latestFilteredByMmsi.set(vessel.mmsi, vessel);
         } else {
-            const existingTs = existing.timestamp ? new Date(existing.timestamp).getTime() : 0;
-            const newTs = vessel.timestamp ? new Date(vessel.timestamp).getTime() : 0;
+            const existingTs = existing.timestamp ? new Date(String(existing.timestamp).replace(' ', 'T')).getTime() : 0;
+            const newTs = vessel.timestamp ? new Date(String(vessel.timestamp).replace(' ', 'T')).getTime() : 0;
             if (newTs >= existingTs) {
                 latestFilteredByMmsi.set(vessel.mmsi, vessel);
             }

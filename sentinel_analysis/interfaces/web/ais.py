@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, request
 
 from sentinel_analysis.application.use_cases.scrape_aoi_ais import calculate_pass_window
@@ -84,6 +84,13 @@ def list_vessels():
 
         start_str = payload.get("start")
         end_str = payload.get("end")
+        within_hours_raw = payload.get("within_hours") if "within_hours" in payload else payload.get("hours")
+        all_time = payload.get("all_time", False)
+        if isinstance(all_time, str):
+            all_time = all_time.strip().lower() in ("true", "1", "yes")
+        else:
+            all_time = bool(all_time)
+
         if start_str or end_str:
             try:
                 start = datetime.fromisoformat(start_str.replace("Z", "+00:00")) if start_str else None
@@ -91,6 +98,16 @@ def list_vessels():
                 time_range = (start, end)
             except ValueError as exc:
                 raise RequestValidationError("Invalid datetime format in start/end") from exc
+        elif within_hours_raw is not None:
+            try:
+                within_hours = float(within_hours_raw)
+                now_utc = datetime.now(timezone.utc)
+                time_range = (now_utc - timedelta(hours=within_hours), None)
+            except (ValueError, TypeError):
+                pass
+        elif not all_time:
+            now_utc = datetime.now(timezone.utc)
+            time_range = (now_utc - timedelta(hours=12), None)
 
         if "latest_only" in payload:
             val = payload["latest_only"]
@@ -119,6 +136,10 @@ def list_vessels():
 
         start_str = request.args.get("start")
         end_str = request.args.get("end")
+        within_hours_str = request.args.get("within_hours") or request.args.get("hours")
+        all_time_str = request.args.get("all_time", "").strip().lower()
+        all_time = all_time_str in ("true", "1", "yes")
+
         if start_str or end_str:
             try:
                 start = datetime.fromisoformat(start_str.replace("Z", "+00:00")) if start_str else None
@@ -126,6 +147,16 @@ def list_vessels():
                 time_range = (start, end)
             except ValueError as exc:
                 raise RequestValidationError("Invalid datetime format in start/end query parameter") from exc
+        elif within_hours_str:
+            try:
+                within_hours = float(within_hours_str)
+                now_utc = datetime.now(timezone.utc)
+                time_range = (now_utc - timedelta(hours=within_hours), None)
+            except ValueError:
+                pass
+        elif not all_time:
+            now_utc = datetime.now(timezone.utc)
+            time_range = (now_utc - timedelta(hours=12), None)
 
         latest_only_str = request.args.get("latest_only", "true").strip().lower()
         latest_only = latest_only_str in ("true", "1", "yes")

@@ -1,6 +1,6 @@
 """SQLite implementation of PostPassIngestionRepository."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -39,6 +39,52 @@ class SQLitePostPassIngestionRepository:
 
     def initialize(self) -> None:
         MigrationRunner(self._database_path).run_migrations()
+        self._auto_expire_jobs()
+
+    def _auto_expire_jobs(self, now: Optional[datetime] = None) -> int:
+        """Transitions any active post-pass ingestion jobs whose 24h wait window has expired to TIMED_OUT."""
+        if now is None:
+            now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(hours=24)
+        cutoff_str = _format_dt(cutoff)
+        now_str = _format_dt(now)
+        timeout_msg = "Wait window expired: Exceeded maximum post-pass wait window (24.0 hours)"
+        with self._database.connection(rows=True) as conn:
+            # 1. Bulk SQL update based on ISO string cutoff
+            conn.execute(
+                """
+                UPDATE post_pass_ingestions
+                SET status = 'TIMED_OUT',
+                    next_poll_at = NULL,
+                    completed_at = COALESCE(completed_at, ?),
+                    error_message = COALESCE(error_message, ?)
+                WHERE status IN ('POLLING_CATALOG', 'PENDING_PASS')
+                  AND COALESCE(expected_imagery_time, pass_time) <= ?
+                """,
+                (now_str, timeout_msg, cutoff_str),
+            )
+            # 2. Defensive check for any remaining active rows with non-standard date formatting
+            rows = conn.execute(
+                """
+                SELECT id, pass_time, expected_imagery_time
+                FROM post_pass_ingestions
+                WHERE status IN ('POLLING_CATALOG', 'PENDING_PASS')
+                """
+            ).fetchall()
+            for r in rows:
+                p_dt = _parse_dt(r["expected_imagery_time"]) or _parse_dt(r["pass_time"])
+                if p_dt and (now - p_dt).total_seconds() > 24 * 3600:
+                    conn.execute(
+                        """
+                        UPDATE post_pass_ingestions
+                        SET status = 'TIMED_OUT',
+                            next_poll_at = NULL,
+                            completed_at = COALESCE(completed_at, ?),
+                            error_message = COALESCE(error_message, ?)
+                        WHERE id = ?
+                        """,
+                        (now_str, timeout_msg, r["id"]),
+                    )
 
     @staticmethod
     def _from_row(row) -> PostPassIngestionJob:
@@ -107,6 +153,7 @@ class SQLitePostPassIngestionRepository:
             raise RuntimeError("Failed to insert or retrieve post-pass ingestion job ID")
 
     def get(self, job_id: int) -> Optional[PostPassIngestionJob]:
+        self._auto_expire_jobs()
         with self._database.connection(rows=True) as conn:
             row = conn.execute(
                 """
@@ -120,6 +167,7 @@ class SQLitePostPassIngestionRepository:
         return self._from_row(row) if row else None
 
     def find_by_aoi_and_pass(self, aoi_id: int, pass_time: datetime) -> Optional[PostPassIngestionJob]:
+        self._auto_expire_jobs()
         pass_time_str = _format_dt(pass_time)
         with self._database.connection(rows=True) as conn:
             row = conn.execute(
@@ -134,6 +182,7 @@ class SQLitePostPassIngestionRepository:
         return self._from_row(row) if row else None
 
     def get_active_jobs(self) -> list[PostPassIngestionJob]:
+        self._auto_expire_jobs()
         with self._database.connection(rows=True) as conn:
             rows = conn.execute(
                 """
@@ -147,6 +196,7 @@ class SQLitePostPassIngestionRepository:
         return [self._from_row(row) for row in rows]
 
     def get_jobs_due_for_poll(self, now: datetime) -> list[PostPassIngestionJob]:
+        self._auto_expire_jobs(now)
         now_str = _format_dt(now)
         with self._database.connection(rows=True) as conn:
             # Transition any PENDING_PASS jobs whose flypast window has now completed
@@ -203,6 +253,7 @@ class SQLitePostPassIngestionRepository:
             )
 
     def get_stats(self) -> dict[str, int]:
+        self._auto_expire_jobs()
         with self._database.connection(rows=True) as conn:
             cursor = conn.execute(
                 """
@@ -219,13 +270,15 @@ class SQLitePostPassIngestionRepository:
             )
             row = cursor.fetchone()
             if row:
+                failed_direct = int(row["failed"] or 0)
+                timed_out_count = int(row["timed_out"] or 0)
                 return {
                     "polling": int(row["polling"] or 0),
                     "pending": int(row["pending"] or 0),
                     "ingesting": int(row["ingesting"] or 0),
                     "completed": int(row["completed"] or 0),
-                    "failed": int(row["failed"] or 0),
-                    "timed_out": int(row["timed_out"] or 0),
+                    "failed": failed_direct + timed_out_count,
+                    "timed_out": timed_out_count,
                     "total": int(row["total"] or 0),
                 }
             return {
@@ -239,6 +292,7 @@ class SQLitePostPassIngestionRepository:
         status: Optional[str] = None,
         aoi_id: Optional[int] = None,
     ) -> list[PostPassIngestionJob]:
+        self._auto_expire_jobs()
         limit_val = max(1, min(int(limit), 2000))
         where_clauses = []
         params: list[object] = []
@@ -246,6 +300,8 @@ class SQLitePostPassIngestionRepository:
             norm_status = status.upper().strip()
             if norm_status in ("TIMED_OUT", "WAIT_EXPIRED"):
                 where_clauses.append("p.status IN ('TIMED_OUT', 'WAIT_EXPIRED')")
+            elif norm_status == "FAILED":
+                where_clauses.append("p.status IN ('FAILED', 'TIMED_OUT', 'WAIT_EXPIRED')")
             else:
                 where_clauses.append("p.status = ?")
                 params.append(norm_status)

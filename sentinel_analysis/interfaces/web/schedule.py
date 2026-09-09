@@ -146,7 +146,13 @@ def get_post_pass_jobs():
     except TypeError:
         jobs = repo.list(limit=limit)
         if status_filter:
-            jobs = [j for j in jobs if j.status.upper() == status_filter.strip().upper()]
+            sf = status_filter.strip().upper()
+            if sf == "FAILED":
+                jobs = [j for j in jobs if j.status.upper() in ("FAILED", "TIMED_OUT", "WAIT_EXPIRED")]
+            elif sf in ("TIMED_OUT", "WAIT_EXPIRED"):
+                jobs = [j for j in jobs if j.status.upper() in ("TIMED_OUT", "WAIT_EXPIRED")]
+            else:
+                jobs = [j for j in jobs if j.status.upper() == sf]
 
     def _job_dict(job):
         exp_time = job.expected_imagery_time or job.pass_time

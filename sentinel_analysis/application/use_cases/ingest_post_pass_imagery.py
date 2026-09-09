@@ -341,32 +341,59 @@ class IngestPostPassImagery:
                         "next_poll_at": next_poll.isoformat(),
                     })
             except Exception as exc:
-                new_attempts = job.attempts + 1
-                next_poll = now + timedelta(minutes=5)
-                updated_job = PostPassIngestionJob(
-                    id=job.id,
-                    aoi_id=job.aoi_id,
-                    pass_time=job.pass_time,
-                    satellite=job.satellite,
-                    orbit_direction=job.orbit_direction,
-                    status="POLLING_CATALOG",
-                    attempts=new_attempts,
-                    last_polled_at=now,
-                    next_poll_at=next_poll,
-                    scan_folder=job.scan_folder,
-                    error_message=str(exc),
-                    created_at=job.created_at,
-                    completed_at=None,
-                    aoi_name=aoi.name,
-                    expected_imagery_time=expected_time,
-                )
-                self._jobs.update(updated_job)
-                results.append({
-                    "job_id": job.id,
-                    "aoi_id": job.aoi_id,
-                    "status": "ERROR",
-                    "error": str(exc),
-                    "next_poll_at": next_poll.isoformat(),
-                })
+                if elapsed_seconds > (self._max_wait_hours * 3600):
+                    timeout_msg = f"Wait window expired: Exceeded maximum post-pass wait window ({self._max_wait_hours} hours). Polling error: {exc}"
+                    timed_out_job = PostPassIngestionJob(
+                        id=job.id,
+                        aoi_id=job.aoi_id,
+                        pass_time=job.pass_time,
+                        satellite=job.satellite,
+                        orbit_direction=job.orbit_direction,
+                        status="TIMED_OUT",
+                        attempts=job.attempts + 1,
+                        last_polled_at=now,
+                        next_poll_at=None,
+                        scan_folder=job.scan_folder,
+                        error_message=timeout_msg,
+                        created_at=job.created_at,
+                        completed_at=now,
+                        aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
+                    )
+                    self._jobs.update(timed_out_job)
+                    results.append({
+                        "job_id": job.id,
+                        "aoi_id": job.aoi_id,
+                        "status": "TIMED_OUT",
+                        "error": timeout_msg,
+                    })
+                else:
+                    new_attempts = job.attempts + 1
+                    next_poll = now + timedelta(minutes=5)
+                    updated_job = PostPassIngestionJob(
+                        id=job.id,
+                        aoi_id=job.aoi_id,
+                        pass_time=job.pass_time,
+                        satellite=job.satellite,
+                        orbit_direction=job.orbit_direction,
+                        status="POLLING_CATALOG",
+                        attempts=new_attempts,
+                        last_polled_at=now,
+                        next_poll_at=next_poll,
+                        scan_folder=job.scan_folder,
+                        error_message=str(exc),
+                        created_at=job.created_at,
+                        completed_at=None,
+                        aoi_name=aoi.name,
+                        expected_imagery_time=expected_time,
+                    )
+                    self._jobs.update(updated_job)
+                    results.append({
+                        "job_id": job.id,
+                        "aoi_id": job.aoi_id,
+                        "status": "ERROR",
+                        "error": str(exc),
+                        "next_poll_at": next_poll.isoformat(),
+                    })
 
         return results
