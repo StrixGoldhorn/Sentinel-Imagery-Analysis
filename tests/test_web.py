@@ -222,7 +222,7 @@ def _get_test_context():
 def make_client():
     settings, scan = _get_test_context()
     container = StubContainer(settings, scan)
-    app = create_app(container=container)
+    app = create_app(container=container, start_background_workers=False)
     app.config["TESTING"] = True
     return app.test_client(), container, settings, scan
 
@@ -230,7 +230,7 @@ def make_client():
 def test_factory_uses_injected_container_settings_and_rejects_mismatch() -> None:
     settings, scan = _get_test_context()
     container = StubContainer(settings, scan)
-    app = create_app(container=container)
+    app = create_app(container=container, start_background_workers=False)
 
     assert app.extensions["sentinel_container"] is container
     different = Settings(
@@ -769,7 +769,7 @@ def test_scan_aoi_api_route_async() -> None:
     )
     assert response.status_code == 202
     assert response.json["status"] in ("success", "pending")
-    assert response.json.get("task_status") in ("pending", "PENDING")
+    assert response.json.get("task_status") in ("queued", "QUEUED", "pending", "PENDING")
     assert response.json["task_id"] == "task_123"
     assert "2026-08-01" in response.json["start_date"]
     assert "2026-08-10" in response.json["end_date"]

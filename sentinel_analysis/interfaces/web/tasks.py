@@ -1,7 +1,9 @@
 """Task status and asynchronous scanning HTTP routes."""
 
 from flask import Blueprint, jsonify, request
+import uuid
 
+from sentinel_analysis.application.exceptions import TaskNotFoundError
 from sentinel_analysis.domain.entities import BoundingBox
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -36,6 +38,7 @@ def create_async_scan():
     aoi_name = optional_string(payload, "aoi_name")
     queue = container().task_queue
     cnt = container()
+    task_id = str(uuid.uuid4())
 
     def _run_scan() -> dict[str, object]:
         scan = cnt.create_scan.execute(
@@ -43,6 +46,7 @@ def create_async_scan():
             aoi_name=aoi_name,
             start_date=start_date,
             end_date=end_date,
+            progress_callback=lambda progress, message: queue.update_progress(task_id, progress, message),
         )
         return {
             "folderName": scan.folder_name,
@@ -52,7 +56,7 @@ def create_async_scan():
             "datetime": scan.acquisition.acquired_at.isoformat(),
         }
 
-    task = queue.submit("scan", None, _run_scan)
+    task = queue.submit("scan", task_id, _run_scan)
     return jsonify({
         "status": "success",
         "task_id": task.task_id,
@@ -64,7 +68,7 @@ def create_async_scan():
 def get_task_status(task_id: str):
     task = container().task_queue.get_task(task_id)
     if task is None:
-        raise RequestValidationError(f"Task not found: {task_id}")
+        raise TaskNotFoundError(f"Task not found: {task_id}")
 
     return jsonify({
         "task_id": task.task_id,

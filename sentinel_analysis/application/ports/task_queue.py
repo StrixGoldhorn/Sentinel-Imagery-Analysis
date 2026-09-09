@@ -13,7 +13,7 @@ class TaskQueue(Protocol):
     def submit(
         self,
         task_type: str,
-        task_id: str,
+        task_id: str | None,
         target: Callable[..., Any],
         *args: Any,
         **kwargs: Any,

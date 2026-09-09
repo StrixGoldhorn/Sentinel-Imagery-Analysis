@@ -260,7 +260,7 @@ def test_flask_factory_routes() -> None:
         container.task_queue.submit = MagicMock()
         container.ingest_ais.execute.side_effect = PluginNotFoundError("Unknown AIS plugin: missing")
 
-        app = create_app(settings, container)
+        app = create_app(settings, container, start_background_workers=False)
         client = app.test_client()
         assert client.get("/").status_code == 200
         assert client.get("/api/aoi").status_code == 200
@@ -279,4 +279,3 @@ def load_tests(loader, standard_tests, pattern):
 
 if __name__ == "__main__":
     unittest.main()
-

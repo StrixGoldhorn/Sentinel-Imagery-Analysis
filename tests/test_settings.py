@@ -189,7 +189,7 @@ class TestSettingsWebAPI(unittest.TestCase):
             cache_root=Path(self.tmp_dir.name) / "cache",
         )
         container = ApplicationContainer(settings)
-        app = create_app(settings=settings, container=container)
+        app = create_app(settings=settings, container=container, start_background_workers=False)
         app.config["TESTING"] = True
         self.client = app.test_client()
 

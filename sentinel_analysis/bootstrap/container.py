@@ -31,6 +31,7 @@ from sentinel_analysis.application.use_cases import (
     ResetSettings,
     ScrapeAreaOfInterestAIS,
     ToggleScraper,
+    TriggerAutomaticAISScrape,
     UpdateScraper,
     UpdateScraperConfig,
     UpdateSettings,
@@ -71,7 +72,7 @@ class ApplicationContainer:
         self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
         self.tile_cache = FilesystemTileCache(settings.cache_root)
-        self.task_queue = ThreadedTaskQueue()
+        self.task_queue = ThreadedTaskQueue(database_path=settings.database_path)
 
         token_provider = CopernicusTokenProvider(
             settings.copernicus_username,
@@ -100,7 +101,7 @@ class ApplicationContainer:
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)
         self.list_aois = ListAreasOfInterest(self.aoi_repository)
-        self.add_aoi = AddAreaOfInterest(self.aoi_repository)
+        self.add_aoi = AddAreaOfInterest(self.aoi_repository, self.settings_repository)
         self.delete_aoi = DeleteAreaOfInterest(self.aoi_repository)
         self.predict_aoi = PredictAreaOfInterest(
             self.aoi_repository,
@@ -133,9 +134,14 @@ class ApplicationContainer:
             self.create_scan,
             self.detect_ships,
         )
+        self.trigger_automatic_ais = TriggerAutomaticAISScrape(
+            self.ingest_ais,
+            self.post_pass_repository,
+        )
         self.pass_monitor = BackgroundPassMonitor(
             self.ingest_ais,
             self.post_pass_repository,
+            automatic_scrape=self.trigger_automatic_ais,
         )
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,
@@ -146,6 +152,7 @@ class ApplicationContainer:
             self.ingest_post_pass,
             settings_repo=self.settings_repository,
             pass_monitor=self.pass_monitor,
+            automatic_scrape=self.trigger_automatic_ais,
         )
         self.get_upcoming_scrapes = GetUpcomingScrapes(
             self.aoi_repository,
@@ -153,7 +160,7 @@ class ApplicationContainer:
             settings_repo=self.settings_repository,
         )
         scheduler_aoi_interval = 30.0
-        scheduler_sar_interval = 3600.0
+        scheduler_sar_interval = 60.0
         if hasattr(self, "settings_repository") and self.settings_repository is not None:
             saved_aoi_interval = self.settings_repository.get("aoi_check_interval_seconds")
             if saved_aoi_interval is not None:
@@ -172,7 +179,7 @@ class ApplicationContainer:
 
         self.pass_scheduler = PassSchedulerWorker(
             self.schedule_aois,
-            settings.n2yo_api_key or "default_key",
+            settings.n2yo_api_key or "",
             poll_interval_seconds=scheduler_sar_interval,
             post_pass_repo=self.post_pass_repository,
             settings_repo=self.settings_repository,

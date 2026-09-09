@@ -1,5 +1,6 @@
 """Flask application factory."""
 
+import os
 from flask import Flask
 
 from sentinel_analysis.bootstrap.config import Settings
@@ -12,6 +13,7 @@ from sentinel_analysis.interfaces.web.settings import blueprint as settings_blue
 def create_app(
     settings: Settings | None = None,
     container: ApplicationContainer | None = None,
+    start_background_workers: bool = True,
 ) -> Flask:
     if settings is None:
         settings = container.settings if container is not None else Settings.from_environment()
@@ -50,8 +52,9 @@ def create_app(
             response.headers.setdefault("Cache-Control", "no-store")
         return response
 
-    if getattr(container, "pass_scheduler", None) is not None:
+    reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
+    should_start_workers = start_background_workers and (not settings.debug or reloader_child)
+    if should_start_workers and getattr(container, "pass_scheduler", None) is not None:
         container.pass_scheduler.start()
 
     return app
-
