@@ -87,6 +87,9 @@ class AISRepository(Protocol):
     def get_scraper_stats(self) -> dict[str, dict]:
         ...
 
+    def reconcile_stale_scraper_logs(self, timeout_minutes: int = 15) -> int:
+        ...
+
     def update_scraper_settings(self, plugin_name: str, config: dict) -> None:
         ...
 

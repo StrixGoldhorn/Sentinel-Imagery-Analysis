@@ -232,3 +232,26 @@ def scraper_logs_api():
             "error": str(exc),
         }), 500
 
+
+@blueprint.route("/api/logs/reconcile", methods=["POST"])
+def reconcile_scraper_logs_api():
+    """Manually reconcile stale or hung scraper execution logs."""
+    app_container = container()
+    data = request.get_json(silent=True) or {}
+    timeout_minutes = int(data.get("timeout_minutes", 15))
+    try:
+        count = 0
+        if hasattr(app_container.ais_repository, "reconcile_stale_scraper_logs"):
+            count = app_container.ais_repository.reconcile_stale_scraper_logs(timeout_minutes=timeout_minutes)
+        return jsonify({
+            "status": "success",
+            "reconciled_count": count,
+            "message": f"Successfully reconciled {count} stale scraper logs.",
+        }), 200
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+        }), 500
+
+

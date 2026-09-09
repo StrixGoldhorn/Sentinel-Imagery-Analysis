@@ -28,6 +28,10 @@ class SQLiteAISRepository:
 
     def initialize(self) -> None:
         MigrationRunner(self._database_path).run_migrations()
+        try:
+            self.reconcile_stale_scraper_logs()
+        except Exception:
+            pass
 
     def save_records(self, records: Iterable[AISRecord], source_plugin: str) -> int:
         if not isinstance(source_plugin, str) or not source_plugin.strip():
@@ -559,6 +563,49 @@ class SQLiteAISRepository:
             )
 
 
+    def reconcile_stale_scraper_logs(self, timeout_minutes: int = 15) -> int:
+        """Mark orphaned or long-abandoned RUNNING / TRIGGERED scraper logs as FAILED.
+
+        This handles cases where the server process restarted, crashed, or was killed mid-scrape,
+        or where a scraper thread timed out or hung.
+        """
+        mins = max(0, int(timeout_minutes))
+        try:
+            with self._database.connection() as connection:
+                if mins == 0:
+                    cursor = connection.execute(
+                        """
+                        UPDATE scraper_logs
+                        SET status = 'FAILED',
+                            error_message = CASE
+                                WHEN error_message IS NULL OR error_message = 'In progress...'
+                                    THEN 'Scraper execution manually cancelled or reset'
+                                ELSE error_message || ' | Execution reset'
+                            END
+                        WHERE status IN ('RUNNING', 'TRIGGERED')
+                        """
+                    )
+                else:
+                    error_text = f"Scraper timed out or execution was interrupted (stale > {mins}m)"
+                    cursor = connection.execute(
+                        """
+                        UPDATE scraper_logs
+                        SET status = 'FAILED',
+                            error_message = CASE
+                                WHEN error_message IS NULL OR error_message = 'In progress...'
+                                    THEN ?
+                                ELSE error_message || ' | ' || ?
+                            END
+                        WHERE status IN ('RUNNING', 'TRIGGERED')
+                          AND (timestamp <= datetime('now', '-' || ? || ' minutes') OR timestamp IS NULL)
+                        """,
+                        (error_text, error_text, mins),
+                    )
+                return cursor.rowcount or 0
+        except Exception as exc:
+            logger.warning("Failed to reconcile stale scraper logs: %s", exc)
+            return 0
+
     def get_scraper_logs(
         self,
         plugin_name: str | None = None,
@@ -566,6 +613,11 @@ class SQLiteAISRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict]:
+        try:
+            self.reconcile_stale_scraper_logs(timeout_minutes=15)
+        except Exception:
+            pass
+
         limit = max(1, min(int(limit), 500))
         offset = max(0, int(offset))
         where_clauses = []
@@ -613,6 +665,10 @@ class SQLiteAISRepository:
         return results
 
     def get_scraper_stats(self) -> dict[str, dict]:
+        try:
+            self.reconcile_stale_scraper_logs(timeout_minutes=15)
+        except Exception:
+            pass
         stats: dict[str, dict] = {}
         with self._database.connection() as connection:
             cursor = connection.execute("""

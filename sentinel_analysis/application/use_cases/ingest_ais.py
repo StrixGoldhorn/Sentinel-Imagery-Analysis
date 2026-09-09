@@ -196,47 +196,49 @@ class IngestAIS:
                     logger.warning("Failed to log scraper trigger for %s: %s", plugin.name, trigger_exc)
 
             inserted = 0
+            status: IngestionStatus = "FAILED"
+            error: str | None = None
             try:
-                plugin.authenticate()
-                records = list(plugin.fetch(bbox, normalized_time_range))
-                inserted = self._repository.save_records(records, plugin.name)
-                status: IngestionStatus = "SUCCESS"
-                error = None
-                if hasattr(self._repository, "record_scraper_success"):
-                    self._repository.record_scraper_success(plugin.name)
-            except Exception as exc:
-                status = "FAILED"
-                error = str(exc)
+                try:
+                    plugin.authenticate()
+                    records = list(plugin.fetch(bbox, normalized_time_range))
+                    inserted = self._repository.save_records(records, plugin.name)
+                    status = "SUCCESS"
+                    if hasattr(self._repository, "record_scraper_success"):
+                        self._repository.record_scraper_success(plugin.name)
+                except Exception as exc:
+                    status = "FAILED"
+                    error = str(exc)
 
-                # Evaluate rate-limit or bot protection triggers
-                consecutive = int(detail.get("consecutive_failures", 0) if detail else 0) + 1
-                if is_rate_limit_or_bot_block(error):
-                    backoff = calculate_cooldown(consecutive)
-                    cool_until = now + backoff
-                    if hasattr(self._repository, "record_scraper_failure"):
-                        self._repository.record_scraper_failure(plugin.name, error, cool_until, consecutive)
-                else:
-                    if hasattr(self._repository, "record_scraper_failure"):
-                        self._repository.record_scraper_failure(plugin.name, error, None, consecutive)
-
-            try:
-                if log_id is not None and hasattr(self._repository, "update_execution_log"):
-                    self._repository.update_execution_log(
-                        log_id,
-                        status=status,
-                        records_inserted=inserted,
-                        error_message=error,
-                    )
-                else:
-                    self._repository.log_execution(
-                        plugin.name,
-                        status,
-                        inserted,
-                        error,
-                        trigger_reason=effective_reason,
-                    )
-            except Exception as log_exc:
-                logger.warning("Failed to log scraper execution for %s: %s", plugin.name, log_exc)
+                    # Evaluate rate-limit or bot protection triggers
+                    consecutive = int(detail.get("consecutive_failures", 0) if detail else 0) + 1
+                    if is_rate_limit_or_bot_block(error):
+                        backoff = calculate_cooldown(consecutive)
+                        cool_until = now + backoff
+                        if hasattr(self._repository, "record_scraper_failure"):
+                            self._repository.record_scraper_failure(plugin.name, error, cool_until, consecutive)
+                    else:
+                        if hasattr(self._repository, "record_scraper_failure"):
+                            self._repository.record_scraper_failure(plugin.name, error, None, consecutive)
+            finally:
+                try:
+                    if log_id is not None and hasattr(self._repository, "update_execution_log"):
+                        self._repository.update_execution_log(
+                            log_id,
+                            status=status,
+                            records_inserted=inserted,
+                            error_message=error,
+                        )
+                    else:
+                        self._repository.log_execution(
+                            plugin.name,
+                            status,
+                            inserted,
+                            error,
+                            trigger_reason=effective_reason,
+                        )
+                except Exception as log_exc:
+                    logger.warning("Failed to log scraper execution for %s: %s", plugin.name, log_exc)
 
             results.append({"plugin": plugin.name, "status": status, "records": inserted, "error": error})
             total_inserted += inserted

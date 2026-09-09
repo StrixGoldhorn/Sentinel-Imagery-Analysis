@@ -5,6 +5,7 @@ import math
 import random
 import shutil
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,8 @@ from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, Ve
 from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
 logger = logging.getLogger(__name__)
+
+_vesselfinder_browser_lock = threading.Lock()
 
 
 class PlaywrightVesselFinderSession:
@@ -82,7 +85,11 @@ class PlaywrightVesselFinderSession:
         if shutdown_coordinator.is_shutting_down:
             return
 
-        self.page.goto("https://www.vesselfinder.com/", wait_until="domcontentloaded")
+        self.page.goto(
+            "https://www.vesselfinder.com/",
+            wait_until="domcontentloaded",
+            timeout=max(10.0, float(self.timeout)) * 1000,
+        )
         if not shutdown_coordinator.is_shutting_down:
             try:
                 self.page.wait_for_selector("div#map-container", timeout=4000)
@@ -123,7 +130,11 @@ class PlaywrightVesselFinderSession:
         }
 
         try:
-            response = self.page.request.get(req_url, headers=headers)
+            response = self.page.request.get(
+                req_url,
+                headers=headers,
+                timeout=max(5.0, float(self.timeout)) * 1000,
+            )
             if not response.ok:
                 logger.warning("Failed to fetch %s. Status: %s", req_url, response.status)
                 return b""
@@ -234,37 +245,38 @@ class VesselFinderPlugin:
                 timeout=self.timeout,
             )
         )
-        try:
-            if shutdown_coordinator.is_shutting_down:
-                return []
-            session.start()
-            zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
-
-            all_chunks: list[bytes] = []
-            for idx, zone in enumerate(zones):
+        with _vesselfinder_browser_lock:
+            try:
                 if shutdown_coordinator.is_shutting_down:
-                    break
-                if idx > 0 and self.zone_delay > 0:
+                    return []
+                session.start()
+                zones = split_into_zones(bbox, zone_size_nm=self.zone_size_nm)
+
+                all_chunks: list[bytes] = []
+                for idx, zone in enumerate(zones):
                     if shutdown_coordinator.is_shutting_down:
                         break
-                    time.sleep(self.zone_delay)
-                    if shutdown_coordinator.is_shutting_down:
-                        break
-                chunk_coords = {
-                    "lat_min": zone.min_latitude,
-                    "lat_max": zone.max_latitude,
-                    "long_min": zone.min_longitude,
-                    "long_max": zone.max_longitude,
-                }
-                data = session.fetch_mp2(chunk_coords)
-                if data:
-                    all_chunks.append(data)
-            return all_chunks
-        except Exception as exc:
-            logger.error("Error fetching VesselFinder data: %s", exc)
-            return []
-        finally:
-            session.cleanup()
+                    if idx > 0 and self.zone_delay > 0:
+                        if shutdown_coordinator.is_shutting_down:
+                            break
+                        time.sleep(self.zone_delay)
+                        if shutdown_coordinator.is_shutting_down:
+                            break
+                    chunk_coords = {
+                        "lat_min": zone.min_latitude,
+                        "lat_max": zone.max_latitude,
+                        "long_min": zone.min_longitude,
+                        "long_max": zone.max_longitude,
+                    }
+                    data = session.fetch_mp2(chunk_coords)
+                    if data:
+                        all_chunks.append(data)
+                return all_chunks
+            except Exception as exc:
+                logger.error("Error fetching VesselFinder data: %s", exc)
+                return []
+            finally:
+                session.cleanup()
 
     def parse_data(
         self,

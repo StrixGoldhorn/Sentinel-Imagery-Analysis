@@ -309,3 +309,26 @@ function renderErrorRow(msg) {
         `;
     }
 }
+
+/**
+ * Trigger manual reconciliation of stale or interrupted scraper logs
+ */
+async function reconcileStaleLogs() {
+    try {
+        const response = await fetch('/api/logs/reconcile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timeout_minutes: 15 }),
+        });
+        const data = await response.json();
+        if (data.status === 'success') {
+            await loadLogsData();
+        } else {
+            alert('Reconciliation error: ' + (data.error || 'Failed to reconcile logs'));
+        }
+    } catch (err) {
+        console.error('Error reconciling logs:', err);
+        alert('Network error while reconciling logs.');
+    }
+}
+

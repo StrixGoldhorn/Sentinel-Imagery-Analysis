@@ -5,6 +5,7 @@ import logging
 import re
 import shutil
 import tempfile
+import threading
 import time
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
@@ -17,6 +18,8 @@ from sentinel_analysis.domain.entities import AISRecord, BoundingBox, Vessel, Ve
 from sentinel_analysis.infrastructure.ais.zone_splitter import deduplicate_ais_records, split_into_zones
 
 logger = logging.getLogger(__name__)
+
+_aprs_browser_lock = threading.Lock()
 
 
 class PlaywrightAprsSession:
@@ -81,7 +84,11 @@ class PlaywrightAprsSession:
         if shutdown_coordinator.is_shutting_down:
             return
 
-        self.page.goto("https://aprs.fi/", wait_until="domcontentloaded")
+        self.page.goto(
+            "https://aprs.fi/",
+            wait_until="domcontentloaded",
+            timeout=max(10.0, float(self.timeout)) * 1000,
+        )
         if not shutdown_coordinator.is_shutting_down:
             try:
                 self.page.wait_for_selector("div#map", timeout=4000)
@@ -123,7 +130,11 @@ class PlaywrightAprsSession:
         }
 
         try:
-            response = self.page.request.get(req_url, headers=headers)
+            response = self.page.request.get(
+                req_url,
+                headers=headers,
+                timeout=max(5.0, float(self.timeout)) * 1000,
+            )
             if not response.ok:
                 logger.debug("Fetching aprs.fi XML2 URL failed with status: %s", response.status)
                 return ""
@@ -221,35 +232,36 @@ class AprsFiPlugin:
             )
         )
 
-        try:
-            if shutdown_coordinator.is_shutting_down:
-                return []
-            session.start()
-            all_records: list[AISRecord] = []
-            for idx, zone in enumerate(zones):
+        with _aprs_browser_lock:
+            try:
                 if shutdown_coordinator.is_shutting_down:
-                    break
-                if idx > 0 and self.zone_delay > 0:
+                    return []
+                session.start()
+                all_records: list[AISRecord] = []
+                for idx, zone in enumerate(zones):
                     if shutdown_coordinator.is_shutting_down:
                         break
-                    time.sleep(self.zone_delay)
-                    if shutdown_coordinator.is_shutting_down:
-                        break
-                coords = {
-                    "lat_min": zone.min_latitude,
-                    "lat_max": zone.max_latitude,
-                    "long_min": zone.min_longitude,
-                    "long_max": zone.max_longitude,
-                }
-                xml_data = session.fetch_xml2(coords)
-                if xml_data:
-                    all_records.extend(self.parse_data(xml_data, time_range))
-            return deduplicate_ais_records(all_records)
-        except Exception as exc:
-            logger.error("Error fetching APRS data: %s", exc)
-            return []
-        finally:
-            session.cleanup()
+                    if idx > 0 and self.zone_delay > 0:
+                        if shutdown_coordinator.is_shutting_down:
+                            break
+                        time.sleep(self.zone_delay)
+                        if shutdown_coordinator.is_shutting_down:
+                            break
+                    coords = {
+                        "lat_min": zone.min_latitude,
+                        "lat_max": zone.max_latitude,
+                        "long_min": zone.min_longitude,
+                        "long_max": zone.max_longitude,
+                    }
+                    xml_data = session.fetch_xml2(coords)
+                    if xml_data:
+                        all_records.extend(self.parse_data(xml_data, time_range))
+                return deduplicate_ais_records(all_records)
+            except Exception as exc:
+                logger.error("Error fetching APRS data: %s", exc)
+                return []
+            finally:
+                session.cleanup()
 
     def parse_data(
         self,

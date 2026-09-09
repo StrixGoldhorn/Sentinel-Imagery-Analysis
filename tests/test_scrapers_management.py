@@ -152,6 +152,15 @@ class MemoryAISRepository:
                 entry["error_message"] = error_message
                 return
 
+    def reconcile_stale_scraper_logs(self, timeout_minutes: int = 15) -> int:
+        count = 0
+        for entry in self._logs:
+            if entry.get("status") in ("RUNNING", "TRIGGERED"):
+                entry["status"] = "FAILED"
+                entry["error_message"] = f"Scraper timed out or execution was interrupted (stale > {timeout_minutes}m)"
+                count += 1
+        return count
+
     def get_scraper_logs(self, plugin_name: str | None = None, status: str | None = None, limit: int = 100, offset: int = 0):
         logs = self._logs
         if plugin_name:
@@ -715,6 +724,54 @@ def test_get_scraper_logs_metrics_ignores_disabled_scrapers() -> None:
 
     # ActivePlugin has 4/4 successes = 100.0%. DisabledPlugin's 6 failures are ignored.
     assert result["metrics"]["overall_success_rate"] == 100.0
+
+
+def test_reconcile_stale_scraper_logs_sqlite() -> None:
+    from pathlib import Path
+    import os
+    from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
+
+    runtime_dir = Path(__file__).resolve().parent / "runtime"
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    db_path = runtime_dir / "test_reconcile.db"
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
+
+    repo = SQLiteAISRepository(db_path)
+
+    # Insert a fresh running log
+    log_fresh = repo.log_trigger("FreshPlugin", trigger_reason="Manual", status="RUNNING")
+
+    # Manually insert a stale running log with timestamp 20 minutes ago
+    with repo._database.connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO scraper_logs (plugin_name, status, records_inserted, timestamp, error_message, trigger_reason)
+            VALUES ('StalePlugin', 'RUNNING', 0, datetime('now', '-20 minutes'), 'In progress...', 'Satellite Pass')
+            """
+        )
+
+    # Reconciling with 15m timeout should only update the stale log
+    reconciled = repo.reconcile_stale_scraper_logs(timeout_minutes=15)
+    assert reconciled == 1
+
+    # get_scraper_logs will return the updated entries
+    logs = repo.get_scraper_logs(limit=10)
+    stale_entry = next(l for l in logs if l["plugin_name"] == "StalePlugin")
+    assert stale_entry["status"] == "FAILED"
+    assert "stale > 15m" in stale_entry["error_message"]
+
+    fresh_entry = next(l for l in logs if l["plugin_name"] == "FreshPlugin")
+    assert fresh_entry["status"] == "RUNNING"
+
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass
 
 
 def load_tests(loader, standard_tests, pattern):

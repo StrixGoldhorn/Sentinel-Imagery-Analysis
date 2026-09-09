@@ -138,6 +138,9 @@ class CompleteAdapter:
     def get_scraper_stats(self):
         return {}
 
+    def reconcile_stale_scraper_logs(self, timeout_minutes=15):
+        return 0
+
     def update_scraper_settings(self, plugin_name, config):
         return None
 
