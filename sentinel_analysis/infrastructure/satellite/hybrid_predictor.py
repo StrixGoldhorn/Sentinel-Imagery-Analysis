@@ -43,6 +43,7 @@ class HybridPassPredictor:
         bbox: BoundingBox,
         api_key: str,
         enabled_satellites: Optional[list[str]] = None,
+        cached_historical_predictions: Optional[list[PassPrediction]] = None,
     ) -> list[PassPrediction]:
         if enabled_satellites is None:
             enabled_satellites = self.get_enabled_satellites()
@@ -96,6 +97,13 @@ class HybridPassPredictor:
             return passes
 
         def _fetch_hist() -> list[PassPrediction]:
+            if cached_historical_predictions is not None:
+                return [
+                    PassPrediction(**dict(item))
+                    for item in cached_historical_predictions
+                    if isinstance(item, dict) and item.get("time")
+                ]
+
             parameters = inspect.signature(self._mission_analyzer.predict_from_history).parameters
             kwargs: dict[str, Any] = {"days_ahead": 10, "limit": 100}
             if "enabled_satellites" in parameters:

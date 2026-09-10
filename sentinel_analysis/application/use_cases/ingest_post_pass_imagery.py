@@ -16,12 +16,14 @@ from sentinel_analysis.domain.entities import Acquisition, PostPassIngestionJob
 def _get_backoff_minutes(attempts: int) -> int:
     """Progressive backoff for Copernicus catalog polling."""
     if attempts <= 1:
-        return 2
-    if attempts == 2:
-        return 3
-    if attempts == 3:
         return 5
-    return 10
+    if attempts == 2:
+        return 10
+    if attempts == 3:
+        return 20
+    if attempts == 4:
+        return 30
+    return 60
 
 
 def _extract_acq_datetime(acq) -> Optional[datetime]:
@@ -246,16 +248,6 @@ class IngestPostPassImagery:
                         eligible.sort(key=lambda item: item[0])
                         time_range_imagery = eligible[0][1]
 
-                if time_range_imagery is None and hasattr(self._imagery, "find_latest_acquisition"):
-                    acq = self._imagery.find_latest_acquisition(
-                        aoi.bbox,
-                        start_date=window_start,
-                        end_date=window_end,
-                    )
-                    a_dt = _extract_acq_datetime(acq)
-                    if a_dt and abs((a_dt - expected_time).total_seconds()) <= 3600 and _matches_job(acq, job):
-                        time_range_imagery = acq
-
                 # The exact matched acquisition is passed through to CreateScan.
                 if time_range_imagery is not None:
                     # Mark as INGESTING
@@ -283,6 +275,7 @@ class IngestPostPassImagery:
                         aoi.bbox,
                         aoi_name=aoi.name,
                         acquisition=matched_acquisition,
+                        include_dem=True,
                     )
                     # Optionally trigger ship detection on the new scan
                     detection_error: str | None = None
@@ -419,7 +412,7 @@ class IngestPostPassImagery:
                     })
                 else:
                     new_attempts = job.attempts + 1
-                    next_poll = now + timedelta(minutes=5)
+                    next_poll = now + timedelta(minutes=_get_backoff_minutes(new_attempts))
                     updated_job = PostPassIngestionJob(
                         id=job.id,
                         aoi_id=job.aoi_id,

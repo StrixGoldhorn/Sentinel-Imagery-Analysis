@@ -35,6 +35,7 @@ class CheckAndScheduleAOIs:
         settings_repo: Optional[Any] = None,
         pass_monitor: Optional[Any] = None,
         automatic_scrape: Optional[TriggerAutomaticAISScrape] = None,
+        forecast_cache_ttl_seconds: int = 10800,
     ) -> None:
         self._aois = aoi_repository
         self._predictor = pass_predictor
@@ -45,6 +46,7 @@ class CheckAndScheduleAOIs:
         self._settings_repo = settings_repo
         self._pass_monitor = pass_monitor
         self._automatic_scrape = automatic_scrape
+        self._forecast_cache_ttl_seconds = max(300, int(forecast_cache_ttl_seconds))
         if self._automatic_scrape is None and ingest_ais is not None and post_pass_repository is not None:
             self._automatic_scrape = TriggerAutomaticAISScrape(ingest_ais, post_pass_repository)
 
@@ -87,12 +89,61 @@ class CheckAndScheduleAOIs:
 
             try:
                 predictor_parameters = inspect.signature(self._predictor.predict).parameters
+                raw_predictions: list[dict[str, Any]] = []
+                cached_historical: list[dict[str, Any]] | None = None
+
+                # The scheduler runs frequently so it can notice an active pass. Keep
+                # dynamic N2YO predictions fresh, but reuse the persisted historical
+                # forecast so the Copernicus catalog is not queried every cycle.
+                if aoi.id is not None and hasattr(self._aois, "get_cached_forecast"):
+                    try:
+                        cached_forecast = self._aois.get_cached_forecast(aoi.id)
+                        cached_values = cached_forecast.get("historical_predictions") if cached_forecast else None
+                        if not isinstance(cached_values, list) and cached_forecast:
+                            cached_values = [
+                                p for p in cached_forecast.get("predictions", [])
+                                if isinstance(p, dict)
+                                and (
+                                    p.get("source") in ("HISTORICAL_MISSION", "COMBINED")
+                                    or p.get("contribution") in ("historical", "both")
+                                )
+                            ]
+                        if isinstance(cached_values, list):
+                            cached_historical = list(cached_values)
+                    except Exception as cache_exc:
+                        logger.debug("Failed to read cached forecast for AOI %s: %s", aoi.id, cache_exc)
+
+                predictor_kwargs: dict[str, Any] = {}
                 if "enabled_satellites" in predictor_parameters:
-                    raw_predictions = list(
-                        self._predictor.predict(aoi.bbox, api_key, enabled_satellites=enabled_satellites)
-                    )
-                else:
-                    raw_predictions = list(self._predictor.predict(aoi.bbox, api_key))
+                    predictor_kwargs["enabled_satellites"] = enabled_satellites
+                if "cached_historical_predictions" in predictor_parameters and cached_historical is not None:
+                    predictor_kwargs["cached_historical_predictions"] = cached_historical
+                raw_predictions = list(self._predictor.predict(aoi.bbox, api_key, **predictor_kwargs))
+
+                if cached_historical is None and aoi.id is not None and hasattr(self._aois, "save_cached_forecast"):
+                    try:
+                        historical_predictions = [
+                            p for p in raw_predictions
+                            if p.get("source") in ("HISTORICAL_MISSION", "COMBINED")
+                            or p.get("contribution") in ("historical", "both")
+                        ]
+                        n2yo_predictions = [
+                            p for p in raw_predictions
+                            if p.get("source") in ("N2YO", "COMBINED")
+                            or p.get("contribution") in ("n2yo", "both")
+                        ]
+                        self._aois.save_cached_forecast(
+                            aoi_id=aoi.id,
+                            forecast_data={
+                                "predictions": raw_predictions,
+                                "historical_predictions": historical_predictions,
+                                "n2yo_predictions": n2yo_predictions,
+                                "next_scan": None,
+                            },
+                            ttl_seconds=self._forecast_cache_ttl_seconds,
+                        )
+                    except Exception as cache_exc:
+                        logger.debug("Failed to save forecast cache for AOI %s: %s", aoi.id, cache_exc)
 
                 if not raw_predictions and hasattr(self._aois, "get_cached_forecast") and aoi.id is not None:
                     try:
