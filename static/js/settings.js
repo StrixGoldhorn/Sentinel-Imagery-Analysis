@@ -5,6 +5,7 @@
 let currentSection = 'cv';
 let currentSettings = {};
 let savedFormSnapshot = '';
+let settingsLoaded = false;
 
 function setSaveStatus(message, isDirty = false) {
     const status = document.getElementById('settingsSaveStatus');
@@ -21,11 +22,23 @@ function formSnapshot() {
 }
 
 function updateDirtyState() {
+    if (!settingsLoaded) {
+        setSaveStatus('Loading settings…');
+        const saveBtn = document.getElementById('btnSaveSettings');
+        if (saveBtn) saveBtn.disabled = true;
+        return;
+    }
     validateCrossFieldConstraints();
     const dirty = formSnapshot() !== savedFormSnapshot;
     setSaveStatus(dirty ? 'Unsaved changes' : 'All changes saved', dirty);
     const saveBtn = document.getElementById('btnSaveSettings');
     if (saveBtn) saveBtn.disabled = !dirty;
+}
+
+function setSettingsActionsEnabled(enabled) {
+    const resetBtn = document.getElementById('btnResetSection');
+    if (resetBtn) resetBtn.disabled = !enabled;
+    updateDirtyState();
 }
 
 function initFormChangeTracking() {
@@ -103,8 +116,11 @@ async function loadSettings() {
     const loading = document.getElementById('settingsLoadingIndicator');
     const form = document.getElementById('settingsForm');
 
+    settingsLoaded = false;
     if (loading) loading.style.display = 'flex';
     if (form) form.style.opacity = '0.4';
+    setSaveStatus('Loading settings…');
+    setSettingsActionsEnabled(false);
 
     try {
         const res = await fetch('/api/settings?definitions=true');
@@ -114,13 +130,17 @@ async function loadSettings() {
             currentSettings = data.settings;
             populateForm(data.settings);
             savedFormSnapshot = formSnapshot();
+            settingsLoaded = true;
             updateDirtyState();
+            setSettingsActionsEnabled(true);
             updateCredentialStatus(data.runtime || {});
         } else {
+            setSaveStatus('Unable to load settings');
             showToast(data.error || 'Failed to load settings', false);
         }
     } catch (err) {
         console.error('Failed to load settings:', err);
+        setSaveStatus('Unable to load settings');
         showToast('Error connecting to settings API', false);
     } finally {
         if (loading) loading.style.display = 'none';

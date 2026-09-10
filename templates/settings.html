@@ -19,14 +19,14 @@
         </div>
         <div class="header-actions">
             <span id="settingsSaveStatus" class="settings-save-status" role="status" aria-live="polite">All changes saved</span>
-            <button class="btn btn-secondary" id="btnResetSection" onclick="resetCurrentSection()">
+            <button type="button" class="btn btn-secondary" id="btnResetSection" onclick="resetCurrentSection()" disabled>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="1 4 1 10 7 10"></polyline>
                     <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
                 </svg>
                 Reset Section
             </button>
-            <button class="btn btn-primary" id="btnSaveSettings" onclick="saveAllSettings()">
+            <button type="button" class="btn btn-primary" id="btnSaveSettings" onclick="saveAllSettings()" disabled>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
                     <polyline points="17 21 17 13 7 13 7 21"></polyline>
@@ -95,7 +95,7 @@
                     <span id="settingsRuntimeStatus">Checking runtime status…</span>
                 </div>
                 <p class="footer-help-text">
-                    Settings are persisted immediately. The page reports which runtime settings were applied and which require a restart.
+                    Changes stay local until you select Save Changes. Environment credentials remain in <code>.env</code> and are not editable here.
                 </p>
             </div>
         </aside>

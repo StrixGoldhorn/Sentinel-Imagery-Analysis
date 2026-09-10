@@ -44,6 +44,11 @@
     color: var(--color-warning, #d97706);
 }
 
+.header-actions .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
 /* Main Layout */
 .settings-layout {
     display: grid;
