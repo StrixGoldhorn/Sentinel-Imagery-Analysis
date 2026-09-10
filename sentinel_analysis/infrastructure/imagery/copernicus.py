@@ -22,6 +22,7 @@ PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 # CDSE's current Sentinel Hub Catalog API endpoint.  The former
 # /api/v1/catalog/1.0.0/search route now responds with HTTP 400.
 CATALOG_URL = "https://sh.dataspace.copernicus.eu/catalog/v1/search"
+CATALOG_MAX_LIMIT = 100
 
 # HTTP status codes considered transient / retriable (server errors and rate limits)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
@@ -320,7 +321,8 @@ class CopernicusImageryProvider:
                             "bbox": ",".join(map(str, bbox.as_list())),
                             "datetime": f"{start.isoformat().replace('+00:00', 'Z')}/{end.isoformat().replace('+00:00', 'Z')}",
                             "collections": "sentinel-1-grd",
-                            "limit": max(1, min(limit, 500)),
+                            # CDSE rejects catalog requests with limit > 100.
+                            "limit": max(1, min(limit, CATALOG_MAX_LIMIT)),
                         },
                         timeout=60,
                     )

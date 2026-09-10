@@ -411,6 +411,15 @@ def test_copernicus_historical_search_uses_current_catalog_endpoint() -> None:
     assert client.get_calls[0][1]["params"]["collections"] == "sentinel-1-grd"
 
 
+def test_copernicus_historical_search_caps_catalog_limit_at_service_maximum() -> None:
+    client = FakeHTTPClient(get_responses=[FakeResponse({"features": []})])
+    provider = CopernicusImageryProvider(StaticTokenProvider(), http_client=client)
+
+    provider.search_historical_acquisitions(BBOX, limit=500)
+
+    assert client.get_calls[0][1]["params"]["limit"] == 100
+
+
 
 def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape() -> None:
     valid_client = FakeHTTPClient(
