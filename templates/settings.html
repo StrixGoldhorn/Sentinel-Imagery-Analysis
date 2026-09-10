@@ -106,8 +106,9 @@
                         <p>Configure radar thresholding, oriented bounding box metrology, and DEM land-sea coastal noise suppression.</p>
                     </div>
 
-                    <!-- Highlight Card: Coastal Noise Buffer -->
-                    <div class="settings-card card-highlight">
+                    <div class="settings-grid">
+                        <!-- Highlight Card: Coastal Noise Buffer -->
+                        <div class="settings-card card-highlight">
                         <div class="card-badge">LAND-SEA MASKING</div>
                         <div class="card-title-group">
                             <label for="input_cv_coastal_buffer_pixels" class="setting-title">Coastal Noise Buffer</label>
@@ -122,9 +123,7 @@
                             <input type="number" class="number-input-sync" id="sync_cv_coastal_buffer_pixels" min="0" max="500" value="81"
                                    oninput="syncSlider('cv_coastal_buffer_pixels', this.value)">
                         </div>
-                    </div>
-
-                    <div class="settings-grid">
+                        </div>
                         <div class="settings-card">
                             <div class="toggle-control-group">
                                 <div>
@@ -210,7 +209,7 @@
                     </div>
 
                     <div class="settings-grid">
-                        <div class="settings-card card-highlight">
+                        <div class="settings-card card-info">
                             <div class="card-badge">ENVIRONMENT SECRETS</div>
                             <div class="card-title-group">
                                 <span class="setting-title">Copernicus Authentication</span>
@@ -303,33 +302,33 @@
                         <div class="settings-card card-span-2">
                             <label class="setting-title">Monitored Satellites</label>
                             <p class="setting-description">Select which Sentinel-1 satellites to track, schedule passes for, and ingest imagery from. Unchecked satellites are completely excluded from forecasts, AIS scrapes, and catalog polling to preserve Copernicus quotas.</p>
-                            <div class="satellite-selection-grid" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem;">
-                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
-                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1A" id="sat_Sentinel-1A" checked style="cursor: pointer; width: 18px; height: 18px;">
-                                    <div>
-                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1A <span class="badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Operational</span></div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 39634 &bull; Sun-synchronous 12-day repeat</div>
+                            <div class="satellite-selection-grid">
+                                <label class="satellite-checkbox-label">
+                                    <input class="satellite-checkbox-input" type="checkbox" name="satellite_selection" value="Sentinel-1A" id="sat_Sentinel-1A" checked>
+                                    <div class="satellite-meta">
+                                        <div class="satellite-title">Sentinel-1A <span class="badge satellite-status">Operational</span></div>
+                                        <div class="satellite-detail">NORAD 39634 &bull; Sun-synchronous 12-day repeat</div>
                                     </div>
                                 </label>
-                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
-                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1C" id="sat_Sentinel-1C" checked style="cursor: pointer; width: 18px; height: 18px;">
-                                    <div>
-                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1C <span class="badge" style="font-size: 0.7rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Operational (New)</span></div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 62232 &bull; Launched Dec 2024 &bull; 180&deg; phase twin</div>
+                                <label class="satellite-checkbox-label">
+                                    <input class="satellite-checkbox-input" type="checkbox" name="satellite_selection" value="Sentinel-1C" id="sat_Sentinel-1C" checked>
+                                    <div class="satellite-meta">
+                                        <div class="satellite-title">Sentinel-1C <span class="badge satellite-status">Operational (New)</span></div>
+                                        <div class="satellite-detail">NORAD 62232 &bull; Launched Dec 2024 &bull; 180&deg; phase twin</div>
                                     </div>
                                 </label>
-                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
-                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1D" id="sat_Sentinel-1D" style="cursor: pointer; width: 18px; height: 18px;">
-                                    <div>
-                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1D <span class="badge" style="font-size: 0.7rem; background: rgba(168, 85, 247, 0.2); color: #a855f7; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Upcoming / Planned</span></div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 66315 &bull; Constellation continuity unit</div>
+                                <label class="satellite-checkbox-label">
+                                    <input class="satellite-checkbox-input" type="checkbox" name="satellite_selection" value="Sentinel-1D" id="sat_Sentinel-1D">
+                                    <div class="satellite-meta">
+                                        <div class="satellite-title">Sentinel-1D <span class="badge satellite-status">Upcoming / Planned</span></div>
+                                        <div class="satellite-detail">NORAD 66315 &bull; Constellation continuity unit</div>
                                     </div>
                                 </label>
-                                <label class="satellite-checkbox-label" style="display: flex; align-items: center; gap: 0.6rem; background: rgba(255,255,255,0.04); padding: 0.75rem 1rem; border-radius: 6px; border: 1px solid var(--border-color, #2d3748); cursor: pointer; flex: 1 1 200px;">
-                                    <input type="checkbox" name="satellite_selection" value="Sentinel-1B" id="sat_Sentinel-1B" style="cursor: pointer; width: 18px; height: 18px;">
-                                    <div>
-                                        <div style="font-weight: 600; color: #222; font-size: 0.95rem;">Sentinel-1B <span class="badge" style="font-size: 0.7rem; background: rgba(239, 68, 68, 0.2); color: #ef4444; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">Decommissioned</span></div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 2px;">NORAD 41456 &bull; Retired Aug 2022 (Historical archive only)</div>
+                                <label class="satellite-checkbox-label">
+                                    <input class="satellite-checkbox-input" type="checkbox" name="satellite_selection" value="Sentinel-1B" id="sat_Sentinel-1B">
+                                    <div class="satellite-meta">
+                                        <div class="satellite-title">Sentinel-1B <span class="badge satellite-status">Decommissioned</span></div>
+                                        <div class="satellite-detail">NORAD 41456 &bull; Retired Aug 2022 (Historical archive only)</div>
                                     </div>
                                 </label>
                             </div>

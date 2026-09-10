@@ -1,7 +1,7 @@
 /* Global Settings Management Stylesheet */
 
 .settings-dashboard-container {
-    max-width: 1400px;
+    max-width: 1200px;
     margin: 0 auto;
     padding: 16px 24px 60px;
     box-sizing: border-box;
@@ -47,7 +47,7 @@
 /* Main Layout */
 .settings-layout {
     display: grid;
-    grid-template-columns: 290px 1fr;
+    grid-template-columns: 260px minmax(0, 1fr);
     gap: 24px;
     align-items: flex-start;
 }
@@ -214,15 +214,17 @@
 /* Grid & Cards */
 .settings-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
 }
 
 .settings-card {
     background: var(--bg-subtle);
     border: 1px solid var(--border-color);
     border-radius: var(--card-radius);
-    padding: 18px;
+    min-height: 176px;
+    padding: 16px;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -235,7 +237,7 @@
 }
 
 .card-info {
-    background: var(--bg-card);
+    background: var(--bg-subtle);
 }
 
 .badge-value.status-missing {
@@ -245,25 +247,110 @@
 }
 
 .card-highlight {
-    grid-column: 1 / -1;
     background: var(--color-primary-light);
     border: 2px solid var(--color-primary);
     box-shadow: 0 2px 8px rgba(2, 132, 199, 0.08);
     position: relative;
-    padding-top: 22px;
+    padding-top: 16px;
 }
 
-.card-highlight .card-badge {
-    position: absolute;
-    top: -10px;
-    left: 18px;
+.card-badge {
+    display: inline-flex;
+    align-self: flex-start;
+    margin-bottom: 10px;
     font-size: var(--font-size-xs);
     font-weight: 700;
     letter-spacing: 0.5px;
     padding: 2px 8px;
-    background: var(--color-primary);
-    color: #ffffff;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
     border-radius: 4px;
+}
+
+.card-highlight .card-badge {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #ffffff;
+}
+
+.card-span-2 {
+    grid-column: 1 / -1;
+    min-height: 224px;
+}
+
+.satellite-selection-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.satellite-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--btn-radius);
+    background: var(--bg-card);
+    cursor: pointer;
+}
+
+.satellite-checkbox-label:hover {
+    border-color: var(--color-primary);
+}
+
+.satellite-checkbox-label > div {
+    min-width: 0;
+    color: var(--text-primary) !important;
+}
+
+.satellite-checkbox-input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    margin: 2px 0 0;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+}
+
+.satellite-meta {
+    flex: 1 1 auto;
+}
+
+.satellite-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: 600;
+}
+
+.satellite-detail {
+    margin-top: 4px;
+    color: var(--text-muted) !important;
+    font-size: var(--font-size-xs) !important;
+    line-height: 1.35;
+}
+
+.satellite-checkbox-label > div > div:first-child {
+    color: var(--text-primary) !important;
+    font-size: var(--font-size-sm) !important;
+}
+
+.satellite-checkbox-label > div > div:last-child {
+    color: var(--text-muted) !important;
+    font-size: var(--font-size-xs) !important;
+}
+
+.satellite-checkbox-label span {
+    background: var(--bg-subtle) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-secondary) !important;
 }
 
 .card-title-group {
@@ -498,7 +585,7 @@ input:checked + .slider:before {
     color: #ffffff;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1050px) {
     .settings-layout {
         grid-template-columns: 1fr;
     }
@@ -510,5 +597,17 @@ input:checked + .slider:before {
         order: 3;
         width: 100%;
         text-align: right;
+    }
+
+}
+
+@media (max-width: 680px) {
+    .settings-grid,
+    .satellite-selection-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .card-span-2 {
+        grid-column: auto;
     }
 }

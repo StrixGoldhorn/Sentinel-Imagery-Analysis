@@ -1,6 +1,6 @@
 """Background scheduler worker for periodic satellite pass checks and SAR imagery ingestion."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import threading
 import time
@@ -9,11 +9,13 @@ from typing import Any, Optional
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.date import DateTrigger
     from apscheduler.triggers.interval import IntervalTrigger
     APSCHEDULER_AVAILABLE = True
 except ImportError:
     APSCHEDULER_AVAILABLE = False
     BackgroundScheduler = None  # type: ignore
+    DateTrigger = None  # type: ignore
     IntervalTrigger = None  # type: ignore
 
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
@@ -109,14 +111,16 @@ class PassSchedulerWorker:
                 self._settings_repo.set("scheduler", "aoi_check_interval_seconds", val)
             except Exception:
                 pass
-        if self._running and self._scheduler is not None and IntervalTrigger is not None:
+        if self._running and self._scheduler is not None and DateTrigger is not None:
             try:
                 self._scheduler.reschedule_job(
                     "aoi_check_job",
-                    trigger=IntervalTrigger(seconds=val),
+                    trigger=DateTrigger(
+                        run_date=datetime.now(timezone.utc) + timedelta(seconds=val)
+                    ),
                 )
             except Exception as exc:
-                logger.warning("Failed to reschedule APScheduler aoi_check_job: %s", exc)
+                logger.debug("AOI interval will apply after the current check cycle: %s", exc)
 
     def get_sar_scan_interval(self) -> float:
         """Return the fixed one-hour interval for SAR catalog checks."""
@@ -144,12 +148,19 @@ class PassSchedulerWorker:
         self._stop_event.clear()
         self._running = True
 
-        if self._use_apscheduler and BackgroundScheduler is not None and IntervalTrigger is not None:
+        if (
+            self._use_apscheduler
+            and BackgroundScheduler is not None
+            and DateTrigger is not None
+            and IntervalTrigger is not None
+        ):
             try:
                 self._scheduler = BackgroundScheduler(daemon=True)
                 self._scheduler.add_job(
                     self._run_aoi_check_cycle,
-                    trigger=IntervalTrigger(seconds=self.get_aoi_check_interval()),
+                    # Schedule the next check after the previous cycle completes
+                    # so a slow external request cannot create overlap warnings.
+                    trigger=DateTrigger(run_date=datetime.now(timezone.utc)),
                     id="aoi_check_job",
                     name="AOI Scan Check (30s)",
                     replace_existing=True,
@@ -190,16 +201,45 @@ class PassSchedulerWorker:
 
     def _run_aoi_check_cycle(self) -> None:
         """Run periodic AOI checks to detect flypasts and manage AIS scrapes."""
-        if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
-            return
-        if not self._acquire_leadership():
+        try:
+            if self._stop_event.is_set() or shutdown_coordinator.is_shutting_down:
+                return
+            if not self._acquire_leadership():
+                return
+            try:
+                self.trigger_check()
+            except Exception as exc:
+                self._last_aoi_error = str(exc)
+                self._last_error = str(exc)
+                logger.warning("Error during periodic AOI scan check: %s", exc)
+        finally:
+            self._schedule_next_aoi_check()
+
+    def _schedule_next_aoi_check(self) -> None:
+        """Schedule one AOI check after the current cycle completes."""
+        if (
+            not self._running
+            or self._stop_event.is_set()
+            or shutdown_coordinator.is_shutting_down
+            or self._scheduler is None
+            or DateTrigger is None
+        ):
             return
         try:
-            self.trigger_check()
+            self._scheduler.add_job(
+                self._run_aoi_check_cycle,
+                trigger=DateTrigger(
+                    run_date=datetime.now(timezone.utc)
+                    + timedelta(seconds=self.get_aoi_check_interval())
+                ),
+                id="aoi_check_job",
+                name="AOI Scan Check (30s)",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
         except Exception as exc:
-            self._last_aoi_error = str(exc)
-            self._last_error = str(exc)
-            logger.warning("Error during periodic AOI scan check: %s", exc)
+            logger.warning("Failed to schedule next APScheduler AOI check: %s", exc)
 
     def _poll_due_post_pass_jobs(self) -> list[dict[str, Any]]:
         """Check and process any post-pass catalog jobs that are due for SAR imagery ingestion."""
