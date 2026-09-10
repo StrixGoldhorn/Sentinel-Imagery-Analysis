@@ -191,6 +191,33 @@ class TestSQLitePostPassRepository(unittest.TestCase):
         self.assertEqual(events[-1]["old_status"], "POLLING_CATALOG")
         self.assertEqual(events[-1]["new_status"], "QUERYING_CATALOG")
 
+    def test_completed_poll_attempts_include_localizable_timestamps(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        job_id = self.repo.add(PostPassIngestionJob(
+            aoi_id=self.aoi_id,
+            pass_time=now - timedelta(minutes=30),
+            status="POLLING_CATALOG",
+            attempts=0,
+            next_poll_at=now - timedelta(seconds=1),
+        ))
+
+        claimed = self.repo.claim_job(job_id, now)
+        self.assertIsNotNone(claimed)
+        self.repo.update(replace(
+            claimed,
+            status="POLLING_CATALOG",
+            attempts=1,
+            last_polled_at=now,
+            next_poll_at=now + timedelta(hours=1),
+        ))
+
+        attempts = self.repo.list_poll_attempts(job_id)
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(attempts[0]["attempt"], 1)
+        self.assertEqual(attempts[0]["reason"], "POLL_SCHEDULED")
+        self.assertEqual(attempts[0]["started_at"], now.isoformat())
+        self.assertIsNotNone(attempts[0]["completed_at"])
+
     def test_causal_prediction_basis_is_persisted(self):
         now = datetime.now(timezone.utc).replace(microsecond=0)
         job_id = self.repo.add(PostPassIngestionJob(

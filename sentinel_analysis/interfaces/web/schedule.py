@@ -207,6 +207,9 @@ def get_post_pass_jobs():
             allowed_actions.append("retry")
         if job.status in ("COMPLETED", "FAILED", "TIMED_OUT", "WAIT_EXPIRED"):
             allowed_actions.append("delete")
+        previous_poll_attempts = []
+        if job.status in ("POLLING_CATALOG", "QUERYING_CATALOG") and hasattr(repo, "list_poll_attempts"):
+            previous_poll_attempts = repo.list_poll_attempts(job.id)
         return {
             "id": job.id,
             "aoi_id": job.aoi_id,
@@ -239,6 +242,7 @@ def get_post_pass_jobs():
             "completion_warning": job.error_message if job.status == "COMPLETED" else None,
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "previous_poll_attempts": previous_poll_attempts,
         }
 
     return jsonify(

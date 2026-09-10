@@ -9,6 +9,48 @@ let autoRefreshTimer = null;
 let isAutoRefreshActive = true;
 let liveTickerTimer = null;
 
+function formatLocalDateTime(val, includeSeconds = true) {
+    const date = parseUtcDate(val);
+    if (!date) return 'Unknown local time';
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        ...(includeSeconds ? { second: '2-digit' } : {}),
+    });
+}
+
+function formatPreviousPollAttempts(job) {
+    const status = getCanonicalPostPassStatus(job);
+    if (status !== 'POLLING_CATALOG' && status !== 'QUERYING_CATALOG') return '';
+
+    const attempts = Array.isArray(job.previous_poll_attempts) ? job.previous_poll_attempts : [];
+    if (!attempts.length) return '';
+
+    const attemptRows = attempts.map(attempt => {
+        const outcome = attempt.reason === 'POLL_ATTEMPT_FAILED'
+            || (attempt.reason === 'POLL_SCHEDULED' && attempt.message)
+            ? 'retrieval failed'
+            : attempt.reason === 'IMAGERY_INGESTION_STARTED'
+                ? 'SAR imagery found'
+                : 'no matching SAR imagery';
+        const started = `${formatLocalDateTime(attempt.started_at)} LOCAL`;
+        const completed = attempt.completed_at
+            ? `– ${formatLocalDateTime(attempt.completed_at)} LOCAL`
+            : '';
+        return `<li style="margin: 2px 0;">#${escapeHtml(String(attempt.attempt))}: ${escapeHtml(started)} ${completed} — ${outcome}</li>`;
+    }).join('');
+
+    return `
+        <details class="previous-poll-attempts" style="margin-top: 6px; font-size: 0.76rem; color: #64748b;">
+            <summary style="cursor: pointer; color: #475569;">Previous SAR retrievals (${attempts.length})</summary>
+            <ul style="margin: 4px 0 0 16px; padding: 0;">${attemptRows}</ul>
+        </details>
+    `;
+}
+
 function formatDuration(totalSeconds, includeSeconds = true) {
     if (isNaN(totalSeconds) || totalSeconds === null) return '-';
     const absSec = Math.abs(Math.round(totalSeconds));
@@ -238,7 +280,7 @@ async function loadPostPassJobs(isSilent = false) {
 
             const lastUpdated = document.getElementById('lastUpdatedText');
             if (lastUpdated) {
-                lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+                lastUpdated.textContent = `Last updated (LOCAL): ${new Date().toLocaleTimeString()}`;
             }
         } else {
             showToast(data.error || 'Failed to load post-pass jobs', 'error');
@@ -392,10 +434,10 @@ function renderPostPassTable(jobs) {
         const passDt = parseUtcDate(job.pass_time);
         const passStr = passDt ? passDt.toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
-        }) : 'N/A';
+        }) + ' LOCAL' : 'N/A';
 
         const expDt = parseUtcDate(job.expected_imagery_time) || passDt;
-        const expStr = expDt ? expDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
+        const expStr = expDt ? `${formatLocalDateTime(expDt, false)} LOCAL` : 'N/A';
 
         // Validity calculation from the backend-configured wait window.
         const maxWaitHours = job.max_wait_hours || 24.0;
@@ -535,7 +577,7 @@ function renderPostPassTable(jobs) {
                         <div style="color: #4f46e5; font-weight: 600;">
                             Catalog polling <span class="live-pending-poll-countdown" data-timestamp="${nextPollDt.getTime()}">In ${formatDuration(secToPoll, true)}</span>
                         </div>
-                        <div style="font-size: 0.78rem; color: #64748b;">Backend schedule: ${nextPollDt.toLocaleString()}</div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Backend schedule (LOCAL): ${formatLocalDateTime(nextPollDt)}</div>
                     `;
                 } else {
                     passLine = `
@@ -566,7 +608,7 @@ function renderPostPassTable(jobs) {
             `;
         } else if (effectiveStatus === 'COMPLETED') {
             const compDt = parseUtcDate(job.completed_at);
-            const timeStr = compDt ? compDt.toLocaleTimeString() : 'N/A';
+            const timeStr = compDt ? `${formatLocalDateTime(compDt)} LOCAL` : 'N/A';
             nextPollContent = `
                 <div style="color: #15803d; font-weight: 600;">
                     ✓ Acquired on Check #${job.attempts || 1}
@@ -586,6 +628,10 @@ function renderPostPassTable(jobs) {
                     ❌ ${escapeHtml(job.error_message)}
                 </div>
             `;
+        }
+
+        if (canonicalStatus === 'POLLING_CATALOG' || canonicalStatus === 'QUERYING_CATALOG') {
+            nextPollContent += formatPreviousPollAttempts(job);
         }
 
         let scanCell = '<span style="color: #94a3b8;">None</span>';
@@ -751,7 +797,7 @@ async function viewJobHistory(jobId) {
         }
         const lines = (data.events || []).map(event => {
             const when = parseUtcDate(event.created_at);
-            const timestamp = when ? when.toLocaleString() : (event.created_at || 'Unknown time');
+            const timestamp = when ? `${formatLocalDateTime(when)} LOCAL` : (event.created_at || 'Unknown time');
             const transition = `${event.old_status || 'NEW'} → ${event.new_status}`;
             return `${timestamp}\n${transition}: ${event.reason}${event.message ? `\n${event.message}` : ''}`;
         });

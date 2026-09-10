@@ -711,3 +711,54 @@ class SQLitePostPassIngestionRepository:
                 (int(job_id), limit_value),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_poll_attempts(self, job_id: int, limit: int = 20) -> list[dict[str, object]]:
+        """Return completed catalog retrieval attempts in chronological order.
+
+        A claim marks the start of a catalog retrieval.  The following state
+        transition out of QUERYING_CATALOG marks its completion, whether the
+        catalog had no match, returned an error, or found imagery to ingest.
+        Incomplete claims are intentionally omitted because they may still be
+        running (or may be recovered by the stale-claim lease).
+        """
+        limit_value = max(1, min(int(limit), 100))
+        events = list(reversed(self.list_events(job_id, limit=500)))
+        completed: list[dict[str, object]] = []
+        active_attempt: Optional[dict[str, object]] = None
+
+        for event in events:
+            reason = str(event.get("reason") or "")
+            if reason == "JOB_CLAIMED":
+                # A new claim without a closing transition is incomplete and
+                # must not be presented as a completed previous attempt.
+                active_attempt = {
+                    "started_at": event.get("created_at"),
+                    "completed_at": None,
+                    "reason": None,
+                    "message": None,
+                }
+                continue
+
+            if (
+                active_attempt is not None
+                and event.get("old_status") == "QUERYING_CATALOG"
+                and event.get("new_status") != "QUERYING_CATALOG"
+            ):
+                active_attempt["completed_at"] = event.get("created_at")
+                active_attempt["reason"] = reason or None
+                active_attempt["message"] = event.get("message")
+                completed.append(active_attempt)
+                active_attempt = None
+
+        # Do not include an unclosed final claim: it is the current attempt.
+        numbered = list(enumerate(completed, start=1))[-limit_value:]
+        return [
+            {
+                "attempt": index,
+                "started_at": _format_dt(_parse_dt(attempt.get("started_at"))),
+                "completed_at": _format_dt(_parse_dt(attempt.get("completed_at"))),
+                "reason": attempt.get("reason"),
+                "message": attempt.get("message"),
+            }
+            for index, attempt in numbered
+        ]
