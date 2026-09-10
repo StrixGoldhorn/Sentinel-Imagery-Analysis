@@ -382,6 +382,35 @@ def test_copernicus_find_latest_acquisition_with_custom_time_range() -> None:
     assert params["datetime"] == "2026-08-10T08:30:00Z/2026-08-10T14:45:00Z"
 
 
+def test_copernicus_historical_search_uses_current_catalog_endpoint() -> None:
+    response = FakeResponse(
+        {
+            "features": [
+                {
+                    "id": "historical-product-1",
+                    "properties": {"datetime": "2026-08-10T12:30:00Z"},
+                },
+            ]
+        }
+    )
+    client = FakeHTTPClient(get_responses=[response])
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        clock=lambda: datetime(2026, 8, 27, tzinfo=timezone.utc),
+    )
+
+    acquisitions = provider.search_historical_acquisitions(
+        BBOX,
+        start_date=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        end_date=datetime(2026, 8, 15, tzinfo=timezone.utc),
+    )
+
+    assert acquisitions[0]["product_id"] == "historical-product-1"
+    assert client.get_calls[0][0] == "https://sh.dataspace.copernicus.eu/catalog/v1/search"
+    assert client.get_calls[0][1]["params"]["collections"] == "sentinel-1-grd"
+
+
 
 def test_n2yo_adapter_normalizes_provider_payload_and_rejects_invalid_shape() -> None:
     valid_client = FakeHTTPClient(

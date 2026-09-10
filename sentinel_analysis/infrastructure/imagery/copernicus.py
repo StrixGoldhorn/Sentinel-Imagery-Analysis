@@ -19,7 +19,9 @@ from sentinel_analysis.infrastructure.imagery.tiling import TileGridCalculator
 
 IDENTITY_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
-CATALOG_URL = "https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search"
+# CDSE's current Sentinel Hub Catalog API endpoint.  The former
+# /api/v1/catalog/1.0.0/search route now responds with HTTP 400.
+CATALOG_URL = "https://sh.dataspace.copernicus.eu/catalog/v1/search"
 
 # HTTP status codes considered transient / retriable (server errors and rate limits)
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
