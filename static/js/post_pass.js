@@ -337,7 +337,7 @@ function applyPostPassFilters() {
 
         if (selectedStatus) {
             if (selectedStatus === 'FAILED') {
-                if (effectiveStatus !== 'FAILED' && effectiveStatus !== 'TIMED_OUT' && effectiveStatus !== 'WAIT_EXPIRED') {
+                if (effectiveStatus !== 'FAILED') {
                     return false;
                 }
             } else if (selectedStatus === 'TIMED_OUT') {
