@@ -1,5 +1,6 @@
 """Unit tests for Sentinel-1 mission history analysis, repeat-cycle pass modeling, and hybrid prediction."""
 
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
@@ -231,6 +232,33 @@ def test_hybrid_predictor_excludes_standalone_n2yo_from_primary_predictions() ->
     assert results[0]["source"] == "HISTORICAL_MISSION"
     assert results[0]["contribution"] == "historical"
     assert results[0]["confidence_score"] == 0.94
+
+
+def test_hybrid_predictor_queries_enabled_satellites_concurrently() -> None:
+    calls: list[str] = []
+    calls_lock = threading.Lock()
+    both_started = threading.Event()
+    serial_timeout = threading.Event()
+
+    class MultiSatellitePredictor:
+        def predict(self, bbox, api_key, satellite_id=None, satellite_name=None):
+            with calls_lock:
+                calls.append(satellite_name)
+                if len(calls) == 2:
+                    both_started.set()
+            if not both_started.wait(timeout=0.5):
+                serial_timeout.set()
+            return []
+
+    hybrid = HybridPassPredictor(MultiSatellitePredictor(), Sentinel1MissionAnalyzer())
+    hybrid.predict(
+        BBOX,
+        "api_key",
+        enabled_satellites=["Sentinel-1A", "Sentinel-1C"],
+    )
+
+    assert set(calls) == {"Sentinel-1A", "Sentinel-1C"}
+    assert not serial_timeout.is_set()
 
 
 def test_analyze_mission_passes_use_case() -> None:

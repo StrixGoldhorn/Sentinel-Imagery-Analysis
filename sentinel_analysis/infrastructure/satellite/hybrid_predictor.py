@@ -59,13 +59,23 @@ class HybridPassPredictor:
             if self._n2yo is None or not isinstance(api_key, str) or not api_key.strip():
                 return []
 
-            passes: list[PassPrediction] = []
             parameters = inspect.signature(self._n2yo.predict).parameters
             supports_sat_param = "satellite_id" in parameters and "satellite_name" in parameters
-            for sat_name in enabled_satellites:
-                norad_id = SATELLITE_NAME_TO_NORAD.get(sat_name)
-                if not norad_id:
-                    continue
+
+            satellite_targets = [
+                (sat_name, SATELLITE_NAME_TO_NORAD.get(sat_name))
+                for sat_name in enabled_satellites
+            ]
+            satellite_targets = [
+                (sat_name, norad_id)
+                for sat_name, norad_id in satellite_targets
+                if norad_id is not None
+            ]
+            if not satellite_targets:
+                return []
+
+            def _fetch_satellite(satellite_target: tuple[str, int]) -> list[PassPrediction]:
+                sat_name, norad_id = satellite_target
                 try:
                     if supports_sat_param:
                         raw_n2yo = self._n2yo.predict(
@@ -74,6 +84,7 @@ class HybridPassPredictor:
                     else:
                         raw_n2yo = self._n2yo.predict(bbox, api_key.strip())
 
+                    passes: list[PassPrediction] = []
                     for item in raw_n2yo:
                         p = dict(item)
                         if "source" not in p or not p["source"]:
@@ -90,11 +101,22 @@ class HybridPassPredictor:
                             p["confidence_score"] = 0.68  # Lower weight for astronomical tracking
                         if not active_sats or p.get("satellite") in active_sats:
                             passes.append(PassPrediction(**p))  # type: ignore[misc]
-                    if not supports_sat_param:
-                        break
+                    return passes
                 except Exception:
-                    continue
-            return passes
+                    return []
+
+            if not supports_sat_param:
+                # Legacy predictors expose only one satellite per call and must
+                # retain the previous single-request behavior.
+                return _fetch_satellite(satellite_targets[0]) if satellite_targets else []
+
+            # Satellite requests are independent. Run them concurrently so one
+            # N2YO timeout cannot serialize the entire AOI check cycle.
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(2, len(satellite_targets))
+            ) as executor:
+                futures = [executor.submit(_fetch_satellite, target) for target in satellite_targets]
+                return [prediction for future in futures for prediction in future.result()]
 
         def _fetch_hist() -> list[PassPrediction]:
             if cached_historical_predictions is not None:
