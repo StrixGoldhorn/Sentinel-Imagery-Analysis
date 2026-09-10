@@ -163,6 +163,15 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("AOI check interval must be at least 1.0 second")
 
+        if key == "post_pass_max_wait_hours":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 168.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Post-pass wait window must be between 1 and 168 hours")
+
         if key == "default_zoom":
             try:
                 ival = int(value)

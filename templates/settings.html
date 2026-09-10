@@ -294,6 +294,12 @@
                             <input type="number" id="input_scheduler_aoi_check_interval_seconds" class="form-input" min="5" max="3600" step="5" value="30">
                         </div>
 
+                        <div class="settings-card">
+                            <label for="input_scheduler_post_pass_max_wait_hours" class="setting-title">Post-Pass Wait Window (Hours)</label>
+                            <p class="setting-description">Keep checking for newly published imagery for this long after a satellite pass. Catalog checks still run every 60 minutes.</p>
+                            <input type="number" id="input_scheduler_post_pass_max_wait_hours" class="form-input" min="1" max="168" step="1" value="24">
+                        </div>
+
                         <div class="settings-card card-info">
                             <div class="card-title-group">
                                 <span class="setting-title">Copernicus product checks</span>

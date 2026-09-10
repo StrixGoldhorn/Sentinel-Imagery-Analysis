@@ -1,6 +1,7 @@
 """Use case to autonomously monitor and ingest Sentinel-1 SAR imagery following satellite passes."""
 
 from datetime import datetime, timedelta, timezone
+import concurrent.futures
 from pathlib import Path
 from typing import Any, Optional
 
@@ -148,6 +149,12 @@ class IngestPostPassImagery:
     @property
     def max_wait_hours(self) -> float:
         return self._max_wait_hours
+
+    def configure_max_wait_hours(self, value: float) -> None:
+        """Update the post-pass wait window for new and active jobs."""
+        self._max_wait_hours = float(value)
+        if hasattr(self._jobs, "configure_max_wait_hours"):
+            self._jobs.configure_max_wait_hours(self._max_wait_hours)
 
     def execute(
         self,
@@ -431,4 +438,30 @@ class IngestPostPassImagery:
                         "next_poll_at": next_poll.isoformat(),
                     })
 
+        return results
+
+    def execute_concurrently(
+        self,
+        batch_limit: int = 1,
+        worker_count: int = 8,
+    ) -> list[dict[str, Any]]:
+        """Process a bounded batch of due jobs across independent ingestion workers."""
+        limit = max(1, min(int(batch_limit), 2000))
+        workers = max(1, min(int(worker_count), 16, limit))
+        if workers == 1:
+            return self.execute(batch_limit=limit)
+
+        results: list[dict[str, Any]] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+            while len(results) < limit:
+                wave_size = min(workers, limit - len(results))
+                futures = [
+                    executor.submit(self.execute, batch_limit=1)
+                    for _ in range(wave_size)
+                ]
+                wave_results = [future.result() for future in futures]
+                processed = [item for group in wave_results for item in group]
+                results.extend(processed)
+                if not processed:
+                    break
         return results

@@ -127,12 +127,21 @@ class ApplicationContainer:
         self.get_vessel_details = GetVesselDetails(self.ais_repository)
         self.update_vessel_details = UpdateVesselDetails(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
+        post_pass_max_wait_hours = 24.0
+        saved_post_pass_wait = self.settings_repository.get("post_pass_max_wait_hours")
+        if saved_post_pass_wait is not None:
+            try:
+                post_pass_max_wait_hours = min(168.0, max(1.0, float(saved_post_pass_wait)))
+            except (ValueError, TypeError):
+                pass
+
         self.ingest_post_pass = IngestPostPassImagery(
             self.post_pass_repository,
             self.aoi_repository,
             self.imagery,
             self.create_scan,
             self.detect_ships,
+            max_wait_hours=post_pass_max_wait_hours,
         )
         self.trigger_automatic_ais = TriggerAutomaticAISScrape(
             self.ingest_ais,
@@ -168,15 +177,6 @@ class ApplicationContainer:
                     scheduler_aoi_interval = float(saved_aoi_interval)
                 except (ValueError, TypeError):
                     pass
-            saved_sar_interval = self.settings_repository.get("sar_scan_interval_seconds")
-            if saved_sar_interval is None:
-                saved_sar_interval = self.settings_repository.get("poll_interval_seconds")
-            if saved_sar_interval is not None:
-                try:
-                    scheduler_sar_interval = float(saved_sar_interval)
-                except (ValueError, TypeError):
-                    pass
-
         self.pass_scheduler = PassSchedulerWorker(
             self.schedule_aois,
             settings.n2yo_api_key or "",

@@ -298,6 +298,7 @@ function collectFormData() {
         scheduler: {
             auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
             aoi_check_interval_seconds: getFloat('input_scheduler_aoi_check_interval_seconds', 30.0),
+            post_pass_max_wait_hours: getFloat('input_scheduler_post_pass_max_wait_hours', 24.0),
             satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
             enabled_satellites: Array.from(document.querySelectorAll('input[name="satellite_selection"]:checked')).map(el => el.value),
         },

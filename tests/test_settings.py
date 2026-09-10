@@ -72,6 +72,7 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.assertFalse(defs["map_ui"]["nautical_chart_default_enabled"]["value"])
         self.assertIn("notifications", defs)
         self.assertEqual(defs["notifications"]["duration_seconds"]["value"], 3.0)
+        self.assertEqual(defs["scheduler"]["post_pass_max_wait_hours"]["value"], 24.0)
 
     def test_environment_owned_values_are_not_stored_or_returned(self):
         self.repo.set("scheduler", "n2yo_api_key", "should_not_persist")
@@ -195,12 +196,18 @@ class TestSettingsUseCases(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.update_settings.execute({"notifications": {"duration_seconds": 0}})
 
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"scheduler": {"post_pass_max_wait_hours": 0}})
+
         self.update_settings.execute({
             "notifications": {"enabled": False, "show_error": True, "duration_seconds": 5}
         })
         notifications = self.get_settings.execute("notifications")
         self.assertFalse(notifications["enabled"])
         self.assertEqual(notifications["duration_seconds"], 5.0)
+
+        self.update_settings.execute({"scheduler": {"post_pass_max_wait_hours": 48}})
+        self.assertEqual(self.get_settings.execute("scheduler")["post_pass_max_wait_hours"], 48.0)
 
 
 class TestSettingsWebAPI(unittest.TestCase):

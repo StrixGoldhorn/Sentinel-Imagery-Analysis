@@ -12,16 +12,24 @@ def _apply_scheduler_settings(app_container) -> dict[str, list[str]]:
     applied: list[str] = []
     errors: list[str] = []
     scheduler = getattr(app_container, "pass_scheduler", None)
-    if scheduler is None:
-        return {"applied": applied, "apply_errors": ["Scheduler is not configured"]}
+    if scheduler is not None:
+        try:
+            aoi_val = app_container.settings_repository.get("aoi_check_interval_seconds")
+            if aoi_val is not None:
+                scheduler.set_aoi_check_interval(float(aoi_val))
+                applied.append("scheduler.aoi_check_interval_seconds")
+        except Exception as exc:
+            errors.append(f"scheduler.aoi_check_interval_seconds: {exc}")
 
-    try:
-        aoi_val = app_container.settings_repository.get("aoi_check_interval_seconds")
-        if aoi_val is not None:
-            scheduler.set_aoi_check_interval(float(aoi_val))
-            applied.append("scheduler.aoi_check_interval_seconds")
-    except Exception as exc:
-        errors.append(f"scheduler.aoi_check_interval_seconds: {exc}")
+    ingest_post_pass = getattr(app_container, "ingest_post_pass", None)
+    if ingest_post_pass is not None:
+        try:
+            wait_val = app_container.settings_repository.get("post_pass_max_wait_hours")
+            if wait_val is not None:
+                ingest_post_pass.configure_max_wait_hours(float(wait_val))
+                applied.append("scheduler.post_pass_max_wait_hours")
+        except Exception as exc:
+            errors.append(f"scheduler.post_pass_max_wait_hours: {exc}")
 
     return {"applied": applied, "apply_errors": errors}
 

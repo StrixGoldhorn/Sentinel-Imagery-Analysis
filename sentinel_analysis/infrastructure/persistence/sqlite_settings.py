@@ -132,6 +132,22 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "min": 5.0,
             "max": 3600.0,
         },
+        "post_pass_max_wait_hours": {
+            "value": 24.0,
+            "type": "number",
+            "label": "Post-Pass Wait Window (Hours)",
+            "description": "How long the system keeps waiting for newly published Copernicus imagery after a satellite pass.",
+            "min": 1.0,
+            "max": 168.0,
+        },
+        "post_pass_worker_count": {
+            "value": 8,
+            "type": "integer",
+            "label": "Post-Pass Ingestion Workers",
+            "description": "Number of concurrent workers used to query and ingest due post-pass imagery jobs.",
+            "min": 1,
+            "max": 16,
+        },
         "auto_capture_default": {
             "value": True,
             "type": "boolean",
