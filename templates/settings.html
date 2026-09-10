@@ -300,6 +300,12 @@
                             <input type="number" id="input_scheduler_post_pass_max_wait_hours" class="form-input" min="1" max="168" step="1" value="24">
                         </div>
 
+                        <div class="settings-card">
+                            <label for="input_scheduler_post_pass_worker_count" class="setting-title">Post-Pass Workers</label>
+                            <p class="setting-description">Number of concurrent jobs used when several due imagery checks are ready. Higher values use more CPU and network capacity.</p>
+                            <input type="number" id="input_scheduler_post_pass_worker_count" class="form-input" min="1" max="16" step="1" value="8">
+                        </div>
+
                         <div class="settings-card card-info">
                             <div class="card-title-group">
                                 <span class="setting-title">Copernicus product checks</span>

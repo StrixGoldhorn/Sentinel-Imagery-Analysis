@@ -15,6 +15,16 @@ from sentinel_analysis.interfaces.web.request_data import RequestValidationError
 blueprint = Blueprint("schedule", __name__)
 
 
+def _get_post_pass_worker_count(cnt) -> int:
+    scheduler = getattr(cnt, "pass_scheduler", None)
+    if scheduler is not None and hasattr(scheduler, "get_post_pass_worker_count"):
+        try:
+            return int(scheduler.get_post_pass_worker_count())
+        except (TypeError, ValueError):
+            pass
+    return 8
+
+
 def _enqueue_post_pass(job_id: int | None = None, batch_limit: int = 1):
     cnt = container()
     ingest_use_case = getattr(cnt, "ingest_post_pass", None)
@@ -25,7 +35,14 @@ def _enqueue_post_pass(job_id: int | None = None, batch_limit: int = 1):
         results = (
             ingest_use_case.execute(job_id=job_id)
             if job_id is not None
-            else ingest_use_case.execute(batch_limit=batch_limit)
+            else (
+                ingest_use_case.execute_concurrently(
+                    batch_limit=batch_limit,
+                    worker_count=_get_post_pass_worker_count(cnt),
+                )
+                if hasattr(ingest_use_case, "execute_concurrently")
+                else ingest_use_case.execute(batch_limit=batch_limit)
+            )
         )
         return {
             "job_id": job_id,

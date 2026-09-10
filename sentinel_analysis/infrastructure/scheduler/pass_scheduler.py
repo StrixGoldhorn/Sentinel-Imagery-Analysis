@@ -25,6 +25,7 @@ from sentinel_analysis.application.shutdown import shutdown_coordinator
 logger = logging.getLogger(__name__)
 
 FIXED_SAR_SCAN_INTERVAL_SECONDS = 60.0 * 60.0
+DEFAULT_POST_PASS_WORKER_COUNT = 8
 
 
 class PassSchedulerWorker:
@@ -125,6 +126,18 @@ class PassSchedulerWorker:
     def get_sar_scan_interval(self) -> float:
         """Return the fixed one-hour interval for SAR catalog checks."""
         return FIXED_SAR_SCAN_INTERVAL_SECONDS
+
+    def get_post_pass_worker_count(self) -> int:
+        """Return the configured number of concurrent post-pass ingestion workers."""
+        worker_count = DEFAULT_POST_PASS_WORKER_COUNT
+        if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
+            try:
+                configured = self._settings_repo.get("post_pass_worker_count")
+                if configured is not None:
+                    worker_count = int(configured)
+            except (TypeError, ValueError):
+                pass
+        return max(1, min(worker_count, 16))
 
     def set_sar_scan_interval(self, seconds: float) -> None:
         """Keep the SAR catalog cadence fixed regardless of supplied settings."""
@@ -257,7 +270,13 @@ class PassSchedulerWorker:
                 due_jobs = self._post_pass_repo.get_jobs_due_for_poll(now)
                 if due_jobs:
                     logger.info("Polling %d due post-pass catalog jobs for SAR imagery...", len(due_jobs))
-                    results = ingest_uc.execute()
+                    if hasattr(ingest_uc, "execute_concurrently"):
+                        results = ingest_uc.execute_concurrently(
+                            batch_limit=len(due_jobs),
+                            worker_count=self.get_post_pass_worker_count(),
+                        )
+                    else:
+                        results = ingest_uc.execute()
                 self._last_sar_scan_at = now
                 self._last_sar_error = None
                 return results
@@ -380,6 +399,7 @@ class PassSchedulerWorker:
             "aoi_check_interval_seconds": self.get_aoi_check_interval(),
             "sar_scan_interval_seconds": self.get_sar_scan_interval(),
             "poll_interval_seconds": self.get_poll_interval(),
+            "post_pass_worker_count": self.get_post_pass_worker_count(),
             "last_run_at": self._last_run_at.isoformat() if self._last_run_at else None,
             "last_aoi_check_at": self._last_aoi_check_at.isoformat() if self._last_aoi_check_at else None,
             "last_sar_scan_at": self._last_sar_scan_at.isoformat() if self._last_sar_scan_at else None,

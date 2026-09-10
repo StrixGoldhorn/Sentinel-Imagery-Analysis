@@ -304,6 +304,26 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
         jobs.claim_jobs_due_for_poll.assert_called_once()
         self.assertEqual(jobs.claim_jobs_due_for_poll.call_args.kwargs["limit"], 25)
 
+    def test_concurrent_processing_uses_multiple_claiming_workers(self):
+        now = datetime.now(timezone.utc)
+        for offset in (1, 2):
+            self.post_pass_repo.add(PostPassIngestionJob(
+                aoi_id=self.aoi_id,
+                pass_time=now - timedelta(minutes=20 + offset),
+                status="POLLING_CATALOG",
+                next_poll_at=now - timedelta(seconds=1),
+            ))
+        self.mock_imagery.search_historical_acquisitions.return_value = []
+
+        results = self.use_case.execute_concurrently(batch_limit=2, worker_count=2)
+
+        self.assertEqual(len(results), 2)
+        self.assertTrue(all(item["status"] == "POLLING_CATALOG" for item in results))
+        self.assertEqual(
+            len(self.post_pass_repo.get_jobs_due_for_poll(datetime.now(timezone.utc))),
+            0,
+        )
+
     def test_fixed_hourly_interval_when_no_image_ready(self):
         now = datetime.now(timezone.utc)
         pass_time = now - timedelta(minutes=15)

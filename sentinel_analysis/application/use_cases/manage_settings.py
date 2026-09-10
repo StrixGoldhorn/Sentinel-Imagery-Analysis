@@ -172,6 +172,15 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("Post-pass wait window must be between 1 and 168 hours")
 
+        if key == "post_pass_worker_count":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 16):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("Post-pass worker count must be an integer between 1 and 16")
+
         if key == "default_zoom":
             try:
                 ival = int(value)

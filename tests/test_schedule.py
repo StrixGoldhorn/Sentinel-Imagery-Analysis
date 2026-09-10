@@ -351,6 +351,7 @@ def test_pass_scheduler_worker_default_intervals_30s_aoi_and_hourly_sar() -> Non
     assert worker.get_aoi_check_interval() == 30.0
     assert worker.get_sar_scan_interval() == 3600.0
     assert worker.get_poll_interval() == 3600.0
+    assert worker.get_post_pass_worker_count() == 8
 
     status = worker.get_status()
     assert status["aoi_check_interval_seconds"] == 30.0
