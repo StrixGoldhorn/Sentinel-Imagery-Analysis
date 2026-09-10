@@ -21,7 +21,7 @@ from sentinel_analysis.interfaces.web.request_data import RequestValidationError
 
 
 def _error(message: str, status: int):
-    return jsonify(error=message), status
+    return jsonify(status="error", error=message), status
 
 
 def register_error_handlers(app: Flask) -> None:

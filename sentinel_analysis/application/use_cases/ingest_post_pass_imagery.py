@@ -155,7 +155,17 @@ class IngestPostPassImagery:
     def max_wait_hours(self) -> float:
         return self._max_wait_hours
 
-    def execute(self, job_id: Optional[int] = None) -> list[dict[str, Any]]:
+    def execute(
+        self,
+        job_id: Optional[int] = None,
+        batch_limit: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Process one requested job or a bounded batch of due jobs.
+
+        The periodic scheduler intentionally keeps the default batch size at one.
+        Explicit "poll all" requests can supply a larger bound without changing
+        scheduler fairness or allowing an unbounded background task.
+        """
         now = datetime.now(timezone.utc)
         if job_id is not None:
             if hasattr(self._jobs, "claim_job"):
@@ -171,10 +181,11 @@ class IngestPostPassImagery:
                 job = self._jobs.get(job_id)
             jobs_to_process = [job] if job is not None else []
         else:
+            claim_limit = max(1, min(int(batch_limit), 2000))
             if hasattr(self._jobs, "claim_jobs_due_for_poll"):
-                jobs_to_process = self._jobs.claim_jobs_due_for_poll(now)
+                jobs_to_process = self._jobs.claim_jobs_due_for_poll(now, limit=claim_limit)
             else:
-                jobs_to_process = self._jobs.get_jobs_due_for_poll(now)
+                jobs_to_process = self._jobs.get_jobs_due_for_poll(now)[:claim_limit]
 
         results: list[dict[str, Any]] = []
 

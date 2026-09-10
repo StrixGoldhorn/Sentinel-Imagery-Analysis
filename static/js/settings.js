@@ -5,6 +5,26 @@
 let currentSection = 'cv';
 let currentSettings = {};
 
+async function loadSettingsRuntimeStatus() {
+    const statusEl = document.getElementById('settingsRuntimeStatus');
+    if (!statusEl) return;
+    const statusDot = statusEl.parentElement ? statusEl.parentElement.querySelector('.status-pulse') : null;
+    try {
+        const res = await fetch('/api/schedule/status');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.status !== 'success') throw new Error(data.error || `HTTP ${res.status}`);
+        const scheduler = data.scheduler || {};
+        const state = String(scheduler.operational_status || scheduler.health || 'UNKNOWN').toUpperCase();
+        statusEl.textContent = `Scheduler runtime: ${state}`;
+        if (statusDot) {
+            statusDot.style.backgroundColor = state === 'RUNNING' ? '#10b981' : (state === 'DEGRADED' ? '#f59e0b' : '#64748b');
+        }
+    } catch (err) {
+        statusEl.textContent = 'Scheduler runtime: UNAVAILABLE';
+        if (statusDot) statusDot.style.backgroundColor = '#64748b';
+    }
+}
+
 function initNavTabs() {
     document.querySelectorAll('.nav-tab-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -20,6 +40,7 @@ function initNavTabs() {
 document.addEventListener('DOMContentLoaded', () => {
     initNavTabs();
     loadSettings();
+    loadSettingsRuntimeStatus();
 });
 
 function switchSection(sectionId) {
@@ -230,8 +251,15 @@ async function saveAllSettings() {
 
         const data = await res.json();
         if (data.status === 'success') {
-            showToast('Settings updated successfully', true);
+            const errors = Array.isArray(data.apply_errors) ? data.apply_errors : [];
+            const restart = Array.isArray(data.requires_restart) ? data.requires_restart : [];
+            const details = [
+                errors.length ? `Runtime apply errors: ${errors.join('; ')}` : '',
+                restart.length ? `Restart required for: ${restart.join(', ')}` : '',
+            ].filter(Boolean).join(' ');
+            showToast(details || 'Settings saved and live runtime settings applied', errors.length === 0);
             await loadSettings();
+            await loadSettingsRuntimeStatus();
         } else {
             showToast(data.error || 'Failed to save settings', false);
         }
@@ -263,8 +291,14 @@ async function resetCurrentSection() {
 
         const data = await res.json();
         if (data.status === 'success') {
-            showToast(data.message || `Reset ${currentSection} to defaults`, true);
+            const errors = Array.isArray(data.apply_errors) ? data.apply_errors : [];
+            const restart = Array.isArray(data.requires_restart) ? data.requires_restart : [];
+            const details = [data.message || `Reset ${currentSection} to defaults`];
+            if (errors.length) details.push(`Runtime apply errors: ${errors.join('; ')}`);
+            if (restart.length) details.push(`Restart required for: ${restart.join(', ')}`);
+            showToast(details.join(' '), errors.length === 0);
             await loadSettings();
+            await loadSettingsRuntimeStatus();
         } else {
             showToast(data.error || 'Failed to reset section', false);
         }

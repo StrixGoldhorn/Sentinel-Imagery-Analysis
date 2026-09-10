@@ -332,6 +332,7 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status["poll_interval_seconds"] == 60.0
     assert status["aoi_check_interval_seconds"] == 30.0
     assert status["sar_scan_interval_seconds"] == 60.0
+    assert status["operational_status"] == "STOPPED"
 
     results = worker.trigger_check()
     assert results == []

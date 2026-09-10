@@ -8,6 +8,11 @@ from typing import Optional
 from sentinel_analysis.domain.exceptions import DomainValidationError
 
 
+BACKGROUND_TASK_STATUSES = frozenset({
+    "PENDING", "QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED",
+})
+
+
 def _number(value: object, field_name: str) -> float:
     try:
         normalized = float(value)
@@ -267,7 +272,12 @@ class BackgroundTask:
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _required_text(self.task_id, "Task ID"))
         object.__setattr__(self, "task_type", _required_text(self.task_type, "Task type"))
-        object.__setattr__(self, "status", _required_text(self.status, "Task status").upper())
+        normalized_status = _required_text(self.status, "Task status").upper()
+        if normalized_status not in BACKGROUND_TASK_STATUSES:
+            raise DomainValidationError(
+                f"Task status must be one of: {', '.join(sorted(BACKGROUND_TASK_STATUSES))}"
+            )
+        object.__setattr__(self, "status", normalized_status)
         progress = _number(self.progress, "Task progress")
         if not 0.0 <= progress <= 100.0:
             raise DomainValidationError("Task progress must be between 0.0 and 100.0")

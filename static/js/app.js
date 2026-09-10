@@ -82,7 +82,7 @@ function searchLocation() {
 const C2_PANELS = {
     scan: { title: 'SAR Area Scan', badge: 'SAR', pageId: 'scan-page' },
     layers: { title: 'Layers & Nautical Charts', badge: 'LAYERS', pageId: 'layers-page' },
-    ais: { title: 'Live AIS Vessels', badge: 'AIS', pageId: 'ais-page' },
+    ais: { title: 'Latest AIS Reports', badge: 'AIS', pageId: 'ais-page' },
     aoi: { title: 'Areas of Interest (AOIs)', badge: 'AOI', pageId: 'aoi-page' }
 };
 
@@ -536,10 +536,10 @@ function openShipDetailsSidebar(vessel) {
 
     const speed = (vessel.speed !== undefined && vessel.speed !== null && !isNaN(vessel.speed)) ? Number(vessel.speed) :
                   (vessel.speed_knots !== undefined && vessel.speed_knots !== null && !isNaN(vessel.speed_knots)) ? Number(vessel.speed_knots) :
-                  (vessel.sog !== undefined && vessel.sog !== null && !isNaN(vessel.sog)) ? Number(vessel.sog) : 0;
+                  (vessel.sog !== undefined && vessel.sog !== null && !isNaN(vessel.sog)) ? Number(vessel.sog) : null;
     if (statusTag) {
-        statusTag.textContent = speed > 0.5 ? 'Underway using Engine' : 'Moored / Stationary';
-        statusTag.style.color = speed > 0.5 ? '#10b981' : '#f59e0b';
+        statusTag.textContent = speed === null ? 'Movement Unknown' : (speed > 0.5 ? 'Moving' : 'Stationary or Unknown');
+        statusTag.style.color = speed === null ? '#64748b' : (speed > 0.5 ? '#10b981' : '#f59e0b');
     }
 
     if (mmsiEl) mmsiEl.textContent = vessel.mmsi || 'N/A';

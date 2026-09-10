@@ -264,6 +264,24 @@ def test_list_scrapers_use_case() -> None:
     assert scraper_b["enabled"] is False
 
 
+def test_success_rates_preserve_zero_and_report_no_attempts_as_unknown() -> None:
+    repo = MemoryAISRepository()
+    failed_plugin = DummyPlugin("FailurePlugin")
+    unused_plugin = DummyPlugin("UnusedPlugin")
+    registry = DynamicAISPluginRegistry([failed_plugin, unused_plugin])
+    repo.set_scraper_config("FailurePlugin", True)
+    repo.set_scraper_config("UnusedPlugin", True)
+    repo.log_execution("FailurePlugin", "FAILED", 0, "provider failed")
+
+    result = ListScrapers(registry, repo).execute()
+    failed = next(item for item in result["scrapers"] if item["name"] == "FailurePlugin")
+    unused = next(item for item in result["scrapers"] if item["name"] == "UnusedPlugin")
+
+    assert result["metrics"]["overall_success_rate"] == 0.0
+    assert failed["success_rate"] == 0.0
+    assert unused["success_rate"] is None
+
+
 def test_toggle_scraper_use_case() -> None:
     repo = MemoryAISRepository()
     plugin = DummyPlugin("TogglePlugin")
@@ -594,8 +612,13 @@ def test_sqlite_ais_repository_trigger_logging_and_reason() -> None:
 
     # 1. Log upfront trigger (status RUNNING)
     log_id = repo.log_trigger("TestTriggerPlugin", trigger_reason="Satellite Flypast (Singapore Strait)", status="RUNNING")
+    triggered_id = repo.log_trigger("TestTriggerPlugin", trigger_reason="Manual trigger", status="TRIGGERED")
     assert isinstance(log_id, int)
     assert log_id > 0
+
+    active_logs = repo.get_scraper_logs(status="ACTIVE")
+    assert len(active_logs) == 2
+    assert {entry["status"] for entry in active_logs} == {"RUNNING", "TRIGGERED"}
 
     running_logs = repo.get_scraper_logs(status="RUNNING")
     assert len(running_logs) == 1
@@ -605,12 +628,13 @@ def test_sqlite_ais_repository_trigger_logging_and_reason() -> None:
 
     # 2. Update to SUCCESS
     repo.update_execution_log(log_id, status="SUCCESS", records_inserted=42, error_message=None)
+    repo.update_execution_log(triggered_id, status="SUCCESS", records_inserted=0, error_message=None)
     success_logs = repo.get_scraper_logs(status="SUCCESS")
-    assert len(success_logs) == 1
-    assert success_logs[0]["plugin_name"] == "TestTriggerPlugin"
-    assert success_logs[0]["status"] == "SUCCESS"
-    assert success_logs[0]["records_inserted"] == 42
-    assert success_logs[0]["trigger_reason"] == "Satellite Flypast (Singapore Strait)"
+    assert len(success_logs) == 2
+    flypast_log = next(entry for entry in success_logs if entry["records_inserted"] == 42)
+    assert flypast_log["plugin_name"] == "TestTriggerPlugin"
+    assert flypast_log["status"] == "SUCCESS"
+    assert flypast_log["trigger_reason"] == "Satellite Flypast (Singapore Strait)"
 
     # 3. Log DISABLED_SKIPPED with trigger_reason
     repo.log_execution("DisabledPlugin", "DISABLED_SKIPPED", 0, "Skipped: disabled", trigger_reason="Satellite Flypast (Singapore Strait)")
@@ -622,7 +646,7 @@ def test_sqlite_ais_repository_trigger_logging_and_reason() -> None:
 
     stats = repo.get_scraper_stats()
     assert "TestTriggerPlugin" in stats
-    assert stats["TestTriggerPlugin"]["success_runs"] == 1
+    assert stats["TestTriggerPlugin"]["success_runs"] == 2
     assert "DisabledPlugin" in stats
     assert stats["DisabledPlugin"]["disabled_runs"] == 1
 
@@ -780,4 +804,3 @@ def load_tests(loader, standard_tests, pattern):
         if name.startswith("test_") and inspect.isfunction(obj):
             suite.addTest(unittest.FunctionTestCase(obj))
     return suite
-

@@ -65,7 +65,10 @@ function updateSummaryMetrics(metrics) {
     const recordsEl = document.getElementById('summaryTotalRecords');
 
     if (totalEl) totalEl.textContent = (metrics.total_runs || 0).toLocaleString();
-    if (rateEl) rateEl.textContent = `${metrics.overall_success_rate || 100}%`;
+    if (rateEl) {
+        const rate = metrics.overall_success_rate;
+        rateEl.textContent = rate === null || rate === undefined ? 'N/A' : `${rate}%`;
+    }
     if (recordsEl) recordsEl.textContent = (metrics.total_records || 0).toLocaleString();
 }
 
@@ -127,9 +130,9 @@ function renderLogsTable(logs) {
         } else if (isDisabled) {
             statusBadge = `<span class="status-pill status-disabled">DISABLED</span>`;
         } else if (isRunning) {
-            statusBadge = `<span class="status-pill status-running"><span class="pulse-dot"></span> RUNNING</span>`;
+            statusBadge = `<span class="status-pill status-running"><span class="pulse-dot"></span> ${escapeHtml(log.status)}</span>`;
         } else {
-            statusBadge = `<span class="status-pill status-failed">${escapeHtml(log.status || 'FAILED')}</span>`;
+            statusBadge = `<span class="status-pill status-disabled">${escapeHtml(log.status || 'UNKNOWN')}</span>`;
         }
 
         const timeFormatted = formatUtcTime(log.timestamp);
@@ -331,4 +334,3 @@ async function reconcileStaleLogs() {
         alert('Network error while reconciling logs.');
     }
 }
-

@@ -46,7 +46,8 @@ function updateMetrics(metrics) {
 
     if (activeEl) {
         const cooling = metrics.cooling_scrapers ? ` (${metrics.cooling_scrapers} in cooldown)` : '';
-        activeEl.textContent = `${metrics.active_scrapers || 0} / ${metrics.total_scrapers || 0} Active${cooling}`;
+        const enabled = metrics.enabled_scrapers ?? metrics.active_scrapers ?? 0;
+        activeEl.textContent = `${enabled} / ${metrics.total_scrapers || 0} Enabled${cooling}`;
     }
     if (runsEl) {
         runsEl.textContent = (metrics.total_runs || 0).toLocaleString();
@@ -55,7 +56,8 @@ function updateMetrics(metrics) {
         recordsEl.textContent = (metrics.total_records_ingested || 0).toLocaleString();
     }
     if (rateEl) {
-        rateEl.textContent = `${metrics.overall_success_rate || 100}%`;
+        const rate = metrics.overall_success_rate;
+        rateEl.textContent = rate === null || rate === undefined ? 'N/A' : `${rate}%`;
     }
 }
 
@@ -129,7 +131,7 @@ function renderScrapers() {
                         </div>
                         <div class="switch-container">
                             <span class="switch-label ${s.enabled ? 'on' : 'off'}" id="label-${s.name}">
-                                ${s.enabled ? 'Active' : 'Disabled'}
+                                ${escapeHtml(s.operational_state || (s.enabled ? 'READY' : 'DISABLED'))}
                             </span>
                             <label class="toggle-switch">
                                 <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleScraper('${s.name}', this)">
@@ -145,7 +147,7 @@ function renderScrapers() {
                     ${s.is_cooling_down ? `
                         <div class="cooldown-alert-box">
                             <div class="cooldown-text">
-                                <div>Bot protection/rate limit detected. Resumes in <strong class="cooldown-timer" data-seconds="${s.cooldown_remaining_seconds}">${formatDuration(s.cooldown_remaining_seconds)}</strong></div>
+                                <div>Bot protection/rate limit detected. Cooldown ends in <strong class="cooldown-timer" data-seconds="${s.cooldown_remaining_seconds}">${formatDuration(s.cooldown_remaining_seconds)}</strong></div>
                                 ${s.last_failure_reason ? `<div class="cooldown-reason">${escapeHtml(s.last_failure_reason)}</div>` : ''}
                             </div>
                             <button type="button" class="btn-reset-cooldown" onclick="resetCooldown('${s.name}')">Reset</button>
@@ -164,7 +166,9 @@ function renderScrapers() {
                         <div class="s-stat-item">
                             <span class="s-stat-label">Success Rate</span>
                             <span class="s-stat-value ${s.enabled ? (s.success_rate >= 90 ? 'success' : 'danger') : 'disabled'}" style="${!s.enabled ? 'color: #94a3b8;' : ''}" title="${!s.enabled ? 'Disabled scraper - excluded from overall success rate' : ''}">
-                                ${s.enabled ? `${s.success_rate}%` : (s.total_runs > 0 ? `${s.success_rate}% (Disabled)` : 'Disabled')}
+                                ${s.enabled
+                                    ? (s.success_rate === null || s.success_rate === undefined ? 'N/A' : `${s.success_rate}%`)
+                                    : (s.success_rate === null || s.success_rate === undefined ? 'Disabled' : `${s.success_rate}% (Disabled)`)}
                             </span>
                         </div>
                     </div>
@@ -245,7 +249,7 @@ async function toggleScraper(pluginName, checkbox) {
     const cardEl = document.getElementById(`card-${pluginName}`);
 
     if (labelEl) {
-        labelEl.textContent = enabled ? 'Active' : 'Disabled';
+        labelEl.textContent = enabled ? 'READY' : 'DISABLED';
         labelEl.className = `switch-label ${enabled ? 'on' : 'off'}`;
     }
     if (cardEl) {
@@ -263,11 +267,14 @@ async function toggleScraper(pluginName, checkbox) {
         if (data.status === 'success') {
             showToast(`Scraper "${pluginName}" is now ${enabled ? 'ENABLED' : 'DISABLED'}.`, 'success');
             const target = allScrapers.find(s => s.name === pluginName);
-            if (target) target.enabled = enabled;
+            if (target) {
+                target.enabled = enabled;
+                target.operational_state = enabled ? 'READY' : 'DISABLED';
+            }
             const activeCount = allScrapers.filter(s => s.enabled).length;
             const activeEl = document.getElementById('metricActiveScrapers');
             if (activeEl) {
-                activeEl.textContent = `${activeCount} / ${allScrapers.length} Active`;
+                activeEl.textContent = `${activeCount} / ${allScrapers.length} Enabled`;
             }
         } else {
             throw new Error(data.error || 'Server rejected toggle');
@@ -275,7 +282,7 @@ async function toggleScraper(pluginName, checkbox) {
     } catch (err) {
         checkbox.checked = !enabled;
         if (labelEl) {
-            labelEl.textContent = !enabled ? 'Active' : 'Disabled';
+            labelEl.textContent = !enabled ? 'READY' : 'DISABLED';
             labelEl.className = `switch-label ${!enabled ? 'on' : 'off'}`;
         }
         if (cardEl) {
@@ -442,7 +449,7 @@ async function resetCooldown(pluginName) {
         const data = await response.json();
 
         if (data.status === 'success') {
-            showToast(`Cooldown reset for "${pluginName}". Automated scraping will resume.`, 'success');
+            showToast(`Cooldown cleared for "${pluginName}". Its enabled setting was not changed.`, 'success');
             loadScrapersData();
         } else {
             showToast(`Failed to reset cooldown: ${data.error || 'Unknown error'}`, 'error');
@@ -592,4 +599,3 @@ function showError(msg) {
         `;
     }
 }
-

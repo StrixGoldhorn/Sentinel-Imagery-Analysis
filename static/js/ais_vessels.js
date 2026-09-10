@@ -125,7 +125,7 @@ function updateSliderBoundsDisplay() {
         minLabel.textContent = formatAisShortDate(aisTimelineState.minTime);
     }
     if (maxLabel) {
-        maxLabel.textContent = aisTimelineState.isLive ? 'Now (Live)' : formatAisShortDate(aisTimelineState.maxTime);
+        maxLabel.textContent = aisTimelineState.isLive ? 'Now (Latest)' : formatAisShortDate(aisTimelineState.maxTime);
     }
 }
 
@@ -210,7 +210,7 @@ function setSliderValue(val) {
 function updateTimelineLabels(targetTs) {
     const isLive = aisTimelineState.isLive;
     const displayStr = isLive 
-        ? 'Live Positions (Last 12h)' 
+        ? 'Latest Stored Positions (Last 12h)'
         : `Historical: ${formatAisDateTime(targetTs)}`;
 
     const sidebarDisplay = document.getElementById('aisSelectedDateDisplay');
@@ -224,17 +224,17 @@ function updateTimelineLabels(targetTs) {
         sidebarDisplay.style.borderColor = isLive ? '#28a745' : '#007bff';
     }
     if (floatingDisplay) {
-        floatingDisplay.textContent = isLive ? 'Live Positions (12h)' : formatAisDateTime(targetTs);
+        floatingDisplay.textContent = isLive ? 'Latest Stored Positions (12h)' : formatAisDateTime(targetTs);
     }
     if (sidebarBadge) {
-        sidebarBadge.textContent = isLive ? 'LIVE' : 'HISTORY';
-        sidebarBadge.className = isLive ? 'badge badge-success' : 'badge badge-warning';
-        sidebarBadge.style.backgroundColor = isLive ? '#28a745' : '#fd7e14';
+        sidebarBadge.textContent = isLive ? 'LATEST' : 'HISTORY';
+        sidebarBadge.className = isLive ? 'badge badge-primary' : 'badge badge-warning';
+        sidebarBadge.style.backgroundColor = isLive ? '#0284c7' : '#fd7e14';
     }
     if (floatingBadge) {
-        floatingBadge.textContent = isLive ? 'LIVE' : 'HISTORY';
-        floatingBadge.className = isLive ? 'badge badge-success' : 'badge badge-warning';
-        floatingBadge.style.backgroundColor = isLive ? '#28a745' : '#fd7e14';
+        floatingBadge.textContent = isLive ? 'LATEST' : 'HISTORY';
+        floatingBadge.className = isLive ? 'badge badge-primary' : 'badge badge-warning';
+        floatingBadge.style.backgroundColor = isLive ? '#0284c7' : '#fd7e14';
     }
 }
 
@@ -936,4 +936,3 @@ async function saveVesselDetails(event) {
         }
     }
 }
-

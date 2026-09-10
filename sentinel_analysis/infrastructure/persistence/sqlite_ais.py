@@ -627,8 +627,12 @@ class SQLiteAISRepository:
             where_clauses.append("plugin_name = ?")
             params.append(plugin_name)
         if status:
-            where_clauses.append("status = ?")
-            params.append(status.upper())
+            normalized_status = status.upper()
+            if normalized_status == "ACTIVE":
+                where_clauses.append("status IN ('RUNNING', 'TRIGGERED')")
+            else:
+                where_clauses.append("status = ?")
+                params.append(normalized_status)
 
         has_reason_col = False
         try:
@@ -697,5 +701,4 @@ class SQLiteAISRepository:
                     "last_run_at": _normalize_utc_iso(row[8]),
                 }
         return stats
-
 

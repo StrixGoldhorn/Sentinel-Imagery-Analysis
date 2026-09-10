@@ -384,12 +384,13 @@ async function forceScanAOI(aoiId, btnElement = null) {
 
         if (res.ok && data.status === 'success') {
             const count = (data.results && data.results.total_inserted) || 0;
-            showNotification(`Force AIS scan complete for ${safeAoiName}: ${count} vessel records ingested into database.`, "success", {
+            const outcome = getIngestionOutcomePresentation(data.ingestion_outcome, 'Force AIS scan');
+            showNotification(`Force AIS scan ${outcome.label} for ${safeAoiName}: ${count} vessel records ingested into database.`, outcome.type, {
                 autoClose: false,
                 closable: true,
                 showAckButton: true,
                 ackText: "Dismiss",
-                title: "✅ Force Scan Results"
+                title: outcome.title
             });
             if (typeof refreshAISVessels === 'function' && typeof map !== 'undefined' && map) {
                 refreshAISVessels(map);

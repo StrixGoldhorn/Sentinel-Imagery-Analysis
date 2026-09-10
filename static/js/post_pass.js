@@ -88,7 +88,7 @@ function updateLiveCountdowns() {
                 if (cell && !cell.classList.contains('is-due')) {
                     cell.classList.add('is-due');
                     const row = cell.closest('tr');
-                    const statusBadge = row ? row.querySelector('.post-pass-status-badge') : null;
+                    const statusBadge = row ? row.querySelector('.post-pass-status-badge .badge') : null;
                     if (statusBadge) {
                         statusBadge.textContent = 'Ready for Catalog Check';
                         statusBadge.style.background = '#dbeafe';
@@ -108,6 +108,16 @@ function updateLiveCountdowns() {
                     }
                 }
             }
+        }
+    });
+
+    // Pending jobs use an authoritative backend schedule but must not be
+    // presented as POLLING_CATALOG until the backend transitions them.
+    document.querySelectorAll('.live-pending-poll-countdown').forEach(el => {
+        const targetMs = parseInt(el.getAttribute('data-timestamp'), 10);
+        if (!isNaN(targetMs)) {
+            const diffSec = Math.round((targetMs - nowMs) / 1000);
+            el.textContent = diffSec > 0 ? `In ${formatDuration(diffSec, true)}` : 'Due; awaiting state transition';
         }
     });
 
@@ -323,6 +333,7 @@ function applyPostPassFilters() {
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
         const effectiveStatus = getCanonicalPostPassStatus(job);
+        const displayStatus = getPostPassDisplayStatus(job, now);
 
         if (selectedStatus) {
             if (selectedStatus === 'FAILED') {
@@ -341,7 +352,9 @@ function applyPostPassFilters() {
             const aoiMatch = (job.aoi_name || '').toLowerCase().includes(query);
             const satMatch = (job.satellite || '').toLowerCase().includes(query);
             const scanMatch = (job.scan_folder || '').toLowerCase().includes(query);
-            const statusMatch = (job.status || '').toLowerCase().includes(query) || effectiveStatus.toLowerCase().includes(query);
+            const statusMatch = (job.status || '').toLowerCase().includes(query)
+                || effectiveStatus.toLowerCase().includes(query)
+                || displayStatus.toLowerCase().includes(query);
             const errMatch = (job.error_message || '').toLowerCase().includes(query);
             if (!aoiMatch && !satMatch && !scanMatch && !statusMatch && !errMatch) {
                 return false;
@@ -520,7 +533,7 @@ function renderPostPassTable(jobs) {
                 if (secToPoll > 0) {
                     passLine = `
                         <div style="color: #4f46e5; font-weight: 600;">
-                            Catalog polling <span class="live-poll-countdown" data-timestamp="${nextPollDt.getTime()}" data-attempts="${job.attempts || 0}">In ${formatDuration(secToPoll, true)}</span>
+                            Catalog polling <span class="live-pending-poll-countdown" data-timestamp="${nextPollDt.getTime()}">In ${formatDuration(secToPoll, true)}</span>
                         </div>
                         <div style="font-size: 0.78rem; color: #64748b;">Backend schedule: ${nextPollDt.toLocaleString()}</div>
                     `;

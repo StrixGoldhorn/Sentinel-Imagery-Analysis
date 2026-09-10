@@ -24,7 +24,7 @@
             <div class="telemetry-right">
                 <div class="telemetry-item" id="navNextActItem" title="Next scheduled automation or satellite pass">
                     <span class="beacon-dot" id="navNextActDot" style="width: 6px; height: 6px;"></span>
-                    <span id="navNextActText">Scheduler: <strong style="color: #2ecc71;">Active</strong></span>
+                    <span id="navNextActText">Scheduler: <strong style="color: #95a5a6;">Checking…</strong></span>
                 </div>
                 <span class="telemetry-divider">|</span>
                 <a href="/logs" class="telemetry-link" title="View Ingestion & Scraper Execution Logs">
@@ -113,6 +113,7 @@
 
     {% block content %}{% endblock %}
 
+    <script src="{{ url_for('static', filename='js/status_utils.js') }}"></script>
     <script>
         // 1. Live Zulu & Local Clocks and Next Act Countdown
         let navNextActData = null;
@@ -169,6 +170,23 @@
             const actTextEl = document.getElementById('navNextActText');
             const actDotEl = document.getElementById('navNextActDot');
             if (actTextEl) {
+                const schedulerState = navSchedulerInfo ? navSchedulerInfo.operationalStatus : 'UNREACHABLE';
+                if (schedulerState !== 'RUNNING') {
+                    const labels = {
+                        DEGRADED: ['Degraded', '#f39c12'],
+                        STANDBY: ['Standby', '#3498db'],
+                        STOPPED: ['Stopped', '#e74c3c'],
+                        UNREACHABLE: ['Unavailable', '#95a5a6']
+                    };
+                    const [label, color] = labels[schedulerState] || ['Unknown', '#95a5a6'];
+                    actTextEl.innerHTML = `Scheduler: <strong style="color: ${color};">${label}</strong>`;
+                    if (actDotEl) {
+                        actDotEl.style.backgroundColor = color;
+                        actDotEl.style.boxShadow = 'none';
+                    }
+                    return;
+                }
+
                 // Check if any pass is currently active (±5 min flypast window)
                 const activePass = navEvents.find(e => {
                     const diff = e.passMs - nowMs;
@@ -291,14 +309,22 @@
                 if (res.ok) {
                     const data = await res.json();
                     const s = data.scheduler;
-                    const isRunning = Boolean(s && (s.is_running || s.thread_alive));
+                    const fallbackStatus = !s || !s.is_running
+                        ? 'STOPPED'
+                        : (!s.thread_alive || String(s.health || '').toUpperCase() === 'DEGRADED' ? 'DEGRADED' : 'RUNNING');
+                    const operationalStatus = String((s && s.operational_status) || fallbackStatus).toUpperCase();
                     navSchedulerInfo = {
-                        isRunning: isRunning,
+                        isRunning: operationalStatus === 'RUNNING',
+                        operationalStatus: operationalStatus,
                         lastRunMs: s && (s.last_aoi_check_at || s.last_run_at) ? new Date(s.last_aoi_check_at || s.last_run_at).getTime() : Date.now(),
                         pollIntervalMs: (s && s.aoi_check_interval_seconds ? s.aoi_check_interval_seconds : 30) * 1000
                     };
+                } else {
+                    navSchedulerInfo = { isRunning: false, operationalStatus: 'UNREACHABLE' };
                 }
-            } catch (err) {}
+            } catch (err) {
+                navSchedulerInfo = { isRunning: false, operationalStatus: 'UNREACHABLE' };
+            }
 
             updateClocks();
 

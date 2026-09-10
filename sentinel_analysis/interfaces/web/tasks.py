@@ -70,10 +70,17 @@ def get_task_status(task_id: str):
     if task is None:
         raise TaskNotFoundError(f"Task not found: {task_id}")
 
+    terminal_statuses = {"COMPLETED", "FAILED", "CANCELLED"}
+    active_statuses = {"PENDING", "QUEUED", "RUNNING"}
+    terminal = task.status in ("COMPLETED", "FAILED", "CANCELLED")
     return jsonify({
         "task_id": task.task_id,
         "task_type": task.task_type,
         "status": task.status,
+        "status_group": "TERMINAL" if terminal else "ACTIVE",
+        "terminal": terminal,
+        "status_group": "ACTIVE" if task.status in active_statuses else "TERMINAL",
+        "terminal": task.status in terminal_statuses,
         "progress": task.progress,
         "message": task.message,
         "result": task.result,

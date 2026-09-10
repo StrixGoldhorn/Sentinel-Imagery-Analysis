@@ -116,6 +116,12 @@ def test_background_task_lifecycle_and_defaults() -> None:
     assert task.progress == 0.0
     assert task.error is None
 
+    try:
+        BackgroundTask(task_id="t2", task_type="scan", status="MYSTERY")
+        assert False, "Expected DomainValidationError"
+    except DomainValidationError:
+        pass
+
 
 def load_tests(loader, standard_tests, pattern):
     import inspect
@@ -128,5 +134,3 @@ def load_tests(loader, standard_tests, pattern):
 
 if __name__ == "__main__":
     unittest.main()
-
-

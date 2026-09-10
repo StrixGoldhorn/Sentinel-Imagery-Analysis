@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-refresh schedule every 30 seconds
     setInterval(() => {
+        loadSchedule();
         loadSchedulerStatus();
         loadLogs();
     }, 30000);
@@ -468,27 +469,32 @@ function formatCountdown(passTimeStr, isLive) {
 }
 
 async function loadSchedulerStatus() {
+    const badge = document.getElementById('schedulerBadge');
+    const text = document.getElementById('schedulerStatusText');
+    const pollRate = document.getElementById('schedulerPollRate');
+    const lastRun = document.getElementById('schedulerLastRun');
     try {
         const response = await fetch('/api/schedule/status');
         const data = await response.json();
-        if (data.status !== 'success') return;
+        if (!response.ok || data.status !== 'success') {
+            throw new Error(data.error || `HTTP ${response.status}`);
+        }
 
         const s = data.scheduler || {};
-        const badge = document.getElementById('schedulerBadge');
-        const text = document.getElementById('schedulerStatusText');
-        const pollRate = document.getElementById('schedulerPollRate');
-        const lastRun = document.getElementById('schedulerLastRun');
-
-        if (s.is_running && s.thread_alive) {
-            const degraded = String(s.health || '').toUpperCase() === 'DEGRADED' || Boolean(s.last_error);
-            if (badge) badge.className = degraded ? 'scheduler-badge scheduler-stopped' : 'scheduler-badge scheduler-running';
-            if (text) text.textContent = degraded
-                ? `Scheduler Degraded: ${s.last_error || 'one or more checks failed'}`
-                : (s.scheduler_backend === 'apscheduler' ? 'APScheduler Active' : 'Scheduler Active');
-        } else {
-            if (badge) badge.className = 'scheduler-badge scheduler-stopped';
-            if (text) text.textContent = 'Scheduler Paused';
-        }
+        const fallbackStatus = !s.is_running
+            ? 'STOPPED'
+            : (!s.thread_alive || String(s.health || '').toUpperCase() === 'DEGRADED' ? 'DEGRADED' : 'RUNNING');
+        const operationalStatus = String(s.operational_status || fallbackStatus).toUpperCase();
+        const statusLabels = {
+            RUNNING: s.scheduler_backend === 'apscheduler' ? 'APScheduler Running' : 'Scheduler Running',
+            DEGRADED: `Scheduler Degraded: ${s.last_error || 'worker or subsystem unhealthy'}`,
+            STANDBY: 'Scheduler Standby (another worker is leader)',
+            STOPPED: 'Scheduler Stopped',
+        };
+        if (badge) badge.className = operationalStatus === 'RUNNING'
+            ? 'scheduler-badge scheduler-running'
+            : 'scheduler-badge scheduler-stopped';
+        if (text) text.textContent = statusLabels[operationalStatus] || `Scheduler ${operationalStatus || 'Unknown'}`;
 
         if (pollRate) {
             const aoiSec = Math.round(s.aoi_check_interval_seconds || 30);
@@ -507,6 +513,10 @@ async function loadSchedulerStatus() {
         }
     } catch (err) {
         console.error('Error fetching scheduler status:', err);
+        if (badge) badge.className = 'scheduler-badge scheduler-stopped';
+        if (text) text.textContent = 'Scheduler Status Unavailable';
+        if (pollRate) pollRate.textContent = 'AOI check: unknown | SAR scan: unknown';
+        if (lastRun) lastRun.textContent = 'Last check: unknown';
     }
 }
 
@@ -566,8 +576,8 @@ async function loadLogs() {
         }
 
         tbody.innerHTML = logs.map(log => {
-            const dt = log.timestamp ? new Date(log.timestamp.replace(' ', 'T') + 'Z') : new Date();
-            const timeStr = dt.toLocaleString();
+            const dt = parseUtcDate(log.timestamp);
+            const timeStr = dt ? dt.toLocaleString() : 'Unknown time';
             let statusBadge = '';
             if (log.status === 'SUCCESS') {
                 statusBadge = '<span class="badge badge-success">SUCCESS</span>';
@@ -576,9 +586,11 @@ async function loadLogs() {
             } else if (log.status === 'DISABLED_SKIPPED') {
                 statusBadge = '<span class="badge" style="background:#f1f5f9;color:#64748b;">DISABLED</span>';
             } else if (log.status === 'RUNNING' || log.status === 'TRIGGERED') {
-                statusBadge = '<span class="badge" style="background:#e0f2fe;color:#0369a1;">RUNNING</span>';
-            } else {
+                statusBadge = `<span class="badge" style="background:#e0f2fe;color:#0369a1;">${escapeHtml(log.status)}</span>`;
+            } else if (log.status === 'FAILED') {
                 statusBadge = '<span class="badge badge-live">FAILED</span>';
+            } else {
+                statusBadge = `<span class="badge" style="background:#f1f5f9;color:#475569;">${escapeHtml(log.status || 'UNKNOWN')}</span>`;
             }
 
             return `
@@ -652,7 +664,8 @@ async function scrapePassAIS(aoiId, passTime) {
         const data = await res.json();
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            showToast(`Scraped and ingested ${total} AIS records!`, 'success');
+            const outcome = getIngestionOutcomePresentation(data.ingestion_outcome, 'AIS scrape');
+            showToast(`AIS scrape ${outcome.label}: ${total} records ingested.`, outcome.type, { title: outcome.title });
             loadLogs();
         } else {
             showToast('AIS Scrape failed: ' + (data.error || 'Unknown error'), 'error');
@@ -683,9 +696,10 @@ async function forceScanAOIAIS(aoiId) {
 
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            showToast(`Force AIS scan complete: ${total} vessel records ingested!`, 'success', {
+            const outcome = getIngestionOutcomePresentation(data.ingestion_outcome, 'Force AIS scan');
+            showToast(`Force AIS scan ${outcome.label}: ${total} vessel records ingested.`, outcome.type, {
                 autoClose: false,
-                title: '✅ Force Scan Results'
+                title: outcome.title
             });
             loadLogs();
         } else {
@@ -805,4 +819,3 @@ function showToast(message, type = 'info', options = {}) {
         }
     };
 }
-

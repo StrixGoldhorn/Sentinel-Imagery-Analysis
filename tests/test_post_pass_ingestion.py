@@ -264,6 +264,19 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
+    def test_batch_limit_is_forwarded_to_atomic_claim(self):
+        jobs = MagicMock()
+        jobs.claim_jobs_due_for_poll.return_value = []
+        use_case = IngestPostPassImagery(
+            post_pass_repository=jobs,
+            aoi_repository=MagicMock(),
+            imagery_provider=MagicMock(),
+            create_scan=MagicMock(),
+        )
+        self.assertEqual(use_case.execute(batch_limit=25), [])
+        jobs.claim_jobs_due_for_poll.assert_called_once()
+        self.assertEqual(jobs.claim_jobs_due_for_poll.call_args.kwargs["limit"], 25)
+
     def test_progressive_backoff_when_no_image_ready(self):
         now = datetime.now(timezone.utc)
         pass_time = now - timedelta(minutes=15)
@@ -723,6 +736,8 @@ class TestPostPassWebAPI(unittest.TestCase):
         self.assertGreaterEqual(data["count"], 1)
         self.assertEqual(data["jobs"][0]["id"], job_id)
         self.assertEqual(data["jobs"][0]["satellite"], "Sentinel-1C")
+        self.assertEqual(data["jobs"][0]["status_group"], "TERMINAL")
+        self.assertTrue(data["jobs"][0]["terminal"])
 
         # Retry job
         res_retry = self.client.post(f"/api/schedule/post_pass_jobs/{job_id}/retry")

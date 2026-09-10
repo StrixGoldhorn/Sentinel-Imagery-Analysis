@@ -75,7 +75,7 @@ class ListScrapers:
         total_runs_all = 0
         total_records_all = 0
         total_success_all = 0
-        total_runs_enabled = 0
+        total_attempted_enabled = 0
         total_success_enabled = 0
 
         for meta in all_meta:
@@ -100,17 +100,28 @@ class ListScrapers:
             total_records = p_stats.get("total_records", 0)
             success_runs = p_stats.get("success_runs", 0)
             failed_runs = p_stats.get("failed_runs", 0)
+            running_runs = p_stats.get("running_runs", 0)
             last_run_at = p_stats.get("last_run_at")
 
-            success_rate = (success_runs / total_runs * 100.0) if total_runs > 0 else 100.0
+            attempted_runs = success_runs + failed_runs
+            success_rate = (success_runs / attempted_runs * 100.0) if attempted_runs > 0 else None
 
             total_runs_all += total_runs
             total_records_all += total_records
             total_success_all += success_runs
 
             if enabled:
-                total_runs_enabled += total_runs
+                total_attempted_enabled += attempted_runs
                 total_success_enabled += success_runs
+
+            if not enabled:
+                operational_state = "DISABLED"
+            elif is_cooling_down:
+                operational_state = "COOLDOWN"
+            elif running_runs > 0:
+                operational_state = "RUNNING"
+            else:
+                operational_state = "READY"
 
             tag = p_detail.get("tag") or meta.get("category", "General")
             category = tag
@@ -125,6 +136,7 @@ class ListScrapers:
                 "default_description": meta.get("description", ""),
                 "requires_network": meta.get("requires_network", True),
                 "enabled": enabled,
+                "operational_state": operational_state,
                 "config": config,
                 "cooldown_until": cooldown_dt.isoformat() if cooldown_dt else None,
                 "is_cooling_down": is_cooling_down,
@@ -135,16 +147,16 @@ class ListScrapers:
                 "total_records": total_records,
                 "success_runs": success_runs,
                 "failed_runs": failed_runs,
-                "success_rate": round(success_rate, 1),
+                "success_rate": round(success_rate, 1) if success_rate is not None else None,
                 "last_run_at": last_run_at,
             })
 
         active_count = sum(1 for s in scrapers if s["enabled"])
         cooling_count = sum(1 for s in scrapers if s["is_cooling_down"])
         overall_success_rate = (
-            round(total_success_enabled / total_runs_enabled * 100.0, 1)
-            if total_runs_enabled > 0
-            else 100.0
+            round(total_success_enabled / total_attempted_enabled * 100.0, 1)
+            if total_attempted_enabled > 0
+            else None
         )
 
         return {
@@ -152,6 +164,7 @@ class ListScrapers:
             "metrics": {
                 "total_scrapers": len(scrapers),
                 "active_scrapers": active_count,
+                "enabled_scrapers": active_count,
                 "cooling_scrapers": cooling_count,
                 "total_records_ingested": total_records_all,
                 "overall_success_rate": overall_success_rate,
@@ -316,7 +329,17 @@ class GetScraperDetail:
         total_records = p_stats.get("total_records", 0)
         success_runs = p_stats.get("success_runs", 0)
         failed_runs = p_stats.get("failed_runs", 0)
-        success_rate = (success_runs / total_runs * 100.0) if total_runs > 0 else 100.0
+        attempted_runs = success_runs + failed_runs
+        success_rate = (success_runs / attempted_runs * 100.0) if attempted_runs > 0 else None
+
+        if not enabled:
+            operational_state = "DISABLED"
+        elif is_cooling_down:
+            operational_state = "COOLDOWN"
+        elif p_stats.get("running_runs", 0) > 0:
+            operational_state = "RUNNING"
+        else:
+            operational_state = "READY"
 
         tag = p_detail.get("tag") or meta.get("category", "General")
         category = tag
@@ -331,6 +354,7 @@ class GetScraperDetail:
             "default_description": meta.get("description", ""),
             "requires_network": meta.get("requires_network", True),
             "enabled": enabled,
+            "operational_state": operational_state,
             "config": config,
             "cooldown_until": cooldown_dt.isoformat() if cooldown_dt else None,
             "is_cooling_down": is_cooling_down,
@@ -341,7 +365,7 @@ class GetScraperDetail:
             "total_records": total_records,
             "success_runs": success_runs,
             "failed_runs": failed_runs,
-            "success_rate": round(success_rate, 1),
+            "success_rate": round(success_rate, 1) if success_rate is not None else None,
             "last_run_at": p_stats.get("last_run_at"),
             "updated_at": p_detail.get("updated_at"),
         }
@@ -434,7 +458,7 @@ class GetScraperLogsUseCase:
         total_runs = sum(s.get("total_runs", 0) for s in stats.values())
         total_records = sum(s.get("total_records", 0) for s in stats.values())
 
-        total_runs_enabled = 0
+        total_attempted_enabled = 0
         total_success_enabled = 0
         for p_name, s in stats.items():
             is_enabled = True
@@ -452,13 +476,15 @@ class GetScraperLogsUseCase:
                     is_enabled = cfg
 
             if is_enabled:
-                total_runs_enabled += s.get("total_runs", 0)
-                total_success_enabled += s.get("success_runs", 0)
+                success_runs = s.get("success_runs", 0)
+                failed_runs = s.get("failed_runs", 0)
+                total_attempted_enabled += success_runs + failed_runs
+                total_success_enabled += success_runs
 
         overall_rate = (
-            round(total_success_enabled / total_runs_enabled * 100.0, 1)
-            if total_runs_enabled > 0
-            else 100.0
+            round(total_success_enabled / total_attempted_enabled * 100.0, 1)
+            if total_attempted_enabled > 0
+            else None
         )
 
         return {

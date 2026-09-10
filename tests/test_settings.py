@@ -227,6 +227,11 @@ class TestSettingsWebAPI(unittest.TestCase):
         }
         resp = self.client.post("/api/settings", json=payload)
         self.assertEqual(resp.status_code, 200)
+        result = resp.get_json()
+        self.assertIn(result["apply_status"], ("APPLIED", "PARTIAL"))
+        self.assertIn("applied", result)
+        self.assertIn("apply_errors", result)
+        self.assertEqual(result["requires_restart"], [])
 
         # Check updated
         resp = self.client.get("/api/settings?definitions=false")

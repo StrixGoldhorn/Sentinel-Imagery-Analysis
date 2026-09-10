@@ -95,9 +95,8 @@ async function pollScanTask(taskId, bbox, retryCount = 0) {
             const delay = Math.min(15000, 1000 * (2 ** retryCount));
             setTimeout(() => pollScanTask(taskId, bbox, retryCount + 1), delay);
         } else {
-            statusText.innerText = "Scan is still running, but status tracking is unavailable.";
-            scanBtn.disabled = false;
-            isScanning = false;
+            statusText.innerText = "Scan status is unknown; reconnecting to status tracking...";
+            setTimeout(() => pollScanTask(taskId, bbox, 0), 30000);
         }
     }
 }

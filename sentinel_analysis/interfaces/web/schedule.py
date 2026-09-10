@@ -15,15 +15,24 @@ from sentinel_analysis.interfaces.web.request_data import RequestValidationError
 blueprint = Blueprint("schedule", __name__)
 
 
-def _enqueue_post_pass(job_id: int | None = None):
+def _enqueue_post_pass(job_id: int | None = None, batch_limit: int = 1):
     cnt = container()
     ingest_use_case = getattr(cnt, "ingest_post_pass", None)
     if ingest_use_case is None:
         raise RequestValidationError("Post-pass ingestion use case not configured")
 
     def _run() -> dict[str, object]:
-        results = ingest_use_case.execute(job_id=job_id) if job_id is not None else ingest_use_case.execute()
-        return {"job_id": job_id, "results": results}
+        results = (
+            ingest_use_case.execute(job_id=job_id)
+            if job_id is not None
+            else ingest_use_case.execute(batch_limit=batch_limit)
+        )
+        return {
+            "job_id": job_id,
+            "requested_batch_limit": batch_limit,
+            "processed_count": len(results),
+            "results": results,
+        }
 
     return cnt.task_queue.submit("post_pass_ingestion", None, _run)
 
@@ -90,6 +99,8 @@ def get_scheduler_status():
     else:
         status_info = {
             "is_running": False,
+            "health": "STOPPED",
+            "operational_status": "STOPPED",
             "scheduler_backend": "none",
             "api_key_configured": bool(container().settings.n2yo_api_key),
             "aoi_check_interval_seconds": 30.0,
@@ -102,6 +113,7 @@ def get_scheduler_status():
             "last_results_count": 0,
             "active_pass_monitors": [],
             "thread_alive": False,
+            "is_leader": False,
             "jobs": [],
         }
     return jsonify(status="success", scheduler=status_info)
@@ -212,6 +224,7 @@ def get_post_pass_jobs():
             "basis_satellite": job.basis_satellite,
             "basis_relative_orbit": job.basis_relative_orbit,
             "status": job.status,
+            "status_group": "ACTIVE" if job.status in ("PENDING_PASS", "POLLING_CATALOG", "QUERYING_CATALOG", "INGESTING") else "TERMINAL",
             "effective_status": job.status,
             "display_status": display_status,
             "allowed_actions": allowed_actions,
@@ -223,6 +236,7 @@ def get_post_pass_jobs():
             "max_wait_hours": max_wait_hours,
             "scan_folder": job.scan_folder,
             "error_message": job.error_message,
+            "completion_warning": job.error_message if job.status == "COMPLETED" else None,
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         }
@@ -401,7 +415,12 @@ def delete_post_pass_job(job_id: int):
 @blueprint.post("/api/schedule/post_pass_jobs/poll_all")
 def poll_all_post_pass_jobs():
     """Trigger an immediate catalog check for all due post-pass ingestion jobs."""
-    task = _enqueue_post_pass()
-    return jsonify(status="accepted", task_id=task.task_id, task_status=task.status), 202
+    task = _enqueue_post_pass(batch_limit=2000)
+    return jsonify(
+        status="accepted",
+        task_id=task.task_id,
+        task_status=task.status,
+        requested_batch_limit=2000,
+    ), 202
 
 

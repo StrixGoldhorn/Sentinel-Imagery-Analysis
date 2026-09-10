@@ -178,7 +178,14 @@ def list_vessels():
         limit=limit,
         latest_only=latest_only,
     )
-    return jsonify(status="success", count=len(vessels), vessels=vessels)
+    return jsonify(
+        status="success",
+        count=len(vessels),
+        vessels=vessels,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        view_semantics="LATEST_STORED",
+        default_lookback_hours=12,
+    )
 
 
 @blueprint.get("/api/ais/timeline")

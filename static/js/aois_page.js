@@ -151,18 +151,17 @@ window.getAoiSarImagery = getAoiSarImagery;
 async function pollSarTaskStatus(taskId, aoiId) {
     const btn = document.getElementById(`btn-sar-${aoiId}`);
     const statusEl = document.getElementById(`sar-status-${aoiId}`);
+    let consecutiveErrors = 0;
 
     const interval = setInterval(async () => {
         try {
             const res = await fetch(`/api/tasks/${taskId}`);
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                clearInterval(interval);
-                if (btn) btn.disabled = false;
-                if (statusEl) statusEl.textContent = `❌ Error polling task`;
-                return;
+                throw new Error(data.error || `HTTP ${res.status}`);
             }
 
+            consecutiveErrors = 0;
             const taskStatus = String(data.status || '').toUpperCase();
             if (taskStatus === "COMPLETED") {
                 clearInterval(interval);
@@ -182,9 +181,12 @@ async function pollSarTaskStatus(taskId, aoiId) {
                 }
             }
         } catch (e) {
-            clearInterval(interval);
-            if (btn) btn.disabled = false;
-            if (statusEl) statusEl.textContent = '❌ Connection lost';
+            consecutiveErrors += 1;
+            if (statusEl) {
+                statusEl.textContent = consecutiveErrors >= 5
+                    ? '❔ Task status unknown; still reconnecting…'
+                    : `Status temporarily unavailable; retrying (${consecutiveErrors}/5)…`;
+            }
         }
     }, 2500);
 }
@@ -622,9 +624,8 @@ async function scrapePassAIS(aoiId, passTime) {
         const data = await res.json();
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            const outcome = String(data.ingestion_outcome || 'SUCCESS').toUpperCase();
-            const kind = outcome === 'SUCCESS' ? 'success' : (outcome === 'PARTIAL' ? 'warning' : 'error');
-            showToast(`AIS scrape ${outcome.toLowerCase()}: ${total} records ingested.`, kind);
+            const outcome = getIngestionOutcomePresentation(data.ingestion_outcome, 'AIS scrape');
+            showToast(`AIS scrape ${outcome.label}: ${total} records ingested.`, outcome.type);
         } else {
             showToast('AIS Scrape failed: ' + (data.error || 'Unknown error'), 'error');
         }
@@ -661,10 +662,10 @@ async function forceScanAOIAIS(aoiId) {
 
         if (res.ok && data.status === 'success') {
             const total = (data.results && data.results.total_inserted) || 0;
-            const outcome = String(data.ingestion_outcome || 'SUCCESS').toUpperCase();
-            showToast(`Force AIS scan ${outcome.toLowerCase()}: ${total} vessel records ingested.`, outcome === 'SUCCESS' ? 'success' : (outcome === 'PARTIAL' ? 'warning' : 'error'), {
+            const outcome = getIngestionOutcomePresentation(data.ingestion_outcome, 'Force AIS scan');
+            showToast(`Force AIS scan ${outcome.label}: ${total} vessel records ingested.`, outcome.type, {
                 autoClose: false,
-                title: '✅ Force Scan Results'
+                title: outcome.title
             });
         } else {
             showToast('Force AIS scan failed: ' + (data.error || 'Unknown error'), 'error', {

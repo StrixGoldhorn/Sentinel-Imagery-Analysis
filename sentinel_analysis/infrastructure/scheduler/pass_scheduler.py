@@ -338,11 +338,25 @@ class PassSchedulerWorker:
                 pass
 
         subsystem_errors = [error for error in (self._last_aoi_error, self._last_sar_error) if error]
-        health = "STOPPED" if not self._running else ("DEGRADED" if subsystem_errors else "HEALTHY")
+        if not self._running:
+            operational_status = "STOPPED"
+        elif not thread_alive or subsystem_errors:
+            operational_status = "DEGRADED"
+        elif self._post_pass_repo is not None and not self._is_leader:
+            operational_status = "STANDBY"
+        else:
+            operational_status = "RUNNING"
+        health = {
+            "STOPPED": "STOPPED",
+            "DEGRADED": "DEGRADED",
+            "STANDBY": "HEALTHY",
+            "RUNNING": "HEALTHY",
+        }[operational_status]
         current_error = "; ".join(subsystem_errors) if subsystem_errors else None
         return {
             "is_running": self._running,
             "health": health,
+            "operational_status": operational_status,
             "scheduler_backend": self.backend_type,
             "api_key_configured": bool(self._api_key),
             "aoi_check_interval_seconds": self.get_aoi_check_interval(),

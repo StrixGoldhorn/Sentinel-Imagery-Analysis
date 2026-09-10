@@ -294,7 +294,7 @@ def test_unexpected_errors_are_logged_but_not_exposed() -> None:
         response = client.post("/scan", json={"bbox": BBOX.as_list()})
 
     assert response.status_code == 500
-    assert response.json == {"error": "Internal server error"}
+    assert response.json == {"status": "error", "error": "Internal server error"}
     assert "sensitive" not in response.get_data(as_text=True)
 
 
@@ -340,6 +340,8 @@ def test_async_task_and_crop_routes() -> None:
     status_res = client.get(f"/api/tasks/{task_id}")
     assert status_res.status_code == 200
     assert status_res.json["task_id"] == "task_123"
+    assert status_res.json["terminal"] is False
+    assert status_res.json["status_group"] == "ACTIVE"
 
     # Get detection crop
     crop_res = client.get("/api/scan/scan_1/crop?x=0&y=0&width=5&height=5&padding=2")
@@ -441,6 +443,9 @@ def test_list_vessels_route() -> None:
     assert response.status_code == 200
     assert response.json["status"] == "success"
     assert response.json["count"] == 1
+    assert response.json["view_semantics"] == "LATEST_STORED"
+    assert response.json["default_lookback_hours"] == 12
+    assert response.json["generated_at"]
     assert response.json["vessels"][0]["name"] == "PACIFIC TRADER"
     assert response.json["vessels"][0]["type"] == "Cargo"
     assert container.get_vessels.keyword_calls[-1].get("latest_only") is True

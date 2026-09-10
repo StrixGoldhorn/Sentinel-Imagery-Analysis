@@ -107,14 +107,14 @@
         <!-- Background Scheduler Status Banner -->
         <div class="scheduler-status-banner">
             <div class="scheduler-status-left">
-                <span id="schedulerBadge" class="scheduler-badge scheduler-running">
+                <span id="schedulerBadge" class="scheduler-badge scheduler-stopped">
                     <span class="scheduler-dot"></span>
-                    <span id="schedulerStatusText">Scheduler Daemon Active</span>
+                    <span id="schedulerStatusText">Checking scheduler status…</span>
                 </span>
                 <span style="color: #6c757d;">&bull;</span>
-                <span id="schedulerPollRate" style="color: #495057;">Poll interval: 60s</span>
+                <span id="schedulerPollRate" style="color: #495057;">AOI check: unknown | SAR scan: unknown</span>
                 <span style="color: #6c757d;">&bull;</span>
-                <span id="schedulerLastRun" style="color: #6c757d;">Last check: Just now</span>
+                <span id="schedulerLastRun" style="color: #6c757d;">Last check: unknown</span>
             </div>
             <div class="scheduler-status-right">
                 <button class="btn btn-outline-primary btn-sm" id="btnForcePoll" onclick="forceSchedulerCheck()">
