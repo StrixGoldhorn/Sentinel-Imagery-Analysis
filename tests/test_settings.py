@@ -66,6 +66,20 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.assertIn("coastal_buffer_pixels", defs["cv"])
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["value"], 81)
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["type"], "integer")
+        self.assertNotIn("n2yo_api_key", defs.get("scheduler", {}))
+        self.assertNotIn("system", defs)
+
+    def test_environment_owned_values_are_not_stored_or_returned(self):
+        self.repo.set("scheduler", "n2yo_api_key", "should_not_persist")
+        self.repo.update_bulk({
+            "system": {"port": 9999, "database_path": "other.db"},
+            "scheduler": {"n2yo_api_key": "should_not_persist"},
+        })
+
+        self.assertIsNone(self.repo.get("n2yo_api_key"))
+        self.assertIsNone(self.repo.get("port"))
+        self.assertNotIn("system", self.repo.get_all())
+        self.assertNotIn("n2yo_api_key", self.repo.get_section("scheduler"))
 
     def test_copernicus_credentials_excluded_from_repository(self):
         # Credentials must not be present in definitions
@@ -220,6 +234,9 @@ class TestSettingsWebAPI(unittest.TestCase):
         self.assertEqual(data["settings"]["cv"]["coastal_buffer_pixels"]["value"], 81)
         self.assertNotIn("copernicus_username", data["settings"].get("imagery", {}))
         self.assertNotIn("copernicus_password", data["settings"].get("imagery", {}))
+        self.assertNotIn("n2yo_api_key", data["settings"].get("scheduler", {}))
+        self.assertNotIn("system", data["settings"])
+        self.assertTrue(data["runtime"]["environment_owned"])
 
     def test_api_update_settings(self):
         payload = {

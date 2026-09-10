@@ -1,13 +1,26 @@
 """SQLite implementation of the settings repository."""
 
 import json
-import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from sentinel_analysis.infrastructure.persistence.migrations.runner import MigrationRunner
 from sentinel_analysis.infrastructure.persistence.sqlite import SQLiteDatabase
+
+
+# These values belong to the process environment and must never be exposed as
+# editable, database-backed application settings.
+ENV_ONLY_SETTING_KEYS = {
+    ("imagery", "copernicus_username"),
+    ("imagery", "copernicus_password"),
+    ("scheduler", "n2yo_api_key"),
+    ("system", "port"),
+    ("system", "debug"),
+    ("system", "database_path"),
+    ("system", "output_root"),
+    ("system", "cache_root"),
+}
 
 DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
     "cv": {
@@ -111,13 +124,6 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
         },
     },
     "scheduler": {
-        "n2yo_api_key": {
-            "value": "",
-            "type": "password",
-            "label": "N2YO API Key",
-            "description": "API Key from N2YO for satellite pass predictions.",
-            "secret": True,
-        },
         "aoi_check_interval_seconds": {
             "value": 30.0,
             "type": "number",
@@ -125,22 +131,6 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "description": "Frequency in seconds at which the background worker checks if any AOI has an active flypast or needs scanning (default: 30s).",
             "min": 5.0,
             "max": 3600.0,
-        },
-        "sar_scan_interval_seconds": {
-            "value": 60.0,
-            "type": "number",
-            "label": "SAR Imagery Scan Interval (Seconds)",
-            "description": "Frequency in seconds at which the dispatcher checks for due Copernicus polling jobs (default: 60s).",
-            "min": 60.0,
-            "max": 86400.0,
-        },
-        "poll_interval_seconds": {
-            "value": 60.0,
-            "type": "number",
-            "label": "Scheduler Poll Interval (Seconds) [Legacy]",
-            "description": "Legacy dispatcher interval in seconds (default: 60s).",
-            "min": 10.0,
-            "max": 86400.0,
         },
         "auto_capture_default": {
             "value": True,
@@ -204,40 +194,6 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "description": "Border color for oriented bounding box ship detections with heading.",
         },
     },
-    "system": {
-        "port": {
-            "value": 5050,
-            "type": "integer",
-            "label": "Application Server Port",
-            "description": "Port on which the Flask web server listens.",
-            "min": 1,
-            "max": 65535,
-        },
-        "debug": {
-            "value": False,
-            "type": "boolean",
-            "label": "Flask Debug Mode",
-            "description": "Enable verbose debugging and error stack traces in responses.",
-        },
-        "database_path": {
-            "value": "data.db",
-            "type": "string",
-            "label": "SQLite Database Path",
-            "description": "Path to the primary SQLite database file.",
-        },
-        "output_root": {
-            "value": "static/output",
-            "type": "string",
-            "label": "Scan Output Directory",
-            "description": "Directory where captured SAR scenes, metadata, and detections are stored.",
-        },
-        "cache_root": {
-            "value": ".cache",
-            "type": "string",
-            "label": "Tile Cache Directory",
-            "description": "Directory where downloaded SAR and DEM tiles are cached.",
-        },
-    },
 }
 
 
@@ -261,24 +217,18 @@ class SQLiteSettingsRepository:
                 for row in connection.execute("SELECT key, section, value_json FROM system_settings").fetchall()
             }
 
-            # Ensure credentials are kept strictly in .env and never persisted in database
-            connection.execute("DELETE FROM system_settings WHERE key IN ('copernicus_username', 'copernicus_password')")
+            # Remove legacy environment-backed values if an older database has
+            # them. They are owned by .env and are not application settings.
+            for section, key in ENV_ONLY_SETTING_KEYS:
+                connection.execute(
+                    "DELETE FROM system_settings WHERE section = ? AND key = ?",
+                    (section, key),
+                )
 
             for section, keys in DEFAULT_SETTINGS_DEFINITIONS.items():
                 for key, definition in keys.items():
                     if key not in existing:
                         default_val = definition["value"]
-                        # Fallback to environment variables if available
-                        if key == "n2yo_api_key":
-                            default_val = os.getenv("N2YO_API_KEY", default_val)
-                        elif key == "port":
-                            try:
-                                default_val = int(os.getenv("PORT", default_val))
-                            except ValueError:
-                                pass
-                        elif key == "debug":
-                            default_val = os.getenv("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
-
                         connection.execute(
                             """
                             INSERT INTO system_settings (key, section, value_json, description)
@@ -293,6 +243,8 @@ class SQLiteSettingsRepository:
                         )
 
     def get(self, key: str, default: Any = None) -> Any:
+        if any(env_key == key for _, env_key in ENV_ONLY_SETTING_KEYS):
+            return default
         with self._database.connection(rows=True) as connection:
             row = connection.execute(
                 "SELECT value_json FROM system_settings WHERE key = ?",
@@ -308,7 +260,11 @@ class SQLiteSettingsRepository:
                 "SELECT key, value_json FROM system_settings WHERE section = ?",
                 (section,),
             ).fetchall()
-            return {row["key"]: json.loads(row["value_json"]) for row in rows}
+            return {
+                row["key"]: json.loads(row["value_json"])
+                for row in rows
+                if (section, row["key"]) not in ENV_ONLY_SETTING_KEYS
+            }
 
     def get_all(self) -> dict[str, dict[str, Any]]:
         result: dict[str, dict[str, Any]] = {}
@@ -318,6 +274,8 @@ class SQLiteSettingsRepository:
             ).fetchall()
             for row in rows:
                 section = row["section"]
+                if (section, row["key"]) in ENV_ONLY_SETTING_KEYS:
+                    continue
                 if section not in result:
                     result[section] = {}
                 result[section][row["key"]] = json.loads(row["value_json"])
@@ -343,6 +301,8 @@ class SQLiteSettingsRepository:
         return definitions
 
     def set(self, section: str, key: str, value: Any, description: str | None = None) -> None:
+        if (section, key) in ENV_ONLY_SETTING_KEYS:
+            return
         with self._database.connection(rows=True) as connection:
             connection.execute(
                 """
@@ -361,8 +321,7 @@ class SQLiteSettingsRepository:
         with self._database.connection(rows=True) as connection:
             for section, key_values in settings.items():
                 for key, value in key_values.items():
-                    # Copernicus credentials must remain strictly in .env, never in the database
-                    if key in ("copernicus_username", "copernicus_password"):
+                    if (section, key) in ENV_ONLY_SETTING_KEYS:
                         continue
                     # If this is a secret and hasn't changed (passed as masked), don't overwrite
                     field_def = DEFAULT_SETTINGS_DEFINITIONS.get(section, {}).get(key, {})

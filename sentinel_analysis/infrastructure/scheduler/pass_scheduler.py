@@ -22,9 +22,11 @@ from sentinel_analysis.application.shutdown import shutdown_coordinator
 
 logger = logging.getLogger(__name__)
 
+FIXED_SAR_SCAN_INTERVAL_SECONDS = 60.0 * 60.0
+
 
 class PassSchedulerWorker:
-    """Runs 30-second AOI checks and dispatches due SAR catalog jobs every minute.
+    """Runs AOI checks and dispatches due SAR catalog jobs every hour.
 
     Uses APScheduler (BackgroundScheduler) when available, falling back cleanly
     to threading timers if APScheduler is not installed.
@@ -46,12 +48,10 @@ class PassSchedulerWorker:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
         self._aoi_check_interval = max(1.0, float(aoi_check_interval_seconds))
-        # The dispatcher checks local job due times frequently; catalog requests are
-        # rate-limited independently by each job's fixed hourly next_poll_at.
-        self._sar_scan_interval = max(
-            1.0,
-            float(sar_scan_interval_seconds if sar_scan_interval_seconds is not None else poll_interval_seconds),
-        )
+        # Product checks are intentionally fixed to one hour. This protects the
+        # Copernicus catalog even if an old setting or API client supplies an
+        # obsolete interval value.
+        self._sar_scan_interval = FIXED_SAR_SCAN_INTERVAL_SECONDS
         self._post_pass_repo = post_pass_repo
         self._settings_repo = settings_repo
         self._pass_monitor = pass_monitor or getattr(schedule_use_case, "pass_monitor", None)
@@ -119,38 +119,15 @@ class PassSchedulerWorker:
                 logger.warning("Failed to reschedule APScheduler aoi_check_job: %s", exc)
 
     def get_sar_scan_interval(self) -> float:
-        """Return effective interval in seconds for SAR imagery catalog polling (default: 60s)."""
-        if self._settings_repo is not None and hasattr(self._settings_repo, "get"):
-            try:
-                val = self._settings_repo.get("sar_scan_interval_seconds")
-                if val is None:
-                    val = self._settings_repo.get("poll_interval_seconds")
-                if val is not None:
-                    fval = float(val)
-                    if fval >= 1.0:
-                        return fval
-            except Exception:
-                pass
-        return self._sar_scan_interval
+        """Return the fixed one-hour interval for SAR catalog checks."""
+        return FIXED_SAR_SCAN_INTERVAL_SECONDS
 
     def set_sar_scan_interval(self, seconds: float) -> None:
-        """Update interval for SAR imagery catalog polling."""
-        val = max(1.0, float(seconds))
-        self._sar_scan_interval = val
-        if self._settings_repo is not None and hasattr(self._settings_repo, "set"):
-            try:
-                self._settings_repo.set("scheduler", "sar_scan_interval_seconds", val)
-                self._settings_repo.set("scheduler", "poll_interval_seconds", val)
-            except Exception:
-                pass
-        if self._running and self._scheduler is not None and IntervalTrigger is not None:
-            try:
-                self._scheduler.reschedule_job(
-                    "sar_scan_job",
-                    trigger=IntervalTrigger(seconds=val),
-                )
-            except Exception as exc:
-                logger.warning("Failed to reschedule APScheduler sar_scan_job: %s", exc)
+        """Keep the SAR catalog cadence fixed regardless of supplied settings."""
+        if float(seconds) != FIXED_SAR_SCAN_INTERVAL_SECONDS:
+            logger.info(
+                "Ignoring configurable SAR scan interval; Copernicus checks are fixed at 60 minutes"
+            )
 
     # Backwards compatibility methods
     def get_poll_interval(self) -> float:
@@ -251,7 +228,7 @@ class PassSchedulerWorker:
         return results
 
     def _run_threading_loop(self) -> None:
-        """Maintain independent 30-second AOI checks and one-minute SAR dispatches."""
+        """Maintain independent AOI checks and hourly SAR dispatches."""
         # Run initial cycle upon starting if not stopping
         if not self._stop_event.is_set() and not shutdown_coordinator.is_shutting_down:
             self._run_aoi_check_cycle()

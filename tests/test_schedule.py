@@ -329,9 +329,9 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status["is_running"] is False
     assert status["api_key_configured"] is True
     assert status["last_run_at"] is None
-    assert status["poll_interval_seconds"] == 60.0
+    assert status["poll_interval_seconds"] == 3600.0
     assert status["aoi_check_interval_seconds"] == 30.0
-    assert status["sar_scan_interval_seconds"] == 60.0
+    assert status["sar_scan_interval_seconds"] == 3600.0
     assert status["operational_status"] == "STOPPED"
 
     results = worker.trigger_check()
@@ -343,19 +343,19 @@ def test_pass_scheduler_worker_status_and_trigger() -> None:
     assert status_after["last_error"] is None
 
 
-def test_pass_scheduler_worker_default_intervals_30s_aoi_and_60s_sar() -> None:
+def test_pass_scheduler_worker_default_intervals_30s_aoi_and_hourly_sar() -> None:
     aoi_repo = StubAOIRepo([])
     check_aois = CheckAndScheduleAOIs(aoi_repo, StubPredictor([]))
     worker = PassSchedulerWorker(check_aois, api_key="dummy_key")
 
     assert worker.get_aoi_check_interval() == 30.0
-    assert worker.get_sar_scan_interval() == 60.0
-    assert worker.get_poll_interval() == 60.0
+    assert worker.get_sar_scan_interval() == 3600.0
+    assert worker.get_poll_interval() == 3600.0
 
     status = worker.get_status()
     assert status["aoi_check_interval_seconds"] == 30.0
-    assert status["sar_scan_interval_seconds"] == 60.0
-    assert status["poll_interval_seconds"] == 60.0
+    assert status["sar_scan_interval_seconds"] == 3600.0
+    assert status["poll_interval_seconds"] == 3600.0
 
 
 def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
@@ -379,14 +379,14 @@ def test_pass_scheduler_worker_dynamic_settings_repo() -> None:
     mock_repo = MockSettingsRepo(initial_interval=1800.0, initial_aoi_interval=20.0)
     worker = PassSchedulerWorker(check_aois, api_key="dummy_key", settings_repo=mock_repo)
 
-    assert worker.get_sar_scan_interval() == 1800.0
+    assert worker.get_sar_scan_interval() == 3600.0
     assert worker.get_aoi_check_interval() == 20.0
-    assert worker.get_poll_interval() == 1800.0
+    assert worker.get_poll_interval() == 3600.0
 
     # Test updating intervals dynamically
     worker.set_sar_scan_interval(7200.0)
-    assert worker.get_sar_scan_interval() == 7200.0
-    assert mock_repo.get("sar_scan_interval_seconds") == 7200.0
+    assert worker.get_sar_scan_interval() == 3600.0
+    assert mock_repo.get("sar_scan_interval_seconds") == 1800.0
 
     worker.set_aoi_check_interval(45.0)
     assert worker.get_aoi_check_interval() == 45.0

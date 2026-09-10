@@ -32,6 +32,18 @@
     line-height: 1.5;
 }
 
+.settings-save-status {
+    align-self: center;
+    color: var(--color-success);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+.settings-save-status.is-dirty {
+    color: var(--color-warning, #d97706);
+}
+
 /* Main Layout */
 .settings-layout {
     display: grid;
@@ -220,6 +232,16 @@
 .settings-card:hover {
     border-color: var(--border-color-strong);
     background: var(--bg-card);
+}
+
+.card-info {
+    background: var(--bg-card);
+}
+
+.badge-value.status-missing {
+    color: var(--color-danger, #dc2626);
+    background: rgba(220, 38, 38, 0.08);
+    border-color: rgba(220, 38, 38, 0.25);
 }
 
 .card-highlight {
@@ -482,5 +504,11 @@ input:checked + .slider:before {
     }
     .settings-sidebar {
         position: static;
+    }
+
+    .settings-save-status {
+        order: 3;
+        width: 100%;
+        text-align: right;
     }
 }

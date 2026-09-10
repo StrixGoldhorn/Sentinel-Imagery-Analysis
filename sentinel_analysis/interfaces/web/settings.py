@@ -23,23 +23,13 @@ def _apply_scheduler_settings(app_container) -> dict[str, list[str]]:
     except Exception as exc:
         errors.append(f"scheduler.aoi_check_interval_seconds: {exc}")
 
-    try:
-        sar_val = app_container.settings_repository.get("sar_scan_interval_seconds")
-        if sar_val is None:
-            sar_val = app_container.settings_repository.get("poll_interval_seconds")
-        if sar_val is not None:
-            scheduler.set_sar_scan_interval(float(sar_val))
-            applied.append("scheduler.sar_scan_interval_seconds")
-    except Exception as exc:
-        errors.append(f"scheduler.sar_scan_interval_seconds: {exc}")
-
     return {"applied": applied, "apply_errors": errors}
 
 
 def _restart_required_settings(payload: dict) -> list[str]:
-    restart_keys = {"port", "debug", "database_path", "output_root", "cache_root"}
-    system_settings = payload.get("system") if isinstance(payload.get("system"), dict) else {}
-    return [f"system.{key}" for key in system_settings if key in restart_keys]
+    # Deployment settings are intentionally owned by .env and are not part of
+    # the settings API, so there are no restart-required UI settings here.
+    return []
 
 
 @blueprint.route("/settings", methods=["GET"])
@@ -60,9 +50,18 @@ def get_settings_api():
             include_definitions=include_defs,
             mask_secrets=True,
         )
+        runtime_settings = getattr(app_container, "settings", None)
         return jsonify({
             "status": "success",
             "settings": settings_data,
+            "runtime": {
+                "copernicus_configured": bool(
+                    getattr(runtime_settings, "copernicus_username", None)
+                    and getattr(runtime_settings, "copernicus_password", None)
+                ),
+                "n2yo_configured": bool(getattr(runtime_settings, "n2yo_api_key", None)),
+                "environment_owned": True,
+            },
         }), 200
     except Exception as exc:
         return jsonify({
@@ -115,10 +114,7 @@ def reset_settings_api():
     try:
         app_container.reset_settings.execute(section=section)
         apply_result = _apply_scheduler_settings(app_container)
-        restart_required = (
-            [f"system.{key}" for key in ("port", "debug", "database_path", "output_root", "cache_root")]
-            if section in (None, "system") else []
-        )
+        restart_required: list[str] = []
         return jsonify({
             "status": "success",
             "apply_status": "PARTIAL" if apply_result["apply_errors"] else "APPLIED",

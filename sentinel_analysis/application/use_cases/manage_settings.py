@@ -6,6 +6,18 @@ from sentinel_analysis.application.ports.settings_repository import SettingsRepo
 from sentinel_analysis.domain.satellite import ALL_SATELLITE_NAMES
 
 
+ENV_ONLY_SETTING_KEYS = {
+    ("imagery", "copernicus_username"),
+    ("imagery", "copernicus_password"),
+    ("scheduler", "n2yo_api_key"),
+    ("system", "port"),
+    ("system", "debug"),
+    ("system", "database_path"),
+    ("system", "output_root"),
+    ("system", "cache_root"),
+}
+
+
 class GetSettings:
     """Retrieve system settings organized by feature section."""
 
@@ -43,7 +55,7 @@ class UpdateSettings:
 
             validated[section] = {}
             for key, val in key_values.items():
-                if key in ("copernicus_username", "copernicus_password"):
+                if (section, key) in ENV_ONLY_SETTING_KEYS:
                     continue
                 validated_val = self._validate_field(section, key, val)
                 validated[section][key] = validated_val

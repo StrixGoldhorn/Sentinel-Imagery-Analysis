@@ -18,6 +18,7 @@
             </p>
         </div>
         <div class="header-actions">
+            <span id="settingsSaveStatus" class="settings-save-status" role="status" aria-live="polite">All changes saved</span>
             <button class="btn btn-secondary" id="btnResetSection" onclick="resetCurrentSection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="1 4 1 10 7 10"></polyline>
@@ -77,14 +78,6 @@
                     <span class="tab-badge">UI</span>
                 </button>
 
-                <button type="button" class="nav-tab-btn" data-section="system" onclick="switchSection('system')">
-                    <span class="tab-icon">⚙️</span>
-                    <div class="tab-info">
-                        <span class="tab-title">System & Storage</span>
-                        <span class="tab-desc">Paths, Server, Cache</span>
-                    </div>
-                    <span class="tab-badge">CORE</span>
-                </button>
             </nav>
 
             <div class="sidebar-footer-card">
@@ -221,7 +214,7 @@
                             <div class="card-badge">ENVIRONMENT SECRETS</div>
                             <div class="card-title-group">
                                 <span class="setting-title">Copernicus Authentication</span>
-                                <span class="badge-value">Managed via .env</span>
+                                <span class="badge-value" id="copernicusCredentialStatus">Managed via .env</span>
                             </div>
                             <p class="setting-description">
                                 Copernicus Data Space Ecosystem (CDSE) credentials (<code>COP_USERNAME</code> and <code>COP_PASSWORD</code>) are kept strictly in your local <code>.env</code> file to ensure account secrets are never exposed or stored in the database.
@@ -265,13 +258,13 @@
                     </div>
 
                     <div class="settings-grid">
-                        <div class="settings-card">
-                            <label for="input_scheduler_n2yo_api_key" class="setting-title">N2YO API Key</label>
-                            <p class="setting-description">API key used for real-time NORAD TLE orbit calculations.</p>
-                            <div class="password-input-group">
-                                <input type="password" id="input_scheduler_n2yo_api_key" class="form-input" placeholder="API Key">
-                                <button type="button" class="btn-toggle-pw" onclick="togglePasswordVisibility('input_scheduler_n2yo_api_key')">👁️</button>
+                        <div class="settings-card card-info">
+                            <div class="card-badge">ENVIRONMENT SECRET</div>
+                            <div class="card-title-group">
+                                <span class="setting-title">N2YO access</span>
+                                <span class="badge-value" id="n2yoCredentialStatus">Checking…</span>
                             </div>
+                            <p class="setting-description">The N2YO API key is read only from <code>.env</code>. It is never displayed, submitted, or stored in application settings.</p>
                         </div>
 
                         <div class="settings-card">
@@ -293,10 +286,12 @@
                             <input type="number" id="input_scheduler_aoi_check_interval_seconds" class="form-input" min="5" max="3600" step="5" value="30">
                         </div>
 
-                        <div class="settings-card">
-                            <label for="input_scheduler_sar_scan_interval_seconds" class="setting-title">SAR Imagery Scan Interval (Seconds)</label>
-                            <p class="setting-description">Frequency at which the background worker queries Copernicus for newly published SAR imagery (default: 3600s = 1 hour).</p>
-                            <input type="number" id="input_scheduler_sar_scan_interval_seconds" class="form-input" min="60" max="86400" step="60" value="3600">
+                        <div class="settings-card card-info">
+                            <div class="card-title-group">
+                                <span class="setting-title">Copernicus product checks</span>
+                                <span class="badge-value">Every 60 minutes</span>
+                            </div>
+                            <p class="setting-description">This cadence is fixed to reduce repeated catalog requests. It is not user-configurable.</p>
                         </div>
 
                         <div class="settings-card">
@@ -396,52 +391,6 @@
                     </div>
                 </section>
 
-                <!-- Section: System & Core -->
-                <section class="settings-section" id="section-system">
-                    <div class="section-header">
-                        <h2>System & Storage Architecture</h2>
-                        <p>Core directories, network ports, database files, and system diagnostics.</p>
-                    </div>
-
-                    <div class="settings-grid">
-                        <div class="settings-card">
-                            <label for="input_system_port" class="setting-title">Server Port</label>
-                            <p class="setting-description">Local HTTP port for the web dashboard.</p>
-                            <input type="number" id="input_system_port" class="form-input" min="1" max="65535" value="5050">
-                        </div>
-
-                        <div class="settings-card">
-                            <div class="toggle-control-group">
-                                <div>
-                                    <label class="setting-title" for="input_system_debug">Flask Debug Mode</label>
-                                    <p class="setting-description">Enables auto-reloading and detailed error diagnostics.</p>
-                                </div>
-                                <label class="switch">
-                                    <input type="checkbox" id="input_system_debug">
-                                    <span class="slider round"></span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="settings-card">
-                            <label for="input_system_database_path" class="setting-title">Database Path</label>
-                            <p class="setting-description">File path to the SQLite persistence database.</p>
-                            <input type="text" id="input_system_database_path" class="form-input" value="data.db">
-                        </div>
-
-                        <div class="settings-card">
-                            <label for="input_system_output_root" class="setting-title">Scan Output Root</label>
-                            <p class="setting-description">Directory where stitched SAR & DEM imagery is stored.</p>
-                            <input type="text" id="input_system_output_root" class="form-input" value="static/output">
-                        </div>
-
-                        <div class="settings-card">
-                            <label for="input_system_cache_root" class="setting-title">Tile Cache Root</label>
-                            <p class="setting-description">Directory where downloaded image tiles are cached for fast reuse.</p>
-                            <input type="text" id="input_system_cache_root" class="form-input" value=".cache">
-                        </div>
-                    </div>
-                </section>
             </form>
         </main>
     </div>

@@ -4,6 +4,38 @@
 
 let currentSection = 'cv';
 let currentSettings = {};
+let savedFormSnapshot = '';
+
+function setSaveStatus(message, isDirty = false) {
+    const status = document.getElementById('settingsSaveStatus');
+    if (status) {
+        status.textContent = message;
+        status.classList.toggle('is-dirty', isDirty);
+    }
+}
+
+function formSnapshot() {
+    const form = document.getElementById('settingsForm');
+    if (!form) return '';
+    return JSON.stringify(collectFormData());
+}
+
+function updateDirtyState() {
+    validateCrossFieldConstraints();
+    const dirty = formSnapshot() !== savedFormSnapshot;
+    setSaveStatus(dirty ? 'Unsaved changes' : 'All changes saved', dirty);
+    const saveBtn = document.getElementById('btnSaveSettings');
+    if (saveBtn) saveBtn.disabled = !dirty;
+}
+
+function initFormChangeTracking() {
+    const form = document.getElementById('settingsForm');
+    if (!form) return;
+    form.addEventListener('input', updateDirtyState);
+    form.addEventListener('change', updateDirtyState);
+    const maskToggle = document.getElementById('input_cv_dem_land_mask_enabled');
+    if (maskToggle) maskToggle.addEventListener('change', updateDependentControls);
+}
 
 async function loadSettingsRuntimeStatus() {
     const statusEl = document.getElementById('settingsRuntimeStatus');
@@ -39,6 +71,14 @@ function initNavTabs() {
 
 document.addEventListener('DOMContentLoaded', () => {
     initNavTabs();
+    initFormChangeTracking();
+    initColorControls();
+    window.addEventListener('beforeunload', (event) => {
+        if (formSnapshot() !== savedFormSnapshot) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
     loadSettings();
     loadSettingsRuntimeStatus();
 });
@@ -73,6 +113,9 @@ async function loadSettings() {
         if (data.status === 'success' && data.settings) {
             currentSettings = data.settings;
             populateForm(data.settings);
+            savedFormSnapshot = formSnapshot();
+            updateDirtyState();
+            updateCredentialStatus(data.runtime || {});
         } else {
             showToast(data.error || 'Failed to load settings', false);
         }
@@ -83,6 +126,52 @@ async function loadSettings() {
         if (loading) loading.style.display = 'none';
         if (form) form.style.opacity = '1';
     }
+}
+
+function updateCredentialStatus(runtime) {
+    const copernicusStatus = document.getElementById('copernicusCredentialStatus');
+    if (copernicusStatus) {
+        copernicusStatus.textContent = runtime.copernicus_configured ? 'Configured in .env' : 'Missing from .env';
+        copernicusStatus.classList.toggle('status-missing', !runtime.copernicus_configured);
+    }
+    const n2yoStatus = document.getElementById('n2yoCredentialStatus');
+    if (n2yoStatus) {
+        n2yoStatus.textContent = runtime.n2yo_configured ? 'Configured in .env' : 'Missing from .env';
+        n2yoStatus.classList.toggle('status-missing', !runtime.n2yo_configured);
+    }
+}
+
+function initColorControls() {
+    document.querySelectorAll('input[type="color"]').forEach(colorInput => {
+        const hexInput = document.getElementById(colorInput.id.replace('input_', 'hex_'));
+        if (!hexInput) return;
+        colorInput.addEventListener('input', () => {
+            hexInput.value = colorInput.value.toUpperCase();
+        });
+        hexInput.addEventListener('input', () => {
+            const value = hexInput.value.trim();
+            if (/^#[0-9a-f]{6}$/i.test(value)) colorInput.value = value;
+        });
+    });
+}
+
+function updateDependentControls() {
+    const maskEnabled = getBool('input_cv_dem_land_mask_enabled', true);
+    ['input_cv_coastal_buffer_pixels', 'sync_cv_coastal_buffer_pixels',
+        'input_cv_morph_close_kernel', 'sync_cv_morph_close_kernel']
+        .forEach(id => {
+            const control = document.getElementById(id);
+            if (control) control.disabled = !maskEnabled;
+        });
+}
+
+function validateCrossFieldConstraints() {
+    const minimum = document.getElementById('input_cv_minimum_area');
+    const maximum = document.getElementById('input_cv_maximum_area');
+    if (!minimum || !maximum) return true;
+    const valid = Number(minimum.value) < Number(maximum.value);
+    maximum.setCustomValidity(valid ? '' : 'Maximum vessel area must be greater than minimum vessel area.');
+    return valid;
 }
 
 function populateForm(sections) {
@@ -123,6 +212,7 @@ function populateForm(sections) {
             }
         }
     }
+    updateDependentControls();
 }
 
 function updateRangeDisplay(fieldKey, value, unit) {
@@ -206,11 +296,8 @@ function collectFormData() {
             max_image_size: getInt('input_imagery_max_image_size', 2500),
         },
         scheduler: {
-            n2yo_api_key: getString('input_scheduler_n2yo_api_key', ''),
             auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
             aoi_check_interval_seconds: getFloat('input_scheduler_aoi_check_interval_seconds', 30.0),
-            sar_scan_interval_seconds: getFloat('input_scheduler_sar_scan_interval_seconds', 60.0),
-            poll_interval_seconds: getFloat('input_scheduler_sar_scan_interval_seconds', 60.0),
             satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
             enabled_satellites: Array.from(document.querySelectorAll('input[name="satellite_selection"]:checked')).map(el => el.value),
         },
@@ -222,13 +309,6 @@ function collectFormData() {
             color_cv_detection: getString('input_map_ui_color_cv_detection', '#ff3333'),
             color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
         },
-        system: {
-            port: getInt('input_system_port', 5000),
-            debug: getBool('input_system_debug', false),
-            database_path: getString('input_system_database_path', 'instance/sentinel_analysis.db'),
-            output_root: getString('input_system_output_root', 'scans'),
-            cache_root: getString('input_system_cache_root', '.cache'),
-        }
     };
     return payload;
 }
@@ -236,6 +316,11 @@ function collectFormData() {
 async function saveAllSettings() {
     const saveBtn = document.getElementById('btnSaveSettings');
     const originalText = saveBtn ? saveBtn.innerHTML : '';
+    const form = document.getElementById('settingsForm');
+    if (form && (!validateCrossFieldConstraints() || !form.checkValidity())) {
+        form.reportValidity();
+        return;
+    }
     if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.innerHTML = 'Saving...';
@@ -271,6 +356,7 @@ async function saveAllSettings() {
             saveBtn.disabled = false;
             saveBtn.innerHTML = originalText;
         }
+        updateDirtyState();
     }
 }
 
