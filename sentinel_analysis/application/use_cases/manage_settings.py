@@ -208,6 +208,8 @@ class UpdateSettings:
             "show_success",
             "show_warning",
             "show_error",
+            "ais_overlay_default_enabled",
+            "nautical_chart_default_enabled",
         ):
             if isinstance(value, str):
                 return value.lower() in ("true", "1", "yes")

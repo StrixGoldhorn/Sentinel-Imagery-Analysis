@@ -134,7 +134,8 @@ function initAISVessels(mapInstance) {
     aisVesselLayer = L.featureGroup();
 
     const savedState = localStorage.getItem('ais_vessels_enabled');
-    if (savedState === 'false') {
+    const defaultEnabled = typeof CONFIG === 'undefined' || CONFIG.DEFAULT_AIS_OVERLAY_ENABLED !== false;
+    if (savedState === 'false' || (savedState === null && !defaultEnabled)) {
         aisLayerEnabled = false;
     } else {
         aisLayerEnabled = true;

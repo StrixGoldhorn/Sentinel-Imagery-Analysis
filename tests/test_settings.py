@@ -68,6 +68,8 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["type"], "integer")
         self.assertNotIn("n2yo_api_key", defs.get("scheduler", {}))
         self.assertNotIn("system", defs)
+        self.assertTrue(defs["map_ui"]["ais_overlay_default_enabled"]["value"])
+        self.assertFalse(defs["map_ui"]["nautical_chart_default_enabled"]["value"])
         self.assertIn("notifications", defs)
         self.assertEqual(defs["notifications"]["duration_seconds"]["value"], 3.0)
 

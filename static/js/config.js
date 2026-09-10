@@ -12,6 +12,8 @@ const CONFIG = {
 
     TAB_VISIBILITY_AREA_THRESHOLD: 0.005,
     SAR_DEFAULT_OPACITY: 1,
+    DEFAULT_AIS_OVERLAY_ENABLED: true,
+    DEFAULT_NAUTICAL_CHART_ENABLED: false,
     CV_DEFAULT_THRESHOLD: 40,
     TOOLTIP_OFFSET: [0, 0],
 
@@ -49,6 +51,8 @@ async function loadSystemSettings() {
                     if (typeof s.map_ui.default_lng === 'number') CONFIG.MAP_DEFAULT_LNG = s.map_ui.default_lng;
                     if (typeof s.map_ui.default_zoom === 'number') CONFIG.MAP_DEFAULT_ZOOM = s.map_ui.default_zoom;
                     if (typeof s.map_ui.sar_opacity === 'number') CONFIG.SAR_DEFAULT_OPACITY = s.map_ui.sar_opacity;
+                    if (typeof s.map_ui.ais_overlay_default_enabled === 'boolean') CONFIG.DEFAULT_AIS_OVERLAY_ENABLED = s.map_ui.ais_overlay_default_enabled;
+                    if (typeof s.map_ui.nautical_chart_default_enabled === 'boolean') CONFIG.DEFAULT_NAUTICAL_CHART_ENABLED = s.map_ui.nautical_chart_default_enabled;
                     if (s.map_ui.color_cv_detection) CONFIG.COLOR_CV_DETECTION = s.map_ui.color_cv_detection;
                     if (s.map_ui.color_obb_detection) CONFIG.COLOR_OBB_DETECTION = s.map_ui.color_obb_detection;
                 }

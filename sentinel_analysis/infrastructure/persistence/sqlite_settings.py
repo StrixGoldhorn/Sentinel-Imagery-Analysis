@@ -181,6 +181,18 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "min": 0.1,
             "max": 1.0,
         },
+        "ais_overlay_default_enabled": {
+            "value": True,
+            "type": "boolean",
+            "label": "Show AIS Overlay by Default",
+            "description": "Display the AIS vessel overlay when the map first loads unless a browser-specific choice exists.",
+        },
+        "nautical_chart_default_enabled": {
+            "value": False,
+            "type": "boolean",
+            "label": "Show Nautical Chart by Default",
+            "description": "Display the OpenSeaMap nautical chart overlay when the map first loads unless a browser-specific choice exists.",
+        },
         "color_cv_detection": {
             "value": "#ff3333",
             "type": "color",

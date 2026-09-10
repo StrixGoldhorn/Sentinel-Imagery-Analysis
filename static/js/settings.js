@@ -306,6 +306,8 @@ function collectFormData() {
             default_lng: getFloat('input_map_ui_default_lng', 103.851959),
             default_zoom: getInt('input_map_ui_default_zoom', 10),
             sar_opacity: getFloat('input_map_ui_sar_opacity', 1.0),
+            ais_overlay_default_enabled: getBool('input_map_ui_ais_overlay_default_enabled', true),
+            nautical_chart_default_enabled: getBool('input_map_ui_nautical_chart_default_enabled', false),
             color_cv_detection: getString('input_map_ui_color_cv_detection', '#ff3333'),
             color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
         },

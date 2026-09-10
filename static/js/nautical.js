@@ -12,7 +12,8 @@ function initNauticalChart(mapInstance) {
     });
 
     const savedState = localStorage.getItem('nautical_chart_enabled');
-    if (savedState === 'true') {
+    const defaultEnabled = typeof CONFIG !== 'undefined' && CONFIG.DEFAULT_NAUTICAL_CHART_ENABLED === true;
+    if (savedState === 'true' || (savedState === null && defaultEnabled)) {
         nauticalLayer.addTo(mapInstance);
         nauticalLayerEnabled = true;
     }
