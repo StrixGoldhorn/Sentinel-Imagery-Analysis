@@ -235,12 +235,14 @@
                     <!-- Collapsible Custom Date/Time Pickers -->
                     <div id="aisCustomDatePanel" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 0.88rem;">
                         <div style="margin-bottom: 8px;">
-                            <label style="display: block; color: #475569; font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">Start Date & Time (UTC):</label>
+                            <label style="display: block; color: #475569; font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">Start Date & Time (Local):</label>
                             <input type="datetime-local" id="aisCustomStartInput" style="width: 100%; padding: 7px 10px; font-size: 0.95rem; font-weight: 500; color: #1e293b; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff;">
+                            <small style="display: block; margin-top: 3px; color: #64748b;">Local time; UTC is used for the AIS query.</small>
                         </div>
                         <div style="margin-bottom: 10px;">
-                            <label style="display: block; color: #475569; font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">End Date & Time (UTC):</label>
+                            <label style="display: block; color: #475569; font-weight: 600; font-size: 0.88rem; margin-bottom: 4px;">End Date & Time (Local):</label>
                             <input type="datetime-local" id="aisCustomEndInput" style="width: 100%; padding: 7px 10px; font-size: 0.95rem; font-weight: 500; color: #1e293b; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; background: #ffffff;">
+                            <small style="display: block; margin-top: 3px; color: #64748b;">Local time; UTC is used for the AIS query.</small>
                         </div>
                         <button type="button" style="width: 100%; padding: 8px 12px; font-size: 0.92rem; font-weight: 600; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; transition: background 0.15s ease;" onclick="applyAisCustomDateRange()">
                             Apply Date Range

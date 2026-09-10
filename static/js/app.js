@@ -571,9 +571,9 @@ function openShipDetailsSidebar(vessel) {
     if (timeEl) {
         if (vessel.timestamp) {
             const parsedTime = parseUtcDate(vessel.timestamp);
-            const zulu = parsedTime ? parsedTime.toISOString().replace('T', ' ').replace(/\..+/, '') + ' UTC' : String(vessel.timestamp);
-            const local = parsedTime ? parsedTime.toLocaleTimeString() : '';
-            timeEl.textContent = local ? `${zulu} (${local})` : zulu;
+            const zulu = parsedTime ? SentinelTime.formatZulu(parsedTime) : String(vessel.timestamp);
+            const local = parsedTime ? `${SentinelTime.formatLocal(parsedTime)} LOCAL` : '';
+            timeEl.textContent = local ? `${local} (Zulu: ${zulu})` : zulu;
         } else {
             timeEl.textContent = 'Unknown';
         }

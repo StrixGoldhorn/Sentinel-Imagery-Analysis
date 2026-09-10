@@ -135,7 +135,7 @@ function renderLogsTable(logs) {
             statusBadge = `<span class="status-pill status-disabled">${escapeHtml(log.status || 'UNKNOWN')}</span>`;
         }
 
-        const timeFormatted = formatUtcTime(log.timestamp);
+        const timeFormatted = formatLocalTime(log.timestamp);
         const reasonBadge = getReasonBadge(log.trigger_reason);
         const recordBadge = log.records_inserted > 0
             ? `<span class="records-badge">+${log.records_inserted}</span>`
@@ -279,12 +279,12 @@ function parseUtcDate(val) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-function formatUtcTime(isoStr) {
+function formatLocalTime(isoStr) {
     if (!isoStr) return '-';
     try {
         const date = parseUtcDate(isoStr);
         if (!date) return isoStr;
-        return date.toISOString().replace('T', ' ').replace('Z', ' UTC');
+        return `${SentinelTime.formatLocal(date)} LOCAL`;
     } catch {
         return isoStr;
     }

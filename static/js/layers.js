@@ -50,12 +50,12 @@ function getSarTabPopupContent(uiId) {
             </div>
             <div class="sar-tab-popup-meta">
                 <div class="meta-row">
-                    <span class="meta-lbl">Zulu:</span>
-                    <span class="meta-val">${layerObj.zuluTime}</span>
-                </div>
-                <div class="meta-row">
                     <span class="meta-lbl">Local:</span>
                     <span class="meta-val">${layerObj.localTime}</span>
+                </div>
+                <div class="meta-row">
+                    <span class="meta-lbl">Zulu:</span>
+                    <span class="meta-val">${layerObj.zuluTime}</span>
                 </div>
             </div>
             <div class="sar-tab-popup-count-box">
@@ -85,8 +85,8 @@ function getSarTabPopupContent(uiId) {
 
 function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomName) {
     const dateObj = new Date(datetime);
-    const zuluTime = dateObj.toISOString().replace('T', ' ').replace(/\..+/, '') + ' Z';
-    const localTime = dateObj.toLocaleString();
+    const zuluTime = SentinelTime.formatZulu(dateObj) || 'Unknown';
+    const localTime = SentinelTime.formatLocal(dateObj) ? `${SentinelTime.formatLocal(dateObj)} LOCAL` : 'Unknown';
 
     const savedNames = JSON.parse(localStorage.getItem('layer_custom_names') || '{}');
     let captureName = serverCustomName || savedNames[folderName] || folderName;
@@ -146,8 +146,8 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
                 <summary style="cursor: pointer; font-size: 0.85em; color: #007bff; outline: none; font-weight: 500;">Layer Controls & Info</summary>
                 <div style="margin-top: 8px; font-size: 0.85em;">
                     <div style="margin-bottom: 5px;">
-                        <strong>Zulu:</strong> ${zuluTime}<br>
-                        <strong>Local:</strong> ${localTime}
+                        <strong>Local:</strong> ${localTime}<br>
+                        <strong>Zulu:</strong> ${zuluTime}
                     </div>
                     <div class="layer-controls">
                         <label>Opacity</label>
@@ -731,4 +731,3 @@ document.addEventListener('keydown', (e) => {
         closeSarShipDetectionsModal();
     }
 });
-

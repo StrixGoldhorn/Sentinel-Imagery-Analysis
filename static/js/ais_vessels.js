@@ -82,20 +82,19 @@ function getVesselColor(typeStr) {
 
 function formatAisDateTime(ts) {
     if (!ts) return '-';
-    const d = new Date(ts);
-    const year = d.getUTCFullYear();
-    const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const day = String(d.getUTCDate()).padStart(2, '0');
-    const hours = String(d.getUTCHours()).padStart(2, '0');
-    const minutes = String(d.getUTCMinutes()).padStart(2, '0');
-    return `${year}-${month}-${day} ${hours}:${minutes} UTC`;
+    const local = SentinelTime.formatLocal(ts, {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    return local ? `${local} LOCAL` : '-';
 }
 
 function formatAisShortDate(ts) {
     if (!ts) return '-';
-    const d = new Date(ts);
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${monthNames[d.getUTCMonth()]} ${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const local = SentinelTime.formatLocal(ts, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+    return local ? `${local} LOCAL` : '-';
 }
 
 async function initAisTimelineBounds() {
@@ -336,11 +335,11 @@ function toggleAisCustomDateInputs() {
         const endInput = document.getElementById('aisCustomEndInput');
         if (startInput && !startInput.value) {
             const defaultStart = new Date(Date.now() - 24 * 3600 * 1000);
-            startInput.value = defaultStart.toISOString().slice(0, 16);
+            startInput.value = SentinelTime.toLocalInputValue(defaultStart);
         }
         if (endInput && !endInput.value) {
             const defaultEnd = new Date();
-            endInput.value = defaultEnd.toISOString().slice(0, 16);
+            endInput.value = SentinelTime.toLocalInputValue(defaultEnd);
         }
     }
 }
@@ -355,8 +354,8 @@ function applyAisCustomDateRange() {
         return;
     }
 
-    const startMs = new Date(startInput.value + ':00Z').getTime();
-    const endMs = new Date(endInput.value + ':00Z').getTime();
+    const startMs = new Date(startInput.value).getTime();
+    const endMs = new Date(endInput.value).getTime();
 
     if (isNaN(startMs) || isNaN(endMs) || startMs >= endMs) {
         if (typeof showNotification === 'function') {
@@ -674,8 +673,8 @@ function renderVesselsOnMap(mapInstance) {
         marker.bindTooltip(tooltipHtml, { direction: 'top', offset: [0, -10] });
 
         // Click popup
-        const zuluTime = vessel.timestamp ? new Date(vessel.timestamp).toISOString().replace('T', ' ').replace(/\..+/, '') + ' UTC' : 'Unknown';
-        const localTime = vessel.timestamp ? new Date(vessel.timestamp).toLocaleTimeString() : 'Unknown';
+        const zuluTime = vessel.timestamp ? SentinelTime.formatZulu(vessel.timestamp) : 'Unknown';
+        const localTime = vessel.timestamp ? `${SentinelTime.formatLocal(vessel.timestamp)} LOCAL` : 'Unknown';
         const displayImo = (vessel.imo && !String(vessel.imo).startsWith('UNKNOWN-')) ? vessel.imo : 'N/A';
         const popupHtml = `
             <div class="vessel-popup-card">
@@ -692,7 +691,7 @@ function renderVesselsOnMap(mapInstance) {
                     <div class="vessel-field"><span class="vessel-label">Callsign</span><span class="vessel-val">${vessel.callsign || 'N/A'}</span></div>
                     <div class="vessel-field"><span class="vessel-label">Source</span><span class="vessel-val"><small>${escapeHtml(vessel.source_plugin)}</small></span></div>
                     <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Coordinates</span><span class="vessel-val">${vessel.latitude.toFixed(5)}° N, ${vessel.longitude.toFixed(5)}° E</span></div>
-                    <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Last Reported</span><span class="vessel-val">${zuluTime} (${localTime})</span></div>
+                    <div class="vessel-field" style="grid-column: span 2;"><span class="vessel-label">Last Reported</span><span class="vessel-val">${localTime} <small>(Zulu: ${zuluTime})</small></span></div>
                 </div>
                 <div class="vessel-popup-actions" style="display: flex; gap: 6px; justify-content: flex-end;">
                     <button class="btn btn-sm btn-info" style="padding: 4px 10px; font-size: 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="if(typeof openShipDetailsSidebar === 'function') { const v = aisVesselsData.find(x => x.vessel_id === ${vessel.vessel_id}); if (v) openShipDetailsSidebar(v); }">

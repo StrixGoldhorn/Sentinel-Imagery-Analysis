@@ -293,9 +293,10 @@ function createScheduleCard(event, index) {
         statusBadge = '<span class="badge badge-predicted">Manual Scrape Only</span>';
     }
 
-    const zuluPass = passDt.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
-    const localPass = passDt.toLocaleString();
-    const zuluWindow = `${winStart.toISOString().substring(11, 16)} - ${winEnd.toISOString().substring(11, 16)} UTC`;
+    const zuluPass = SentinelTime.formatZulu(passDt) || 'Unknown';
+    const localPass = SentinelTime.formatLocal(passDt) ? `${SentinelTime.formatLocal(passDt)} LOCAL` : 'Unknown';
+    const localWindow = `${SentinelTime.formatLocal(winStart, { hour: '2-digit', minute: '2-digit' })} - ${SentinelTime.formatLocal(winEnd, { hour: '2-digit', minute: '2-digit' })} LOCAL`;
+    const zuluWindow = `${SentinelTime.formatZulu(winStart, { includeSeconds: false })?.slice(11, 16)} - ${SentinelTime.formatZulu(winEnd, { includeSeconds: false })?.slice(11, 16)} UTC`;
     const bboxFormatted = (event.bbox || []).map(n => Number(n).toFixed(2)).join(', ');
 
     const countdownText = formatCountdown(event.pass_time, isLive);
@@ -316,7 +317,7 @@ function createScheduleCard(event, index) {
                     ${countdownText}
                 </div>
                 <div class="event-timestamps">
-                    <span><strong>Pass Time:</strong> ${localPass} (${zuluPass})</span>
+                    <span><strong>Pass Time:</strong> ${localPass} <small>(Zulu: ${zuluPass})</small></span>
                 </div>
             </div>
             <div class="event-badges">
@@ -335,8 +336,8 @@ function createScheduleCard(event, index) {
                 <div class="aoi-name-tag">
                     ${escapeHtml(event.aoi_name || `AOI #${event.aoi_id}`)}
                 </div>
-                <span class="scrape-window-tag" title="AIS Scrape Window [UTC]">
-                    Scrape Window (±5m): <strong>${zuluWindow}</strong>
+                <span class="scrape-window-tag" title="AIS scrape window; local display with Zulu operational reference">
+                    Scrape Window (±5m): <strong>${localWindow}</strong> <small>(Zulu: ${zuluWindow})</small>
                 </span>
                 <span style="font-size: 0.82rem; color: #6c757d; font-family: monospace;">
                     [${bboxFormatted}]
@@ -506,7 +507,7 @@ async function loadSchedulerStatus() {
         if (lastRun) {
             if (s.last_aoi_check_at || s.last_run_at) {
                 const dt = new Date(s.last_aoi_check_at || s.last_run_at);
-                lastRun.textContent = `Last AOI check: ${dt.toLocaleTimeString()}`;
+                lastRun.textContent = `Last AOI check (LOCAL): ${dt.toLocaleTimeString()}`;
             } else {
                 lastRun.textContent = 'Last check: Starting...';
             }
@@ -577,7 +578,7 @@ async function loadLogs() {
 
         tbody.innerHTML = logs.map(log => {
             const dt = parseUtcDate(log.timestamp);
-            const timeStr = dt ? dt.toLocaleString() : 'Unknown time';
+            const timeStr = dt ? `${SentinelTime.formatLocal(dt)} LOCAL` : 'Unknown time';
             let statusBadge = '';
             if (log.status === 'SUCCESS') {
                 statusBadge = '<span class="badge badge-success">SUCCESS</span>';

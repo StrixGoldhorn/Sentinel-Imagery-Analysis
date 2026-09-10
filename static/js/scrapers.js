@@ -564,14 +564,7 @@ function formatDateTime(isoStr) {
     try {
         const date = parseUtcDate(isoStr);
         if (!date) return isoStr;
-        return date.toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            timeZoneName: 'short'
-        });
+        return `${SentinelTime.formatLocal(date)} LOCAL`;
     } catch {
         return isoStr;
     }

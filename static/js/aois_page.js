@@ -56,20 +56,8 @@ async function loadAOIs() {
 function getDefaultAoiDateRange() {
     const now = new Date();
     const fifteenDaysAgo = new Date(now.getTime() - 15 * 24 * 60 * 60 * 1000);
-    const formatDateTime = (d) => {
-        const year = d.getUTCFullYear();
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(d.getUTCDate()).padStart(2, '0');
-        const hours = String(d.getUTCHours()).padStart(2, '0');
-        const minutes = String(d.getUTCMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-    const formatDate = (d) => {
-        const year = d.getUTCFullYear();
-        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(d.getUTCDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
+    const formatDateTime = (d) => SentinelTime.toLocalInputValue(d);
+    const formatDate = (d) => SentinelTime.toLocalInputValue(d).slice(0, 10);
     return {
         startDateTime: formatDateTime(fifteenDaysAgo),
         endDateTime: formatDateTime(now),
@@ -98,6 +86,8 @@ async function getAoiSarImagery(aoiId) {
 
     const startDate = startInput ? startInput.value : '';
     const endDate = endInput ? endInput.value : '';
+    const startUtc = SentinelTime.localInputToUtc(startDate) || startDate;
+    const endUtc = SentinelTime.localInputToUtc(endDate) || endDate;
 
     if (startDate && endDate && startDate > endDate) {
         showToast("Start date/time cannot be after end date/time.", "warning");
@@ -110,16 +100,16 @@ async function getAoiSarImagery(aoiId) {
     try {
         const urlParams = new URLSearchParams({
             async: 'true',
-            start_date: startDate,
-            end_date: endDate
+            start_date: startUtc,
+            end_date: endUtc
         });
         const res = await fetch(`/api/aoi/${aoiId}/scan?${urlParams.toString()}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 async: true,
-                start_date: startDate,
-                end_date: endDate
+                start_date: startUtc,
+                end_date: endUtc
             })
         });
 
@@ -204,9 +194,9 @@ function createAoiCard(aoi) {
     let nextScanBadge = '<span class="badge badge-secondary">Not predicted</span>';
     if (aoi.next_scan) {
         const d = parseUtcDate(aoi.next_scan);
-        const iso = d ? d.toISOString() : escapeHtml(aoi.next_scan);
-        const local = d ? d.toLocaleString() : escapeHtml(aoi.next_scan);
-        nextScanBadge = `<span class="badge badge-success" title="Next Pass: ${iso}">Next Pass: ${local}</span>`;
+        const zulu = d ? SentinelTime.formatZulu(d) : escapeHtml(aoi.next_scan);
+        const local = d ? `${SentinelTime.formatLocal(d)} LOCAL` : escapeHtml(aoi.next_scan);
+        nextScanBadge = `<span class="badge badge-success" title="Next Pass (Zulu): ${zulu}">Next Pass: ${local}</span>`;
     }
 
     card.innerHTML = `
@@ -271,16 +261,16 @@ function createAoiCard(aoi) {
                     <span class="aoi-sar-title">
                         <span>🛰️</span> SAR Imagery Acquisition (Sentinel-1)
                     </span>
-                    <span style="font-size: 0.78rem; color: var(--text-muted, #64748b);">Default: 15 days ago to current (UTC)</span>
+                    <span style="font-size: 0.78rem; color: var(--text-muted, #64748b);">Default: 15 days ago to current (Local)</span>
                 </div>
                 <div class="aoi-sar-controls">
                     <div class="aoi-sar-input-group">
-                        <label for="aoi-start-date-${aoi.id}">From (UTC):</label>
-                        <input type="datetime-local" id="aoi-start-date-${aoi.id}" value="${defaultDates.startDateTime}" title="Start date and time for SAR search (default 15 days ago)">
+                        <label for="aoi-start-date-${aoi.id}">From (Local):</label>
+                        <input type="datetime-local" id="aoi-start-date-${aoi.id}" value="${defaultDates.startDateTime}" title="Start date and time in local time (default 15 days ago)">
                     </div>
                     <div class="aoi-sar-input-group">
-                        <label for="aoi-end-date-${aoi.id}">To (UTC):</label>
-                        <input type="datetime-local" id="aoi-end-date-${aoi.id}" value="${defaultDates.endDateTime}" title="End date and time for SAR search (default current time)">
+                        <label for="aoi-end-date-${aoi.id}">To (Local):</label>
+                        <input type="datetime-local" id="aoi-end-date-${aoi.id}" value="${defaultDates.endDateTime}" title="End date and time in local time (default current time)">
                     </div>
                     <div style="display: flex; gap: 6px; align-items: center;">
                         <button class="btn btn-sm btn-success" id="btn-sar-${aoi.id}" onclick="getAoiSarImagery(${aoi.id})" style="background: #16a34a; border-color: #15803d; color: #ffffff; padding: 4px 12px; font-weight: 500;" title="Fetch latest Sentinel-1 SAR imagery for ${safeName} within selected dates">
@@ -433,9 +423,9 @@ function renderFlypasts(aoiId, data) {
     let cacheBadge = '';
     if (data.cached && data.expires_at) {
         const expDate = parseUtcDate(data.expires_at);
-        const iso = expDate ? expDate.toISOString() : escapeHtml(data.expires_at);
-        const local = expDate ? expDate.toLocaleTimeString() : escapeHtml(data.expires_at);
-        cacheBadge = `<span class="flypast-cache-pill cached" title="Cache valid until ${iso}">💾 DB Cached (Expires ${local})</span>`;
+        const zulu = expDate ? SentinelTime.formatZulu(expDate) : escapeHtml(data.expires_at);
+        const local = expDate ? `${SentinelTime.formatLocal(expDate)} LOCAL` : escapeHtml(data.expires_at);
+        cacheBadge = `<span class="flypast-cache-pill cached" title="Cache valid until ${zulu}">💾 DB Cached (Expires ${local})</span>`;
     } else {
         cacheBadge = `<span class="flypast-cache-pill live" title="Freshly generated and updated in local database">⚡ Live Forecast</span>`;
     }
@@ -530,8 +520,8 @@ function renderPassListHtml(aoiId, predictions, emptyMessage) {
 
     return predictions.slice(0, 10).map((pred, index) => {
         const passDate = parseUtcDate(pred.time);
-        const zuluStr = passDate ? passDate.toISOString().replace('T', ' ').substring(0, 19) + ' UTC' : escapeHtml(pred.time);
-        const localStr = passDate ? passDate.toLocaleString() : escapeHtml(pred.time);
+        const zuluStr = passDate ? SentinelTime.formatZulu(passDate) : escapeHtml(pred.time);
+        const localStr = passDate ? `${SentinelTime.formatLocal(passDate)} LOCAL` : escapeHtml(pred.time);
         
         const sat = pred.satellite || 'Sentinel-1';
         const dir = pred.orbit_direction || null;
@@ -558,7 +548,7 @@ function renderPassListHtml(aoiId, predictions, emptyMessage) {
                 <div class="flypast-item-main">
                     <div class="flypast-item-header">
                         <span>#${index + 1} &bull; ${localStr}</span>
-                        <span style="font-size: 0.78rem; color: #6c757d;">${zuluStr}</span>
+                        <span style="font-size: 0.78rem; color: #6c757d;">Zulu: ${zuluStr}</span>
                     </div>
                     <div class="flypast-item-meta">
                         <span class="badge badge-success">${escapeHtml(sat)}</span>

@@ -49,7 +49,7 @@
                 </div>
                 <div class="meta-group">
                     <span class="label">Date Taken (Acquisition)</span>
-                    <span class="value">{{ scan.metadata.acquisition_datetime or "N/A" }}</span>
+                    <span class="value js-local-time" data-utc-time="{{ (scan.metadata.acquisition_datetime or '')|e }}">{{ scan.metadata.acquisition_datetime or "N/A" }}</span>
                 </div>
                 <div class="meta-group">
                     <span class="label">Satellite</span>
@@ -57,7 +57,7 @@
                 </div>
                 <div class="meta-group">
                     <span class="label">Scraped On</span>
-                    <span class="value">{{ scan.metadata.scraped_datetime or "N/A" }}</span>
+                    <span class="value js-local-time" data-utc-time="{{ (scan.metadata.scraped_datetime or '')|e }}">{{ scan.metadata.scraped_datetime or "N/A" }}</span>
                 </div>
 
                 <details>
@@ -281,6 +281,11 @@
                     details.classList.remove('closing');
                 }
             }
+        });
+
+        document.querySelectorAll('.js-local-time').forEach((element) => {
+            const local = SentinelTime.formatLocal(element.dataset.utcTime);
+            if (local) element.textContent = `${local} LOCAL`;
         });
 
         updateUI();

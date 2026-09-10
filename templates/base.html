@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Sentinel Analysis{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+    <script src="{{ url_for('static', filename='js/time_utils.js') }}"></script>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -12,13 +13,13 @@
         <!-- Tier 1: Tactical Mission Telemetry Strip -->
         <div class="top-telemetry-bar">
             <div class="telemetry-left">
-                <div class="telemetry-item" title="Universal Coordinated Time (Zulu)">
+                <div class="telemetry-item telemetry-local" title="Local System Time">
                     <span class="beacon-dot"></span>
-                    <span id="zuluClockDisplay">ZULU: --:--:--Z</span>
+                    <span id="localClockDisplay">LOCAL: --:--:--</span>
                 </div>
                 <span class="telemetry-divider telemetry-local-sep">•</span>
-                <div class="telemetry-item telemetry-local" title="Local System Time">
-                    <span id="localClockDisplay">LOCAL: --:--:--</span>
+                <div class="telemetry-item" title="Universal Coordinated Time (Zulu), shown as an operational reference">
+                    <span id="zuluClockDisplay">ZULU: --:--:--Z</span>
                 </div>
             </div>
             <div class="telemetry-right">
@@ -115,7 +116,7 @@
 
     <script src="{{ url_for('static', filename='js/status_utils.js') }}"></script>
     <script>
-        // 1. Live Zulu & Local Clocks and Next Act Countdown
+        // 1. Live Local & Zulu Clocks and Next Act Countdown
         let navNextActData = null;
 
         function formatNavCountdown(sec) {
