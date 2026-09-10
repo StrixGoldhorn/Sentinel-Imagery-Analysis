@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ThreadedTaskQueue:
     """Thread-safe background task executor backed by a thread pool."""
 
-    def __init__(self, max_workers: int = 4, database_path: Path | str | None = None) -> None:
+    def __init__(self, max_workers: int = 8, database_path: Path | str | None = None) -> None:
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         self._lock = threading.Lock()
         self._tasks: dict[str, BackgroundTask] = {}

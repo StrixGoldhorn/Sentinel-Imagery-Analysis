@@ -21,6 +21,14 @@ def _apply_scheduler_settings(app_container) -> dict[str, list[str]]:
         except Exception as exc:
             errors.append(f"scheduler.aoi_check_interval_seconds: {exc}")
 
+        try:
+            worker_val = app_container.settings_repository.get("post_pass_worker_count")
+            if worker_val is not None and hasattr(scheduler, "get_post_pass_worker_count"):
+                scheduler.get_post_pass_worker_count()
+                applied.append("scheduler.post_pass_worker_count")
+        except Exception as exc:
+            errors.append(f"scheduler.post_pass_worker_count: {exc}")
+
     ingest_post_pass = getattr(app_container, "ingest_post_pass", None)
     if ingest_post_pass is not None:
         try:
