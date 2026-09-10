@@ -1,5 +1,6 @@
 """Copernicus Data Space implementation of the imagery provider port."""
 
+import hashlib
 import io
 import time
 from collections.abc import Mapping
@@ -428,7 +429,8 @@ class CopernicusImageryProvider:
         return self._tiler.calculate(bbox)
 
     def download_tile(self, tile: ImageTile, acquisition: Acquisition, output_path: Path) -> None:
-        cache_key = f"{acquisition.product_id or 'unknown'}_{tile.bbox.as_list()}_{tile.width}_{tile.height}_{hash(self._evalscript)}"
+        evalscript_hash = hashlib.sha256(self._evalscript.encode("utf-8")).hexdigest()
+        cache_key = f"{acquisition.product_id or 'unknown'}_{tile.bbox.as_list()}_{tile.width}_{tile.height}_{evalscript_hash}"
         if self._tile_cache and self._tile_cache.has(cache_key):
             cached_data = self._tile_cache.get(cache_key)
             if cached_data is not None:
@@ -528,7 +530,8 @@ class CopernicusImageryProvider:
             raise ExternalServiceError("Copernicus returned an invalid image") from exc
 
     def download_dem_tile(self, tile: ImageTile, output_path: Path) -> None:
-        cache_key = f"dem_{tile.bbox.as_list()}_{tile.width}_{tile.height}_{hash(DEM)}"
+        dem_script_hash = hashlib.sha256(DEM.encode("utf-8")).hexdigest()
+        cache_key = f"dem_{tile.bbox.as_list()}_{tile.width}_{tile.height}_{dem_script_hash}"
         if self._tile_cache and self._tile_cache.has(cache_key):
             cached_data = self._tile_cache.get(cache_key)
             if cached_data is not None:

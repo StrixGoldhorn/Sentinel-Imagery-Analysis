@@ -33,6 +33,7 @@ class CreateScan:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         acquisition: Acquisition | None = None,
+        include_dem: bool = False,
         progress_callback: Callable[[float, str], None] | None = None,
     ) -> Scan:
         def report(progress: float, message: str) -> None:
@@ -109,7 +110,10 @@ class CreateScan:
 
             dem_available = False
             dem_output_path = image_dir / f"{folder_name}_stitched_dem.png"
-            if hasattr(self._imagery, "download_dem_tile"):
+            # DEM tiles are only needed for land-masked ship detection. Keep them
+            # out of ordinary imagery scans; the explicit GenerateDEM/use-CV path
+            # can create them on demand and the provider cache will reuse them.
+            if include_dem and hasattr(self._imagery, "download_dem_tile"):
                 downloaded_dem: list[TileImage] = []
                 try:
                     report(82, "Generating DEM land mask")
