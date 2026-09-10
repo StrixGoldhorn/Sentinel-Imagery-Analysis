@@ -98,6 +98,20 @@
                     </svg>
                 </div>
                 <div class="metric-content">
+                    <div class="metric-value" id="metricQueryingCount">0</div>
+                    <div class="metric-label">Querying Catalog</div>
+                </div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-icon icon-amber">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                </div>
+                <div class="metric-content">
                     <div class="metric-value" id="metricIngestingCount">0</div>
                     <div class="metric-label">Ingesting &amp; Stitching</div>
                 </div>
@@ -126,7 +140,7 @@
                 </div>
                 <div class="metric-content">
                     <div class="metric-value" id="metricFailedCount">0</div>
-                    <div class="metric-label">Missed / Failed</div>
+                    <div class="metric-label">Failed / Missed Pass</div>
                 </div>
             </div>
 
@@ -140,9 +154,13 @@
                 </div>
                 <div class="metric-content">
                     <div class="metric-value" id="metricTimedOutCount">0</div>
-                    <div class="metric-label">Wait Expired (24h)</div>
+                    <div class="metric-label">Wait Expired</div>
                 </div>
             </div>
+        </div>
+
+        <div style="margin: -10px 0 20px; color: #64748b; font-size: 0.8rem;">
+            Summary cards show totals across all jobs. The table count and rows reflect the selected filters; the combined failure filter includes both ingestion failures and 24-hour wait expirations.
         </div>
 
         <!-- Controls and Filters Toolbar -->
@@ -161,10 +179,11 @@
                         <option value="">All Job Statuses</option>
                         <option value="POLLING_CATALOG">🔄 Polling Catalog</option>
                         <option value="PENDING_PASS">⏳ Queued (Flypast Active / Upcoming)</option>
+                        <option value="QUERYING_CATALOG">🔎 Querying Catalog</option>
                         <option value="INGESTING">📥 Ingesting &amp; Stitching</option>
                         <option value="COMPLETED">✅ Completed</option>
-                        <option value="TIMED_OUT">⏱️ Wait Expired (24h)</option>
-                        <option value="FAILED">❌ Missed / Failed (All)</option>
+                        <option value="TIMED_OUT">⏱️ Wait Expired</option>
+                        <option value="FAILED">❌ Failed / Wait Expired (All)</option>
                     </select>
                 </div>
 
@@ -261,7 +280,7 @@
                             <span style="font-size: 1.1rem; flex-shrink: 0;">⏱️</span>
                             <div>
                                 <strong>Strict Timing Verification:</strong>
-                                <div>The ingestion pipeline will <strong>only report SUCCESS</strong> if SAR imagery acquired within <strong>&plusmn;1 hour</strong> of the expected timing is published. If a <em>more recent</em> acquisition is detected in the catalog, the job is marked as <strong>FAILED (Timing Mismatch)</strong> and triggers an alert.</div>
+                                <div>The job is marked <strong>COMPLETED</strong> only after SAR imagery acquired within <strong>&plusmn;1 hour</strong> of the expected timing is published and ingested. Acquisitions outside that window are ignored while polling continues until the configured wait window expires.</div>
                             </div>
                         </div>
 

@@ -44,6 +44,17 @@ function parseUtcDate(val) {
     return isNaN(d.getTime()) ? null : d;
 }
 
+function getCanonicalPostPassStatus(job) {
+    return String(job && (job.status || job.effective_status) || '').trim().toUpperCase();
+}
+
+function getPostPassDisplayStatus(job, now = new Date()) {
+    const canonicalStatus = getCanonicalPostPassStatus(job);
+    if (canonicalStatus !== 'POLLING_CATALOG') return canonicalStatus;
+    const nextPollAt = parseUtcDate(job.next_poll_at);
+    return nextPollAt && nextPollAt > now ? 'WAITING_FOR_POLL' : 'DUE_FOR_POLL';
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initPostPassDashboard();
 });
@@ -76,6 +87,13 @@ function updateLiveCountdowns() {
                 const cell = el.closest('.polling-cell');
                 if (cell && !cell.classList.contains('is-due')) {
                     cell.classList.add('is-due');
+                    const row = cell.closest('tr');
+                    const statusBadge = row ? row.querySelector('.post-pass-status-badge') : null;
+                    if (statusBadge) {
+                        statusBadge.textContent = 'Ready for Catalog Check';
+                        statusBadge.style.background = '#dbeafe';
+                        statusBadge.style.color = '#1d4ed8';
+                    }
                     const attempts = el.getAttribute('data-attempts') || '1';
                     const nextLine = cell.querySelector('.next-poll-line');
                     if (nextLine) {
@@ -238,6 +256,7 @@ async function loadPostPassJobs(isSilent = false) {
 function updateMetrics(jobs, serverStats) {
     let polling = 0;
     let pending = 0;
+    let querying = 0;
     let ingesting = 0;
     let completed = 0;
     let failed = 0;
@@ -246,18 +265,20 @@ function updateMetrics(jobs, serverStats) {
     if (serverStats && typeof serverStats.polling === 'number') {
         polling = serverStats.polling;
         pending = serverStats.pending;
-        ingesting = (serverStats.ingesting || 0) + (serverStats.querying || 0);
+        querying = serverStats.querying || 0;
+        ingesting = serverStats.ingesting || 0;
         completed = serverStats.completed;
         failed = serverStats.failed;
         timedOut = serverStats.timed_out;
     } else {
         const now = new Date();
         jobs.forEach(job => {
-            const effectiveStatus = (job.effective_status || job.status || '').toUpperCase();
+            const effectiveStatus = getCanonicalPostPassStatus(job);
 
             if (effectiveStatus === 'POLLING_CATALOG') polling++;
             else if (effectiveStatus === 'PENDING_PASS') pending++;
-            else if (effectiveStatus === 'INGESTING' || effectiveStatus === 'QUERYING_CATALOG') ingesting++;
+            else if (effectiveStatus === 'QUERYING_CATALOG') querying++;
+            else if (effectiveStatus === 'INGESTING') ingesting++;
             else if (effectiveStatus === 'COMPLETED') completed++;
             else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
                 timedOut++;
@@ -268,6 +289,7 @@ function updateMetrics(jobs, serverStats) {
 
     const elPolling = document.getElementById('metricPollingCount');
     const elPending = document.getElementById('metricPendingCount');
+    const elQuerying = document.getElementById('metricQueryingCount');
     const elIngesting = document.getElementById('metricIngestingCount');
     const elCompleted = document.getElementById('metricCompletedCount');
     const elFailed = document.getElementById('metricFailedCount');
@@ -275,6 +297,7 @@ function updateMetrics(jobs, serverStats) {
 
     if (elPolling) elPolling.textContent = polling;
     if (elPending) elPending.textContent = pending;
+    if (elQuerying) elQuerying.textContent = querying;
     if (elIngesting) elIngesting.textContent = ingesting;
     if (elCompleted) elCompleted.textContent = completed;
     if (elFailed) elFailed.textContent = failed;
@@ -299,7 +322,7 @@ function applyPostPassFilters() {
         const expDt = parseUtcDate(job.expected_imagery_time) || parseUtcDate(job.pass_time);
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
-        const effectiveStatus = (job.display_status || job.effective_status || job.status || '').toUpperCase();
+        const effectiveStatus = getCanonicalPostPassStatus(job);
 
         if (selectedStatus) {
             if (selectedStatus === 'FAILED') {
@@ -361,18 +384,19 @@ function renderPostPassTable(jobs) {
         const expDt = parseUtcDate(job.expected_imagery_time) || passDt;
         const expStr = expDt ? expDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A';
 
-        // Validity calculation (24 hours timeout limit from expected pass time)
+        // Validity calculation from the backend-configured wait window.
         const maxWaitHours = job.max_wait_hours || 24.0;
         const invalidDt = parseUtcDate(job.expires_at) || (expDt ? new Date(expDt.getTime() + maxWaitHours * 3600 * 1000) : null);
         const invalidDiffSec = invalidDt ? Math.round((invalidDt - now) / 1000) : null;
-        const effectiveStatus = (job.display_status || job.effective_status || job.status || '').toUpperCase();
+        const canonicalStatus = getCanonicalPostPassStatus(job);
+        const effectiveStatus = getPostPassDisplayStatus(job, now);
 
         // Relative pass timing
         let timingContent = '';
         if (passDt) {
             const passDiffSec = Math.round((passDt - now) / 1000);
             let relPassText = '';
-            if (passDiffSec > 0) {
+            if (passDiffSec > 300) {
                 relPassText = `<div style="font-size: 0.75rem; color: #4338ca; font-weight: 500;">Flypast in <span class="live-pass-countdown" data-timestamp="${passDt.getTime()}">${formatDuration(passDiffSec, true)}</span></div>`;
             } else if (passDiffSec >= -300) {
                 relPassText = `<div style="font-size: 0.75rem; color: #059669; font-weight: 600;">⚡ Active flypast window</div>`;
@@ -390,7 +414,7 @@ function renderPostPassTable(jobs) {
         }
 
         let statusBadge = '';
-        const isTimingMismatch = effectiveStatus === 'FAILED' && (job.error_message || '').toLowerCase().includes('more recent imagery');
+        const completionWarning = canonicalStatus === 'COMPLETED' && Boolean(job.error_message);
 
         switch (effectiveStatus) {
             case 'PENDING_PASS':
@@ -412,25 +436,23 @@ function renderPostPassTable(jobs) {
                 statusBadge = '<span class="badge badge-warning" style="background: #fef3c7; color: #b45309;">📥 Ingesting &amp; Stitching</span>';
                 break;
             case 'COMPLETED':
-                statusBadge = '<span class="badge badge-success" style="background: #dcfce7; color: #15803d;">✅ Ingested Successfully</span>';
+                statusBadge = completionWarning
+                    ? '<span class="badge badge-warning" style="background: #fef3c7; color: #b45309;">⚠️ Ingested with Warning</span>'
+                    : '<span class="badge badge-success" style="background: #dcfce7; color: #15803d;">✅ Ingested Successfully</span>';
                 break;
             case 'TIMED_OUT':
             case 'WAIT_EXPIRED':
-                statusBadge = `<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; font-weight: 600;">❌ Failed (Wait Expired ${escapeHtml(String(job.max_wait_hours || 24))}h)</span>`;
+                statusBadge = `<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; font-weight: 600;">⏱ Wait Expired (${escapeHtml(String(job.max_wait_hours || 24))}h)</span>`;
                 break;
             case 'FAILED':
-                if (isTimingMismatch) {
-                    statusBadge = '<span class="badge badge-danger" style="background: #fee2e2; color: #991b1b; font-weight: 600;">⚠️ Missed Pass (Newer Acq Found)</span>';
-                } else {
-                    statusBadge = '<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c;">❌ Ingestion Failed</span>';
-                }
+                statusBadge = '<span class="badge badge-danger" style="background: #fee2e2; color: #b91c1c;">❌ Ingestion Failed</span>';
                 break;
             default:
                 statusBadge = `<span class="badge badge-secondary">${escapeHtml(effectiveStatus || 'UNKNOWN')}</span>`;
         }
 
         let nextPollContent = '-';
-        if (job.status === 'POLLING_CATALOG') {
+        if (canonicalStatus === 'POLLING_CATALOG') {
             let nextPollLine = '';
             if (job.next_poll_at) {
                 const nextDt = parseUtcDate(job.next_poll_at);
@@ -470,14 +492,14 @@ function renderPostPassTable(jobs) {
             if (invalidDiffSec !== null) {
                 if (invalidDiffSec > 0) {
                     validityLine = `
-                        <div style="font-size: 0.78rem; color: #475569; margin-top: 3px;" title="Catalog polling expires 24 hours after satellite pass if Copernicus does not publish imagery">
+                        <div style="font-size: 0.78rem; color: #475569; margin-top: 3px;" title="Catalog polling expires after the backend-configured ${escapeHtml(String(maxWaitHours))}-hour wait window">
                             ⏱️ <strong>Valid for:</strong> <span class="live-invalid-countdown" data-timestamp="${invalidDt.getTime()}" style="color: #0f172a; font-weight: 600;">${formatDuration(invalidDiffSec, false)} left</span>
                         </div>
                     `;
                 } else {
                     validityLine = `
                         <div style="font-size: 0.78rem; color: #dc2626; margin-top: 3px;">
-                            ⏱️ <strong>Wait window expired:</strong> Timed out after 24h
+                            ⏱️ <strong>Wait window expired:</strong> Timed out after ${escapeHtml(String(maxWaitHours))}h
                         </div>
                     `;
                 }
@@ -489,34 +511,25 @@ function renderPostPassTable(jobs) {
                     ${validityLine}
                 </div>
             `;
-        } else if (job.status === 'PENDING_PASS') {
-            const passEndDt = passDt ? new Date(passDt.getTime() + 5 * 60 * 1000) : null;
+        } else if (canonicalStatus === 'PENDING_PASS') {
+            const nextPollDt = parseUtcDate(job.next_poll_at);
             let passLine = '';
 
-            if (passDt) {
-                const secToPass = Math.round((passDt - now) / 1000);
-                const secToEnd = passEndDt ? Math.round((passEndDt - now) / 1000) : 0;
-
-                if (secToPass > 0) {
+            if (nextPollDt) {
+                const secToPoll = Math.round((nextPollDt - now) / 1000);
+                if (secToPoll > 0) {
                     passLine = `
                         <div style="color: #4f46e5; font-weight: 600;">
-                            Flypast <span class="live-pass-countdown" data-timestamp="${passDt.getTime()}">In ${formatDuration(secToPass, true)}</span>
+                            Catalog polling <span class="live-poll-countdown" data-timestamp="${nextPollDt.getTime()}" data-attempts="${job.attempts || 0}">In ${formatDuration(secToPoll, true)}</span>
                         </div>
-                        <div style="font-size: 0.78rem; color: #64748b;">Catalog poll starts 5m after pass</div>
-                    `;
-                } else if (secToEnd > 0) {
-                    passLine = `
-                        <div style="color: #059669; font-weight: 600;">
-                            ⚡ Flypast Window Active
-                        </div>
-                        <div style="font-size: 0.78rem; color: #64748b;">Scan poll starts in ${formatDuration(secToEnd, true)}</div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Backend schedule: ${nextPollDt.toLocaleString()}</div>
                     `;
                 } else {
                     passLine = `
                         <div style="color: #0284c7; font-weight: 600;">
-                            Flypast completed
+                            Catalog polling is due
                         </div>
-                        <div style="font-size: 0.78rem; color: #64748b;">Starting catalog poll...</div>
+                        <div style="font-size: 0.78rem; color: #64748b;">Waiting for the pass monitor to transition this job</div>
                     `;
                 }
             } else {
@@ -550,14 +563,8 @@ function renderPostPassTable(jobs) {
             `;
         } else if (effectiveStatus === 'TIMED_OUT' || effectiveStatus === 'WAIT_EXPIRED') {
             nextPollContent = `
-                <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || 'Exceeded maximum post-pass wait window (24h)')}">
+                <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message || `Exceeded maximum post-pass wait window (${maxWaitHours}h)`)}">
                     ⏱️ <strong>Wait window expired:</strong> Timed out after ${escapeHtml(String(job.max_wait_hours || 24))}h.
-                </div>
-            `;
-        } else if (isTimingMismatch) {
-            nextPollContent = `
-                <div style="color: #b91c1c; font-size: 0.8rem; line-height: 1.3;" title="${escapeHtml(job.error_message)}">
-                    ⚠️ <strong>Missed Pass (Invalid):</strong> Newer imagery detected in catalog.
                 </div>
             `;
         } else if (job.error_message) {
@@ -594,7 +601,7 @@ function renderPostPassTable(jobs) {
         }
 
         return `
-            <tr style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+            <tr data-job-id="${job.id}" style="border-bottom: 1px solid #f1f5f9; transition: background 0.15s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
                 <td style="padding: 12px 14px;">
                     <div style="font-weight: 600; color: #1e293b;">${escapeHtml(job.aoi_name)}</div>
                     <div style="font-size: 0.8rem; color: #64748b;">${passStr}</div>
@@ -607,7 +614,7 @@ function renderPostPassTable(jobs) {
                     <div style="font-size: 0.75rem; color: #64748b;">${escapeHtml(job.orbit_direction || 'Auto')}</div>
                 </td>
                 <td style="padding: 12px 14px;">
-                    ${statusBadge}
+                    <div class="post-pass-status-badge">${statusBadge}</div>
                 </td>
                 <td style="padding: 12px 14px; font-size: 0.85rem; color: #334155;">
                     ${nextPollContent}
@@ -623,13 +630,59 @@ function renderPostPassTable(jobs) {
     }).join('');
 }
 
+const monitoredPostPassTasks = new Set();
+
+function monitorPostPassTask(taskId, actionLabel) {
+    if (!taskId || monitoredPostPassTasks.has(taskId)) return;
+    monitoredPostPassTasks.add(taskId);
+    let consecutiveErrors = 0;
+
+    const poll = async () => {
+        try {
+            const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+            consecutiveErrors = 0;
+            const taskStatus = String(data.status || 'UNKNOWN').toUpperCase();
+            if (taskStatus === 'COMPLETED') {
+                monitoredPostPassTasks.delete(taskId);
+                const processedCount = data.result && Number.isInteger(data.result.processed_count)
+                    ? ` (${data.result.processed_count} job${data.result.processed_count === 1 ? '' : 's'} processed)`
+                    : '';
+                showToast(`${actionLabel} completed${processedCount}`, 'success');
+                loadPostPassJobs(true);
+                return;
+            }
+            if (taskStatus === 'FAILED' || taskStatus === 'CANCELLED') {
+                monitoredPostPassTasks.delete(taskId);
+                showToast(`${actionLabel} ${taskStatus.toLowerCase()}: ${data.error || data.message || 'Unknown error'}`, 'error');
+                loadPostPassJobs(true);
+                return;
+            }
+            setTimeout(poll, 1500);
+        } catch (err) {
+            consecutiveErrors += 1;
+            if (consecutiveErrors >= 5) {
+                monitoredPostPassTasks.delete(taskId);
+                showToast(`${actionLabel} status is unavailable; completion has not been confirmed.`, 'warning');
+                return;
+            }
+            setTimeout(poll, Math.min(15000, 1000 * (2 ** consecutiveErrors)));
+        }
+    };
+
+    setTimeout(poll, 500);
+}
+
 async function pollJobNow(jobId) {
     showToast(`Polling catalog for job #${jobId}...`, 'info');
     try {
         const response = await fetch(`/api/schedule/post_pass_jobs/${jobId}/poll`, { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.status === 'accepted') {
-            showToast(`Catalog check queued for job #${jobId}`, 'success');
+            showToast(`Catalog check accepted for job #${jobId}`, 'info');
+            monitorPostPassTask(data.task_id, `Catalog check for job #${jobId}`);
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Failed to poll catalog', 'error');
@@ -646,7 +699,8 @@ async function retryJob(jobId) {
         const response = await fetch(`/api/schedule/post_pass_jobs/${jobId}/retry`, { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.status === 'accepted') {
-            showToast(`Job #${jobId} reset and queued for polling`, 'success');
+            showToast(`Job #${jobId} reset; catalog check accepted`, 'info');
+            monitorPostPassTask(data.task_id, `Retry for job #${jobId}`);
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Failed to retry job', 'error');
@@ -707,7 +761,8 @@ async function pollDueJobsNow() {
         const response = await fetch('/api/schedule/post_pass_jobs/poll_all', { method: 'POST' });
         const data = await response.json();
         if (response.ok && data.status === 'accepted') {
-            showToast('Catalog checks queued for all due jobs', 'success');
+            showToast('Catalog checks accepted for all currently due jobs', 'info');
+            monitorPostPassTask(data.task_id, 'Due-job catalog batch');
             loadPostPassJobs();
         } else {
             showToast(data.error || 'Catalog polling failed', 'error');
@@ -811,7 +866,11 @@ async function submitCustomPostPassJob(event) {
         const data = await response.json();
 
         if (response.ok && (data.status === 'success' || data.status === 'accepted')) {
-            showToast(data.message || 'Custom post-pass job created successfully', 'success');
+            const isImmediatePoll = Boolean(data.task_id);
+            showToast(data.message || 'Custom post-pass job created successfully', isImmediatePoll ? 'info' : 'success');
+            if (isImmediatePoll) {
+                monitorPostPassTask(data.task_id, `Initial catalog check for job #${data.job_id}`);
+            }
             closeAddPostPassModal();
             loadPostPassJobs();
         } else {
