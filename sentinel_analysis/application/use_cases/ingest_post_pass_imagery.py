@@ -14,15 +14,7 @@ from sentinel_analysis.domain.entities import Acquisition, PostPassIngestionJob
 
 
 def _get_backoff_minutes(attempts: int) -> int:
-    """Progressive backoff for Copernicus catalog polling."""
-    if attempts <= 1:
-        return 5
-    if attempts == 2:
-        return 10
-    if attempts == 3:
-        return 20
-    if attempts == 4:
-        return 30
+    """Fixed interval for Copernicus catalog polling."""
     return 60
 
 

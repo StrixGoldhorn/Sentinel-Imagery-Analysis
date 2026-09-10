@@ -277,7 +277,7 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
         jobs.claim_jobs_due_for_poll.assert_called_once()
         self.assertEqual(jobs.claim_jobs_due_for_poll.call_args.kwargs["limit"], 25)
 
-    def test_progressive_backoff_when_no_image_ready(self):
+    def test_fixed_hourly_interval_when_no_image_ready(self):
         now = datetime.now(timezone.utc)
         pass_time = now - timedelta(minutes=15)
         job = PostPassIngestionJob(
@@ -302,6 +302,10 @@ class TestIngestPostPassImageryUseCase(unittest.TestCase):
         self.assertEqual(updated_job.attempts, 1)
         self.assertEqual(updated_job.status, "POLLING_CATALOG")
         self.assertIsNotNone(updated_job.next_poll_at)
+        self.assertGreaterEqual(
+            (updated_job.next_poll_at - now).total_seconds(),
+            59 * 60,
+        )
 
     def test_successful_ingestion_and_scan_creation(self):
         now = datetime.now(timezone.utc)

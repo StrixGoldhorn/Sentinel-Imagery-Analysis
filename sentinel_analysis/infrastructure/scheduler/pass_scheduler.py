@@ -46,7 +46,8 @@ class PassSchedulerWorker:
         self._schedule_use_case = schedule_use_case
         self._api_key = api_key
         self._aoi_check_interval = max(1.0, float(aoi_check_interval_seconds))
-        # A one-minute dispatcher cadence makes the 2/3/5/10-minute job backoff real.
+        # The dispatcher checks local job due times frequently; catalog requests are
+        # rate-limited independently by each job's fixed hourly next_poll_at.
         self._sar_scan_interval = max(
             1.0,
             float(sar_scan_interval_seconds if sar_scan_interval_seconds is not None else poll_interval_seconds),
