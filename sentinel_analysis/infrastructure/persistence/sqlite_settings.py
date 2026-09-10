@@ -194,6 +194,46 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "description": "Border color for oriented bounding box ship detections with heading.",
         },
     },
+    "notifications": {
+        "enabled": {
+            "value": True,
+            "type": "boolean",
+            "label": "Enable In-App Notifications",
+            "description": "Show operational feedback messages in the dashboard.",
+        },
+        "duration_seconds": {
+            "value": 3.0,
+            "type": "number",
+            "label": "Notification Display Duration (Seconds)",
+            "description": "How long temporary notifications remain visible before dismissing automatically.",
+            "min": 1.0,
+            "max": 30.0,
+        },
+        "show_info": {
+            "value": True,
+            "type": "boolean",
+            "label": "Informational Messages",
+            "description": "Show routine progress and navigation messages.",
+        },
+        "show_success": {
+            "value": True,
+            "type": "boolean",
+            "label": "Success Messages",
+            "description": "Show completed action confirmations.",
+        },
+        "show_warning": {
+            "value": True,
+            "type": "boolean",
+            "label": "Warning Messages",
+            "description": "Show caution messages that do not prevent continued use.",
+        },
+        "show_error": {
+            "value": True,
+            "type": "boolean",
+            "label": "Error Messages",
+            "description": "Show failed-action and connection error messages.",
+        },
+    },
 }
 
 

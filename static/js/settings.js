@@ -309,6 +309,14 @@ function collectFormData() {
             color_cv_detection: getString('input_map_ui_color_cv_detection', '#ff3333'),
             color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
         },
+        notifications: {
+            enabled: getBool('input_notifications_enabled', true),
+            duration_seconds: getFloat('input_notifications_duration_seconds', 3.0),
+            show_info: getBool('input_notifications_show_info', true),
+            show_success: getBool('input_notifications_show_success', true),
+            show_warning: getBool('input_notifications_show_warning', true),
+            show_error: getBool('input_notifications_show_error', true),
+        },
     };
     return payload;
 }

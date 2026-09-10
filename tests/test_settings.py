@@ -68,6 +68,8 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.assertEqual(defs["cv"]["coastal_buffer_pixels"]["type"], "integer")
         self.assertNotIn("n2yo_api_key", defs.get("scheduler", {}))
         self.assertNotIn("system", defs)
+        self.assertIn("notifications", defs)
+        self.assertEqual(defs["notifications"]["duration_seconds"]["value"], 3.0)
 
     def test_environment_owned_values_are_not_stored_or_returned(self):
         self.repo.set("scheduler", "n2yo_api_key", "should_not_persist")
@@ -187,6 +189,16 @@ class TestSettingsUseCases(unittest.TestCase):
         # Invalid filter type
         with self.assertRaises(ValueError):
             self.update_settings.execute({"cv": {"filter_type": "invalid_filter"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"notifications": {"duration_seconds": 0}})
+
+        self.update_settings.execute({
+            "notifications": {"enabled": False, "show_error": True, "duration_seconds": 5}
+        })
+        notifications = self.get_settings.execute("notifications")
+        self.assertFalse(notifications["enabled"])
+        self.assertEqual(notifications["duration_seconds"], 5.0)
 
 
 class TestSettingsWebAPI(unittest.TestCase):

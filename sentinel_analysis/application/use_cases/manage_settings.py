@@ -199,10 +199,28 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("Default Longitude must be between -180 and 180 degrees")
 
-        if key in ("dem_land_mask_enabled", "auto_capture_default", "debug"):
+        if key in (
+            "dem_land_mask_enabled",
+            "auto_capture_default",
+            "debug",
+            "enabled",
+            "show_info",
+            "show_success",
+            "show_warning",
+            "show_error",
+        ):
             if isinstance(value, str):
                 return value.lower() in ("true", "1", "yes")
             return bool(value)
+
+        if key == "duration_seconds":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 30.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Notification duration must be between 1 and 30 seconds")
 
         if key == "port":
             try:

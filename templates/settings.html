@@ -78,6 +78,15 @@
                     <span class="tab-badge">UI</span>
                 </button>
 
+                <button type="button" class="nav-tab-btn" data-section="notifications" onclick="switchSection('notifications')">
+                    <span class="tab-icon">🔔</span>
+                    <div class="tab-info">
+                        <span class="tab-title">Notifications</span>
+                        <span class="tab-desc">Dashboard feedback</span>
+                    </div>
+                    <span class="tab-badge">ALERTS</span>
+                </button>
+
             </nav>
 
             <div class="sidebar-footer-card">
@@ -385,6 +394,87 @@
                                 <input type="color" id="input_map_ui_color_obb_detection" value="#e67e22">
                                 <input type="text" class="form-input hex-input" id="hex_map_ui_color_obb_detection" value="#e67e22"
                                        oninput="document.getElementById('input_map_ui_color_obb_detection').value = this.value">
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Section: Notifications -->
+                <section class="settings-section" id="section-notifications">
+                    <div class="section-header">
+                        <h2>Dashboard Notifications</h2>
+                        <p>Control the temporary messages shown while using the dashboard. These settings affect in-app feedback only.</p>
+                    </div>
+
+                    <div class="settings-grid">
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_notifications_enabled">Enable In-App Notifications</label>
+                                    <p class="setting-description">Show operational feedback messages in the dashboard.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_notifications_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_notifications_duration_seconds" class="setting-title">Display Duration (Seconds)</label>
+                            <p class="setting-description">How long temporary notifications remain visible before dismissing automatically.</p>
+                            <input type="number" id="input_notifications_duration_seconds" class="form-input" min="1" max="30" step="0.5" value="3">
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_notifications_show_info">Informational Messages</label>
+                                    <p class="setting-description">Show routine progress and navigation messages.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_notifications_show_info" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_notifications_show_success">Success Messages</label>
+                                    <p class="setting-description">Show completed action confirmations.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_notifications_show_success" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_notifications_show_warning">Warning Messages</label>
+                                    <p class="setting-description">Show caution messages that do not prevent continued use.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_notifications_show_warning" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_notifications_show_error">Error Messages</label>
+                                    <p class="setting-description">Show failed-action and connection error messages.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_notifications_show_error" checked>
+                                    <span class="slider round"></span>
+                                </label>
                             </div>
                         </div>
                     </div>

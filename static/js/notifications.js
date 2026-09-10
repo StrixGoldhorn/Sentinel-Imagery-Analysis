@@ -2,10 +2,41 @@
  * Toast notifications, HTML escaping, and utility helpers.
  */
 
+const notificationPreferences = {
+    enabled: true,
+    duration_seconds: 3,
+    show_info: true,
+    show_success: true,
+    show_warning: true,
+    show_error: true,
+};
+
+async function loadNotificationPreferences() {
+    try {
+        const response = await fetch('/api/settings?definitions=false');
+        const data = await response.json();
+        const saved = data && data.settings ? data.settings.notifications : null;
+        if (saved && typeof saved === 'object') {
+            Object.keys(notificationPreferences).forEach(key => {
+                if (saved[key] !== undefined) notificationPreferences[key] = saved[key];
+            });
+        }
+    } catch (error) {
+        // Keep safe defaults when the settings endpoint is unavailable.
+    }
+}
+
+loadNotificationPreferences();
+
 function showNotification(message, type = 'info', options = {}) {
     if (typeof type === 'object' && type !== null) {
         options = type;
         type = options.type || 'info';
+    }
+
+    const preferenceKey = `show_${String(type).toLowerCase()}`;
+    if (!options.force && (!notificationPreferences.enabled || notificationPreferences[preferenceKey] === false)) {
+        return null;
     }
 
     let container = document.getElementById('notification-container');
@@ -20,7 +51,8 @@ function showNotification(message, type = 'info', options = {}) {
     notif.className = `notification ${type}`;
 
     const autoClose = options.autoClose !== undefined ? options.autoClose : (options.persistent ? false : true);
-    const duration = options.duration || (typeof CONFIG !== 'undefined' && CONFIG.NOTIFICATION_DURATION_MS) || 4000;
+    const configuredDuration = Number(notificationPreferences.duration_seconds) * 1000;
+    const duration = options.duration || configuredDuration || (typeof CONFIG !== 'undefined' && CONFIG.NOTIFICATION_DURATION_MS) || 4000;
     const showCloseBtn = options.closable !== false;
     const title = options.title || '';
     const showAckBtn = options.showAckButton === true;
