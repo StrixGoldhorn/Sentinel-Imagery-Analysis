@@ -800,4 +800,126 @@ body {
 
 .ui-card:hover {
     box-shadow: var(--card-shadow-hover);
-}
+}
+/* Shared AIS vessel color editor */
+.ais-color-editor {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+    gap: 7px;
+    margin-top: 10px;
+}
+.ais-color-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    background: #f8fafc;
+    color: #334155;
+    font-size: .72rem;
+    font-weight: 650;
+}
+.ais-color-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+}
+.ais-color-control input[type="color"] {
+    width: 28px;
+    height: 28px;
+    padding: 1px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #fff;
+    cursor: pointer;
+}
+.ais-color-control output {
+    min-width: 52px;
+    color: #64748b;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: .64rem;
+}
+.ais-color-reset {
+    margin-top: 9px;
+}
+.ais-color-settings-button {
+    flex: none;
+    width: 30px;
+    min-width: 30px;
+    padding: 5px !important;
+    font-size: .9rem !important;
+    background: #475569 !important;
+    color: #fff !important;
+    border: 0 !important;
+}
+/* The tactical drawer gives every .btn a full-width treatment. Keep this
+   utility control compact so it can sit beside Refresh and Filter. */
+.c2-drawer button.btn.ais-color-settings-button {
+    flex: 0 0 30px !important;
+    width: 30px !important;
+    min-width: 30px !important;
+    display: inline-flex !important;
+    margin-bottom: 0 !important;
+}
+.ais-color-modal[hidden] {
+    display: none;
+}
+.ais-color-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, .58);
+    backdrop-filter: blur(2px);
+}
+.ais-color-modal-card {
+    width: min(680px, 94vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 20px;
+    border: 1px solid #dbe3ec;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, .25);
+}
+.ais-color-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+.ais-color-modal-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.1rem;
+}
+.ais-color-modal-header p {
+    margin: 5px 0 0;
+    color: #64748b;
+    font-size: .78rem;
+}
+.ais-color-modal-close {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.ais-color-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+}
