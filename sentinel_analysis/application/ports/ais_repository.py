@@ -44,6 +44,10 @@ class AISRepository(Protocol):
         time_range: tuple[datetime | None, datetime | None] | None = None,
         limit: int = 500,
         latest_only: bool = True,
+        offset: int = 0,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
     ) -> list[dict]:
         ...
 
@@ -119,3 +123,35 @@ class AISRepository(Protocol):
         ...
 
 
+@runtime_checkable
+class AISAnalyticsRepository(AISRepository, Protocol):
+    """Optional read-model capabilities used by the AIS exploration pages."""
+
+    def count_vessel_positions(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        latest_only: bool = True,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
+    ) -> int:
+        ...
+
+    def get_vessel_history(
+        self,
+        vessel_id: int,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        limit: int = 5000,
+    ) -> list[dict]:
+        ...
+
+    def get_ais_summary(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
+    ) -> dict:
+        ...

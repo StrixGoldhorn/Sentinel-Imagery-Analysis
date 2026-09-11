@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block title %}AIS Activity - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/ais.css') }}" />{% endblock %}
+
+{% block content %}
+<main class="ais-page-shell">
+    <section class="ais-page-header"><div><div class="ais-eyebrow">INGESTION OBSERVABILITY</div><h1>AIS Activity</h1><p>Monitor scraper health, data freshness, and report coverage across configured AIS sources.</p></div><div class="ais-header-actions"><a class="btn btn-outline-primary" href="/scrapers">Manage scrapers</a><a class="btn btn-outline-secondary" href="/logs">Open logs</a><button class="btn btn-primary" id="aisActivityRefresh" type="button">Refresh</button></div></section>
+    <section class="ais-metrics" aria-label="AIS activity summary"><div class="ais-metric-card"><span>Overall freshness</span><strong id="activityFreshness">—</strong></div><div class="ais-metric-card"><span>Reports, 12h</span><strong id="activityReports">—</strong></div><div class="ais-metric-card"><span>Configured sources</span><strong id="activitySources">—</strong></div><div class="ais-metric-card"><span>Success rate</span><strong id="activitySuccessRate">—</strong></div></section>
+    <section class="ais-activity-grid"><div class="ais-card"><div class="ais-card-heading"><div><h2>Source health</h2><span>Operational state from scraper runs</span></div></div><div id="activityScrapers" class="ais-source-list"><div class="ais-table-state">Loading…</div></div></div><div class="ais-card"><div class="ais-card-heading"><div><h2>Report coverage</h2><span>Stored reports grouped by source</span></div></div><div id="activityCoverage" class="ais-coverage-list"><div class="ais-table-state">Loading…</div></div><div class="ais-coverage-chart-wrap"><svg id="activityCoverageChart" class="ais-coverage-chart" viewBox="0 0 640 180" role="img" aria-label="AIS report coverage over time"></svg></div></div></section>
+</main>
+<script src="{{ url_for('static', filename='js/ais_activity.js') }}"></script>
+{% endblock %}

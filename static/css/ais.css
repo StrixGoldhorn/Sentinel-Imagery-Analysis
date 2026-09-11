@@ -1,0 +1,55 @@
+.ais-page-shell { max-width: 1500px; margin: 0 auto; padding: 32px 36px 56px; color: #172033; }
+.ais-page-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 24px; }
+.ais-page-header h1 { margin: 4px 0 8px; font-size: clamp(1.8rem, 3vw, 2.5rem); letter-spacing: -.04em; }
+.ais-page-header p { margin: 0; color: #64748b; max-width: 760px; }
+.ais-eyebrow { color: #0284c7; font-size: .72rem; font-weight: 800; letter-spacing: .14em; }
+.ais-header-actions, .ais-export-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ais-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+.ais-metric-card, .ais-card, .ais-filter-card, .ais-table-card, .ais-map-card { background: #fff; border: 1px solid #dbe3ec; border-radius: 12px; box-shadow: 0 4px 18px rgba(15, 23, 42, .045); }
+.ais-metric-card { padding: 16px 18px; }
+.ais-metric-card span { display: block; color: #64748b; font-size: .76rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.ais-metric-card strong { display: block; margin-top: 7px; font-size: 1.35rem; color: #0f172a; }
+.ais-filter-card { padding: 18px; margin-bottom: 18px; }
+.ais-filter-grid { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(5, minmax(125px, 1fr)) auto; align-items: end; gap: 12px; }
+.ais-filter-grid label, .ais-edit-form label { display: flex; flex-direction: column; gap: 5px; color: #475569; font-size: .76rem; font-weight: 700; }
+.ais-filter-grid input, .ais-filter-grid select, .ais-edit-form input, .ais-inline-select { min-height: 38px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #172033; padding: 8px 10px; font: inherit; font-weight: 500; }
+.ais-filter-wide { min-width: 220px; }
+.ais-filter-actions { display: flex; gap: 7px; }
+.ais-filter-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; color: #64748b; font-size: .8rem; }
+.ais-explorer-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(360px, .8fr); gap: 18px; align-items: start; }
+.ais-table-card, .ais-map-card { overflow: hidden; }
+.ais-card-heading { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 17px 18px; border-bottom: 1px solid #e7edf3; }
+.ais-card-heading h2, .ais-card h2 { margin: 0; font-size: 1rem; color: #1e293b; }
+.ais-card-heading span, .ais-card > span { display: block; margin-top: 4px; color: #64748b; font-size: .75rem; }
+.ais-table-wrap { overflow-x: auto; }
+.ais-data-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.ais-data-table th { padding: 11px 10px; background: #f8fafc; color: #64748b; text-align: left; font-size: .68rem; text-transform: uppercase; letter-spacing: .045em; white-space: nowrap; cursor: pointer; }
+.ais-data-table td { padding: 12px 10px; border-top: 1px solid #edf2f7; color: #334155; white-space: nowrap; }
+.ais-data-table tbody tr { cursor: pointer; transition: background .12s ease; }
+.ais-data-table tbody tr:hover, .ais-data-table tbody tr.ais-selected-row { background: #eff6ff; }
+.ais-vessel-name { display: block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: #0f172a; font-weight: 750; }
+.ais-muted { color: #94a3b8; }
+.ais-type-badge, .ais-status-badge { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: .67rem; font-weight: 750; }
+.ais-type-badge { background: #e0f2fe; color: #0369a1; }
+.ais-status-badge.fresh { background: #dcfce7; color: #166534; }.ais-status-badge.aging { background: #fef3c7; color: #92400e; }.ais-status-badge.stale { background: #fee2e2; color: #991b1b; }.ais-status-badge.no-data { background: #e2e8f0; color: #475569; }
+.ais-status-badge.ready { background: #dcfce7; color: #166534; }.ais-status-badge.running { background: #dbeafe; color: #1d4ed8; }.ais-status-badge.cooldown { background: #fef3c7; color: #92400e; }.ais-status-badge.disabled { background: #e2e8f0; color: #475569; }
+.ais-table-state { padding: 34px !important; text-align: center; color: #64748b !important; }
+.ais-pagination { display: flex; justify-content: center; align-items: center; gap: 14px; padding: 14px; border-top: 1px solid #e7edf3; color: #64748b; font-size: .8rem; }
+.ais-map { min-height: 640px; width: 100%; }
+.ais-map-count { min-width: 24px; text-align: center; border-radius: 999px; padding: 3px 8px; background: #e0f2fe; color: #0369a1 !important; font-weight: 750; }
+.ais-back-link { display: inline-block; margin-bottom: 18px; color: #0369a1; font-size: .84rem; font-weight: 700; text-decoration: none; }
+.ais-detail-header { align-items: center; }
+.ais-detail-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(300px, .7fr); gap: 18px; align-items: start; }
+.ais-detail-main, .ais-detail-side { display: grid; gap: 18px; }
+.ais-card { padding: 18px; }.ais-card > h2 { margin-bottom: 14px; }
+.ais-card .ais-card-heading { margin: -18px -18px 18px; }
+.ais-identity-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.ais-identity-item span, .ais-telemetry-item span { display: block; color: #64748b; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+.ais-identity-item strong, .ais-telemetry-item strong { display: block; margin-top: 4px; color: #1e293b; font-size: .9rem; overflow-wrap: anywhere; }
+.ais-detail-map { min-height: 500px; margin: 0 -1px; border-radius: 8px; }
+.ais-telemetry-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }.ais-telemetry-item { min-width: 0; }
+.ais-trend-block + .ais-trend-block { margin-top: 16px; }.ais-trend-label { display: flex; justify-content: space-between; color: #64748b; font-size: .78rem; }.ais-trend-label strong { color: #0f172a; }.ais-trend { display: block; width: 100%; height: 100px; margin-top: 6px; overflow: visible; background: #f8fafc; border-radius: 7px; }.ais-trend polyline { fill: none; stroke: #0284c7; stroke-width: 3; }.ais-trend .ais-trend-empty { fill: #94a3b8; font-size: 12px; }
+.ais-edit-form { display: grid; gap: 11px; }.ais-edit-form button { margin-top: 3px; }
+.ais-activity-grid { display: grid; grid-template-columns: minmax(320px, .9fr) minmax(0, 1.4fr); gap: 18px; align-items: start; }.ais-source-list, .ais-coverage-list { display: grid; gap: 10px; }.ais-source-row, .ais-coverage-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #e7edf3; border-radius: 8px; }.ais-source-row strong, .ais-coverage-row strong { display: block; color: #1e293b; font-size: .82rem; }.ais-source-row small, .ais-coverage-row small { display: block; margin-top: 3px; color: #64748b; }.ais-coverage-bar { flex: 1; height: 8px; min-width: 80px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }.ais-coverage-bar i { display: block; height: 100%; border-radius: inherit; background: #0284c7; }.ais-coverage-chart-wrap { margin-top: 18px; overflow-x: auto; }.ais-coverage-chart { display: block; min-width: 560px; width: 100%; height: 180px; background: #f8fafc; border-radius: 8px; }.ais-coverage-chart polyline { fill: none; stroke: #0284c7; stroke-width: 3; }.ais-coverage-chart line { stroke: #dbe3ec; }.ais-coverage-chart text { fill: #64748b; font-size: 11px; }
+@media (max-width: 1180px) { .ais-filter-grid { grid-template-columns: repeat(3, 1fr); }.ais-filter-wide { grid-column: span 2; }.ais-filter-actions { align-self: end; }.ais-explorer-grid { grid-template-columns: 1fr; }.ais-map { min-height: 460px; } }
+@media (max-width: 760px) { .ais-page-shell { padding: 22px 14px 40px; }.ais-page-header { align-items: flex-start; flex-direction: column; }.ais-metrics { grid-template-columns: repeat(2, 1fr); }.ais-filter-grid, .ais-activity-grid, .ais-detail-grid { grid-template-columns: 1fr; }.ais-filter-wide { grid-column: auto; }.ais-filter-actions { grid-column: auto; }.ais-filter-meta { align-items: flex-start; flex-direction: column; }.ais-identity-grid { grid-template-columns: repeat(2, 1fr); }.ais-map { min-height: 380px; } }

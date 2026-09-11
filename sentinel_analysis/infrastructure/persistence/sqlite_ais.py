@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
@@ -18,6 +18,19 @@ def _normalize_utc_iso(val: object) -> str | None:
     if s.endswith("Z") or ("+" in s[10:] or ("-" in s[10:] and len(s) > 16)):
         return s
     return s.replace(" ", "T") + "Z"
+
+
+def _parse_ais_datetime(val: object) -> datetime | None:
+    normalized = _normalize_utc_iso(val)
+    if not normalized:
+        return None
+    try:
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        if parsed.utcoffset() is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
 
 
 class SQLiteAISRepository:
@@ -182,31 +195,64 @@ class SQLiteAISRepository:
                 "count": 0,
             }
 
+    @staticmethod
+    def _build_vessel_location_filters(
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
+    ) -> tuple[str, list[object]]:
+        params: list[object] = []
+        conditions: list[str] = []
+        if bbox is not None:
+            conditions.append(
+                "vl.longitude >= ? AND vl.latitude >= ? AND "
+                "vl.longitude <= ? AND vl.latitude <= ?"
+            )
+            params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
+        if time_range is not None:
+            start, end = time_range
+            if start is not None:
+                conditions.append("vl.timestamp >= ?")
+                params.append(start.isoformat())
+            if end is not None:
+                conditions.append("vl.timestamp <= ?")
+                params.append(end.isoformat())
+        if search:
+            term = f"%{search.strip()}%"
+            conditions.append(
+                "(v.vessel_name LIKE ? OR v.mmsi LIKE ? OR v.imo LIKE ? OR v.callsign LIKE ?)"
+            )
+            params.extend([term, term, term, term])
+        if vessel_type:
+            conditions.append("v.vessel_type LIKE ?")
+            params.append(f"%{vessel_type.strip()}%")
+        if source_plugin:
+            conditions.append("vl.source_plugin = ?")
+            params.append(source_plugin.strip())
+        return (f"WHERE {' AND '.join(conditions)}" if conditions else "", params)
+
     def get_vessel_positions(
         self,
         bbox: BoundingBox | None = None,
         time_range: tuple[datetime | None, datetime | None] | None = None,
         limit: int = 500,
         latest_only: bool = True,
+        offset: int = 0,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
     ) -> list[dict]:
-        limit = max(1, min(int(limit), 2000))
-        params: list[object] = []
-        where_conditions: list[str] = []
-
-        if bbox is not None:
-            where_conditions.append("vl.longitude >= ? AND vl.latitude >= ? AND vl.longitude <= ? AND vl.latitude <= ?")
-            params.extend([bbox.min_longitude, bbox.min_latitude, bbox.max_longitude, bbox.max_latitude])
-
-        if time_range is not None:
-            start, end = time_range
-            if start is not None:
-                where_conditions.append("vl.timestamp >= ?")
-                params.append(start.isoformat())
-            if end is not None:
-                where_conditions.append("vl.timestamp <= ?")
-                params.append(end.isoformat())
-
-        where_clause = f"WHERE {' AND '.join(where_conditions)}" if where_conditions else ""
+        limit = max(1, min(int(limit), 10000))
+        offset = max(0, int(offset))
+        where_clause, params = self._build_vessel_location_filters(
+            bbox=bbox,
+            time_range=time_range,
+            search=search,
+            vessel_type=vessel_type,
+            source_plugin=source_plugin,
+        )
 
         if latest_only:
             query = f"""
@@ -238,7 +284,7 @@ class SQLiteAISRepository:
                 FROM ranked
                 WHERE rn = 1
                 ORDER BY timestamp DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
             """
         else:
             query = f"""
@@ -259,9 +305,9 @@ class SQLiteAISRepository:
                 JOIN vessels v ON vl.vessel_id = v.id
                 {where_clause}
                 ORDER BY vl.timestamp DESC
-                LIMIT ?
+                LIMIT ? OFFSET ?
             """
-        params.append(limit)
+        params.extend([limit, offset])
 
         results: list[dict] = []
         with self._database.connection() as connection:
@@ -282,6 +328,146 @@ class SQLiteAISRepository:
                     "source_plugin": row[11],
                 })
         return results
+
+    def count_vessel_positions(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        latest_only: bool = True,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
+    ) -> int:
+        where_clause, params = self._build_vessel_location_filters(
+            bbox=bbox,
+            time_range=time_range,
+            search=search,
+            vessel_type=vessel_type,
+            source_plugin=source_plugin,
+        )
+        if latest_only:
+            query = f"""
+                WITH ranked AS (
+                    SELECT v.mmsi,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY v.mmsi
+                               ORDER BY vl.timestamp DESC, vl.id DESC
+                           ) AS rn
+                    FROM vessel_locations vl
+                    JOIN vessels v ON vl.vessel_id = v.id
+                    {where_clause}
+                )
+                SELECT COUNT(*) FROM ranked WHERE rn = 1
+            """
+        else:
+            query = f"""
+                SELECT COUNT(*)
+                FROM vessel_locations vl
+                JOIN vessels v ON vl.vessel_id = v.id
+                {where_clause}
+            """
+        with self._database.connection() as connection:
+            row = connection.execute(query, tuple(params)).fetchone()
+        return int(row[0] or 0) if row else 0
+
+    def get_vessel_history(
+        self,
+        vessel_id: int,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        limit: int = 5000,
+    ) -> list[dict]:
+        limit = max(1, min(int(limit), 10000))
+        params: list[object] = [vessel_id]
+        conditions = ["vessel_id = ?"]
+        if time_range is not None:
+            start, end = time_range
+            if start is not None:
+                conditions.append("timestamp >= ?")
+                params.append(start.isoformat())
+            if end is not None:
+                conditions.append("timestamp <= ?")
+                params.append(end.isoformat())
+        params.append(limit)
+        query = f"""
+            SELECT latitude, longitude, speed, heading, timestamp, source_plugin
+            FROM vessel_locations
+            WHERE {' AND '.join(conditions)}
+            ORDER BY timestamp DESC, id DESC
+            LIMIT ?
+        """
+        locations: list[dict] = []
+        with self._database.connection() as connection:
+            for row in connection.execute(query, tuple(params)).fetchall():
+                locations.append({
+                    "latitude": float(row[0]),
+                    "longitude": float(row[1]),
+                    "speed": float(row[2]) if row[2] is not None else None,
+                    "heading": float(row[3]) if row[3] is not None else None,
+                    "timestamp": _normalize_utc_iso(row[4]),
+                    "source_plugin": row[5],
+                })
+        return locations
+
+    def get_ais_summary(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
+    ) -> dict:
+        where_clause, params = self._build_vessel_location_filters(
+            bbox=bbox,
+            time_range=time_range,
+            search=search,
+            vessel_type=vessel_type,
+            source_plugin=source_plugin,
+        )
+        query = f"""
+            SELECT v.mmsi, v.vessel_type, vl.source_plugin, vl.timestamp
+            FROM vessel_locations vl
+            JOIN vessels v ON vl.vessel_id = v.id
+            {where_clause}
+        """
+        rows = []
+        with self._database.connection() as connection:
+            rows = connection.execute(query, tuple(params)).fetchall()
+
+        by_type: dict[str, int] = {}
+        by_source: dict[str, int] = {}
+        buckets: dict[str, int] = {}
+        mmsis: set[str] = set()
+        latest_report: datetime | None = None
+        for row in rows:
+            mmsis.add(str(row[0]))
+            type_name = row[1] or "Unspecified"
+            source_name = row[2] or "Unknown"
+            by_type[type_name] = by_type.get(type_name, 0) + 1
+            by_source[source_name] = by_source.get(source_name, 0) + 1
+            timestamp = _parse_ais_datetime(row[3])
+            if timestamp is None:
+                continue
+            if latest_report is None or timestamp > latest_report:
+                latest_report = timestamp
+            bucket = timestamp.replace(minute=0, second=0, microsecond=0)
+            buckets[bucket.isoformat().replace("+00:00", "Z")] = buckets.get(
+                bucket.isoformat().replace("+00:00", "Z"), 0
+            ) + 1
+
+        now = datetime.now(timezone.utc)
+        freshness = (now - latest_report).total_seconds() if latest_report else None
+        return {
+            "vessel_count": len(mmsis),
+            "record_count": len(rows),
+            "latest_report_at": latest_report.isoformat().replace("+00:00", "Z") if latest_report else None,
+            "freshness_seconds": max(0, int(freshness)) if freshness is not None else None,
+            "by_type": by_type,
+            "by_source": by_source,
+            "time_buckets": [
+                {"timestamp": key, "count": buckets[key]}
+                for key in sorted(buckets)
+            ],
+        }
 
     def get_vessel_by_id(self, vessel_id: int) -> dict | None:
         with self._database.connection() as connection:
@@ -701,4 +887,3 @@ class SQLiteAISRepository:
                     "last_run_at": _normalize_utc_iso(row[8]),
                 }
         return stats
-

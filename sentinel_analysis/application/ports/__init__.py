@@ -1,7 +1,7 @@
 """Application-owned boundaries for providers and persistence."""
 
 from sentinel_analysis.application.ports.ais import AISPlugin, AISPluginRegistry, AISTimeRange
-from sentinel_analysis.application.ports.ais_repository import AISRepository
+from sentinel_analysis.application.ports.ais_repository import AISAnalyticsRepository, AISRepository
 from sentinel_analysis.application.ports.annotation import (
     AnnotationEditor,
     AnnotationProgress,
@@ -23,6 +23,7 @@ from sentinel_analysis.application.ports.task_queue import TaskQueue
 __all__ = [
     "AISPlugin",
     "AISPluginRegistry",
+    "AISAnalyticsRepository",
     "AISRepository",
     "AISTimeRange",
     "AnnotationEditor",
@@ -45,4 +46,3 @@ __all__ = [
     "TileCache",
     "TileImage",
 ]
-

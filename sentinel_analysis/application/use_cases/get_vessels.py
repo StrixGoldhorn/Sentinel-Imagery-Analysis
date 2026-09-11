@@ -20,17 +20,34 @@ class GetVesselPositions:
         limit: int = 500,
         latest_only: bool = True,
         within_hours: float | None = None,
+        offset: int = 0,
+        search: str | None = None,
+        vessel_type: str | None = None,
+        source_plugin: str | None = None,
     ) -> list[dict[str, Any]]:
         effective_time_range = time_range
         if within_hours is not None and effective_time_range is None:
             now_utc = datetime.now(timezone.utc)
             effective_time_range = (now_utc - timedelta(hours=within_hours), None)
 
+        repository_kwargs = {
+            "bbox": bbox,
+            "time_range": effective_time_range,
+            "limit": limit,
+            "latest_only": latest_only,
+        }
+        # Keep compatibility with lightweight repository adapters that implement
+        # the original query contract while enabling the richer explorer filters
+        # for repositories that support them.
+        if offset or search or vessel_type or source_plugin:
+            repository_kwargs.update({
+                "offset": offset,
+                "search": search,
+                "vessel_type": vessel_type,
+                "source_plugin": source_plugin,
+            })
         positions = self._repository.get_vessel_positions(
-            bbox=bbox,
-            time_range=effective_time_range,
-            limit=limit,
-            latest_only=latest_only,
+            **repository_kwargs,
         )
 
         if within_hours is not None:
@@ -68,4 +85,3 @@ class GetVesselPositions:
                         seen_mmsi[mmsi] = pos
             return list(seen_mmsi.values())
         return positions
-

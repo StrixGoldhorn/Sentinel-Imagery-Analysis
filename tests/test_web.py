@@ -504,6 +504,57 @@ def test_list_vessels_post_route_invalid_bbox() -> None:
     assert res3.status_code == 400
 
 
+def test_ais_dashboard_pages_render() -> None:
+    client, _, _, _ = make_client()
+    assert client.get("/ais").status_code == 200
+    assert b"AIS Explorer" in client.get("/ais").data
+    assert client.get("/ais/vessels/1").status_code == 200
+    assert b"Vessel Detail" in client.get("/ais/vessels/1").data
+    assert client.get("/ais/activity").status_code == 200
+    assert b"AIS Activity" in client.get("/ais/activity").data
+
+
+def test_ais_query_filters_are_forwarded_and_export_formats_are_supported() -> None:
+    client, container, _, _ = make_client()
+    response = client.get(
+        "/api/ais/vessels?q=trader&vessel_type=Cargo&source_plugin=MockAISPlugin"
+        "&within_hours=24&latest_only=false&page=2&page_size=25"
+    )
+    assert response.status_code == 200
+    call = container.get_vessels.keyword_calls[-1]
+    assert call["search"] == "trader"
+    assert call["vessel_type"] == "Cargo"
+    assert call["source_plugin"] == "MockAISPlugin"
+    assert call["latest_only"] is False
+    assert call["limit"] == 25
+    assert call["offset"] == 25
+
+    csv_response = client.get("/api/ais/export?format=csv")
+    assert csv_response.status_code == 200
+    assert csv_response.mimetype == "text/csv"
+    assert b"vessel_id,name,mmsi" in csv_response.data
+
+    geojson_response = client.get("/api/ais/export?format=geojson")
+    assert geojson_response.status_code == 200
+    assert geojson_response.json["type"] == "FeatureCollection"
+    assert geojson_response.json["features"][0]["geometry"]["type"] == "Point"
+
+
+def test_ais_history_route_returns_vessel_and_locations() -> None:
+    client, container, _, _ = make_client()
+
+    class HistoryRepository:
+        def get_vessel_history(self, vessel_id, time_range=None, limit=5000):
+            return [{"latitude": 1.2, "longitude": 103.8, "timestamp": "2026-09-01T00:00:00Z"}]
+
+    container.ais_repository = HistoryRepository()
+    container.get_vessel_details = StubUseCase({"id": 1, "mmsi": "563000111", "name": "PACIFIC TRADER"})
+    response = client.get("/api/ais/vessels/1/history?within_hours=12")
+    assert response.status_code == 200
+    assert response.json["vessel"]["mmsi"] == "563000111"
+    assert len(response.json["locations"]) == 1
+
+
 
 def test_ais_timeline_route() -> None:
     client, _, _, _ = make_client()

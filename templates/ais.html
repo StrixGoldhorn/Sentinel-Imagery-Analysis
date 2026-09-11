@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}AIS Explorer - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ais.css') }}" />
+{% endblock %}
+
+{% block content %}
+<main class="ais-page-shell">
+    <section class="ais-page-header">
+        <div>
+            <div class="ais-eyebrow">MARITIME DOMAIN AWARENESS</div>
+            <h1>AIS Explorer</h1>
+            <p>Search stored vessel reports, compare traffic around your AOIs, and export the filtered view.</p>
+        </div>
+        <div class="ais-header-actions">
+            <a class="btn btn-outline-primary" href="/ais/activity">Ingestion Activity</a>
+            <button class="btn btn-primary" id="aisRefreshButton" type="button">Refresh</button>
+        </div>
+    </section>
+
+    <section class="ais-metrics" aria-label="AIS summary">
+        <div class="ais-metric-card"><span>Vessels</span><strong id="aisMetricVessels">—</strong></div>
+        <div class="ais-metric-card"><span>Reports</span><strong id="aisMetricReports">—</strong></div>
+        <div class="ais-metric-card"><span>Latest report</span><strong id="aisMetricLatest">—</strong></div>
+        <div class="ais-metric-card"><span>Data freshness</span><strong id="aisMetricFreshness">—</strong></div>
+    </section>
+
+    <section class="ais-filter-card">
+        <form id="aisExplorerFilters" class="ais-filter-grid">
+            <label class="ais-filter-wide">Search
+                <input id="aisSearch" name="q" type="search" placeholder="Name, MMSI, IMO, callsign">
+            </label>
+            <label>Window
+                <select id="aisWindow" name="window">
+                    <option value="12h">Latest 12 hours</option>
+                    <option value="24h">Last 24 hours</option>
+                    <option value="3d">Last 3 days</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="custom">Custom range</option>
+                    <option value="all">All stored history</option>
+                </select>
+            </label>
+            <label id="aisCustomStartWrap" hidden>Start
+                <input id="aisCustomStart" name="start" type="datetime-local">
+            </label>
+            <label id="aisCustomEndWrap" hidden>End
+                <input id="aisCustomEnd" name="end" type="datetime-local">
+            </label>
+            <label>Vessel type
+                <select id="aisType" name="vessel_type">
+                    <option value="">All types</option>
+                    <option>Cargo</option><option>Tanker</option><option>Passenger</option>
+                    <option>Tug</option><option>Fishing</option><option>Military</option>
+                    <option>Pleasure</option><option>Other</option>
+                </select>
+            </label>
+            <label>Source plugin
+                <input id="aisSource" name="source_plugin" type="text" placeholder="Any source">
+            </label>
+            <label>AOI
+                <select id="aisAoi" name="aoi_id"><option value="">Any area</option></select>
+            </label>
+            <label>View
+                <select id="aisMode" name="latest_only">
+                    <option value="true">Latest position per vessel</option>
+                    <option value="false">All matching reports</option>
+                </select>
+            </label>
+            <div class="ais-filter-actions">
+                <button class="btn btn-primary" type="submit">Apply filters</button>
+                <button class="btn btn-light" id="aisClearFilters" type="button">Clear</button>
+            </div>
+        </form>
+        <div class="ais-filter-meta"><span id="aisFilterStatus">Loading stored AIS data…</span><span id="aisGeneratedAt"></span></div>
+    </section>
+
+    <section class="ais-explorer-grid">
+        <div class="ais-table-card">
+            <div class="ais-card-heading">
+                <div><h2>Vessel reports</h2><span id="aisTableSemantics">Latest stored position</span></div>
+                <div class="ais-export-actions">
+                    <button class="btn btn-sm btn-outline-secondary" id="aisCsvExport" type="button">CSV</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="aisGeoJsonExport" type="button">GeoJSON</button>
+                </div>
+            </div>
+            <div class="ais-table-wrap">
+                <table class="ais-data-table">
+                    <thead><tr>
+                        <th data-sort="name">Name</th><th data-sort="mmsi">MMSI / IMO</th><th data-sort="type">Type</th><th data-sort="timestamp">Last report</th>
+                        <th data-sort="latitude">Position</th><th data-sort="speed">Speed / heading</th><th data-sort="source_plugin">Source</th><th></th>
+                    </tr></thead>
+                    <tbody id="aisVesselTableBody"><tr><td colspan="8" class="ais-table-state">Loading…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="ais-pagination"><button class="btn btn-sm btn-light" id="aisPrevPage" type="button">Previous</button><span id="aisPageLabel">Page 1</span><button class="btn btn-sm btn-light" id="aisNextPage" type="button">Next</button></div>
+        </div>
+        <div class="ais-map-card">
+            <div class="ais-card-heading"><div><h2>Spatial context</h2><span>Click a row or marker to inspect a vessel</span></div><span class="ais-map-count" id="aisMapCount">0</span></div>
+            <div id="aisExplorerMap" class="ais-map"></div>
+        </div>
+    </section>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{{ url_for('static', filename='js/ais_vessels.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ais_dashboard.js') }}"></script>
+{% endblock %}
