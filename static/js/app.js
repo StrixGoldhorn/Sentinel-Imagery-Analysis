@@ -556,7 +556,11 @@ function openShipDetailsSidebar(vessel) {
         }
     }
 
-    if (speedEl) speedEl.innerHTML = `${speed.toFixed(1)} <small>kn</small>`;
+    if (speedEl) {
+        speedEl.innerHTML = speed === null
+            ? 'N/A'
+            : `${speed.toFixed(1)} <small>kn</small>`;
+    }
 
     const heading = (vessel.heading !== undefined && vessel.heading !== null && !isNaN(vessel.heading) && Number(vessel.heading) <= 360) ? Number(vessel.heading) :
                     (vessel.cog !== undefined && vessel.cog !== null && !isNaN(vessel.cog) && Number(vessel.cog) <= 360) ? Number(vessel.cog) : null;
@@ -564,8 +568,12 @@ function openShipDetailsSidebar(vessel) {
         headingEl.textContent = heading !== null ? `${heading.toFixed(1)}°` : 'N/A';
     }
 
-    if (coordsEl && vessel.latitude !== undefined && vessel.longitude !== undefined) {
-        coordsEl.textContent = `${vessel.latitude.toFixed(5)}° N, ${vessel.longitude.toFixed(5)}° E`;
+    if (coordsEl) {
+        const latitude = Number(vessel.latitude);
+        const longitude = Number(vessel.longitude);
+        coordsEl.textContent = Number.isFinite(latitude) && Number.isFinite(longitude)
+            ? `${latitude.toFixed(5)}° N, ${longitude.toFixed(5)}° E`
+            : 'N/A';
     }
 
     if (timeEl) {
