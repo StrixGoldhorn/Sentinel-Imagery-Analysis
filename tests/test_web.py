@@ -470,6 +470,17 @@ def test_list_vessels_post_route_success() -> None:
     assert passed_bbox == BoundingBox(103.8, 1.2, 103.9, 1.3)
 
 
+def test_list_vessels_route_forwards_random_sampling_flag() -> None:
+    client, container, _, _ = make_client()
+    response = client.post(
+        "/api/ais/vessels",
+        json={"latest_only": True, "limit": 1000, "randomize": True},
+    )
+
+    assert response.status_code == 200
+    assert container.get_vessels.keyword_calls[-1].get("randomize") is True
+
+
 def test_list_vessels_post_route_with_timestamps() -> None:
     client, container, _, _ = make_client()
     response = client.post(

@@ -48,6 +48,7 @@ class AISRepository(Protocol):
         search: str | None = None,
         vessel_type: str | None = None,
         source_plugin: str | None = None,
+        randomize: bool = False,
     ) -> list[dict]:
         ...
 

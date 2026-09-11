@@ -657,7 +657,10 @@ async function loadAISVessels(mapInstance, bbox = null) {
 
         const requestBody = {
             latest_only: true,
-            limit: 1000
+            limit: 1000,
+            // The map is capped at 1,000 markers. Ask the API for a fresh
+            // random sample so dense areas do not always show the same ships.
+            randomize: true
         };
 
         if (activeBbox) {

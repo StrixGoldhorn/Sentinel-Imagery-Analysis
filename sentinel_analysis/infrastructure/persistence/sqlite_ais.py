@@ -243,6 +243,7 @@ class SQLiteAISRepository:
         search: str | None = None,
         vessel_type: str | None = None,
         source_plugin: str | None = None,
+        randomize: bool = False,
     ) -> list[dict]:
         limit = max(1, min(int(limit), 10000))
         offset = max(0, int(offset))
@@ -283,7 +284,7 @@ class SQLiteAISRepository:
                     latitude, longitude, speed, heading, timestamp, source_plugin
                 FROM ranked
                 WHERE rn = 1
-                ORDER BY timestamp DESC
+                ORDER BY {"RANDOM()" if randomize else "timestamp DESC"}
                 LIMIT ? OFFSET ?
             """
         else:
@@ -304,7 +305,7 @@ class SQLiteAISRepository:
                 FROM vessel_locations vl
                 JOIN vessels v ON vl.vessel_id = v.id
                 {where_clause}
-                ORDER BY vl.timestamp DESC
+                ORDER BY {"RANDOM()" if randomize else "vl.timestamp DESC"}
                 LIMIT ? OFFSET ?
             """
         params.extend([limit, offset])

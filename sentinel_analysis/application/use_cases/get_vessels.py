@@ -24,6 +24,7 @@ class GetVesselPositions:
         search: str | None = None,
         vessel_type: str | None = None,
         source_plugin: str | None = None,
+        randomize: bool = False,
     ) -> list[dict[str, Any]]:
         effective_time_range = time_range
         if within_hours is not None and effective_time_range is None:
@@ -46,6 +47,8 @@ class GetVesselPositions:
                 "vessel_type": vessel_type,
                 "source_plugin": source_plugin,
             })
+        if randomize:
+            repository_kwargs["randomize"] = True
         positions = self._repository.get_vessel_positions(
             **repository_kwargs,
         )

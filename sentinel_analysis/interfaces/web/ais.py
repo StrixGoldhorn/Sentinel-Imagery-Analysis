@@ -115,6 +115,7 @@ def _parse_ais_filters(max_limit: int = 2000) -> dict:
         "bbox": bbox,
         "time_range": time_range,
         "latest_only": _parse_bool(payload.get("latest_only"), True),
+        "randomize": _parse_bool(payload.get("randomize"), False),
         "limit": limit,
         "offset": offset,
         "page": page,
