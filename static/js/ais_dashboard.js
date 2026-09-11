@@ -116,7 +116,7 @@
             body.innerHTML = sortedVessels.map(v => `<tr data-vessel-id="${v.vessel_id}" class="${v.vessel_id === state.selectedId ? 'ais-selected-row' : ''}">
                 <td><span class="ais-vessel-name" title="${esc(v.name)}">${esc(v.name || `MMSI: ${v.mmsi}`)}</span><small class="ais-muted">${esc(v.callsign || 'No callsign')}</small></td>
                 <td>${esc(v.mmsi || '—')}<br><small class="ais-muted">IMO ${esc(v.imo || '—')}</small></td>
-                <td><span class="ais-type-badge">${esc(v.type || 'Unspecified')}</span></td>
+                <td><span class="ais-type-badge" style="background-color: ${getVesselColor(v.type)}; color: ${getReadableTextColor(getVesselColor(v.type))};">${esc(v.type || 'Unspecified')}</span></td>
                 <td>${timeText(v.timestamp)}</td>
                 <td>${numberText(v.latitude, 4)}, ${numberText(v.longitude, 4)}</td>
                 <td>${numberText(v.speed)} kn<br><small class="ais-muted">${numberText(v.heading, 0)}°</small></td>
@@ -207,6 +207,10 @@
         state.sortKey = key;
         renderTable();
     }));
+    document.addEventListener('ais:vessel-colors-changed', () => {
+        renderTable();
+        renderMap();
+    });
 
     restoreFromUrl();
     loadAOIs().finally(loadData);

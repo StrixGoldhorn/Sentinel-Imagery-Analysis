@@ -86,6 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initNavTabs();
     initFormChangeTracking();
     initColorControls();
+    const requestedSection = window.location.hash.replace(/^#/, '');
+    if (requestedSection && document.getElementById(`section-${requestedSection}`)) {
+        switchSection(requestedSection);
+    }
     window.addEventListener('beforeunload', (event) => {
         if (formSnapshot() !== savedFormSnapshot) {
             event.preventDefault();
@@ -110,6 +114,8 @@ function switchSection(sectionId) {
     document.querySelectorAll('.settings-section').forEach(sec => {
         sec.classList.toggle('active', sec.id === `section-${sectionId}`);
     });
+
+    if (history.replaceState) history.replaceState(null, '', `#${sectionId}`);
 }
 
 async function loadSettings() {

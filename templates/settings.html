@@ -402,6 +402,16 @@
                             </div>
                         </div>
 
+                        <div class="settings-card card-span-2">
+                            <div class="card-title-group">
+                                <span class="setting-title">AIS Vessel Colors</span>
+                                <span class="badge-value">Saved automatically</span>
+                            </div>
+                            <p class="setting-description">Customize the shared palette used for AIS markers, projected vectors, legends, and vessel-type badges in this browser.</p>
+                            <div class="ais-color-editor" data-ais-color-editor></div>
+                            <button class="btn btn-sm btn-secondary ais-color-reset" type="button" data-reset-vessel-colors>Reset vessel colors</button>
+                        </div>
+
                         <div class="settings-card">
                             <div class="toggle-control-group">
                                 <div>
@@ -531,5 +541,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+    <script src="{{ url_for('static', filename='js/ais_vessels.js') }}"></script>
     <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 {% endblock %}

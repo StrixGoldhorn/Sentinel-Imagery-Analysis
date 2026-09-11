@@ -14,7 +14,7 @@
 let aisVesselLayer = null;
 let aisVesselsData = [];
 let aisLayerEnabled = true;
-let activeTypeFilters = new Set(['Cargo', 'Tanker', 'Passenger', 'Tug', 'Fishing', 'Military', 'Pleasure', 'Other']);
+let activeTypeFilters = new Set(['Cargo', 'Tanker', 'Passenger', 'Tug', 'Fishing', 'Military', 'Pleasure', 'HighSpeed', 'Other']);
 
 // Timeline state
 const aisTimelineState = {
@@ -32,7 +32,8 @@ const aisTimelineState = {
     isMinimized: false
 };
 
-const VESSEL_TYPE_COLORS = {
+const VESSEL_COLOR_STORAGE_KEY = 'sentinel_ais_vessel_colors_v1';
+const DEFAULT_VESSEL_TYPE_COLORS = Object.freeze({
     'Cargo': '#28a745',
     'Tanker': '#dc3545',
     'Passenger': '#007bff',
@@ -42,7 +43,152 @@ const VESSEL_TYPE_COLORS = {
     'Pleasure': '#20c997',
     'HighSpeed': '#e83e8c',
     'Other': '#6c757d'
+});
+const VESSEL_TYPE_LABELS = Object.freeze({
+    'Cargo': 'Cargo',
+    'Tanker': 'Tanker',
+    'Passenger': 'Passenger',
+    'Tug': 'Tug / Pilot',
+    'Fishing': 'Fishing',
+    'Military': 'Military / SAR',
+    'Pleasure': 'Pleasure / Sailing',
+    'HighSpeed': 'High Speed Craft',
+    'Other': 'Other / Unspecified'
+});
+
+function isValidVesselColor(value) {
+    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function loadStoredVesselColors() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(VESSEL_COLOR_STORAGE_KEY) || '{}');
+        if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
+        return Object.fromEntries(
+            Object.keys(DEFAULT_VESSEL_TYPE_COLORS)
+                .filter(category => isValidVesselColor(stored[category]))
+                .map(category => [category, stored[category].toLowerCase()])
+        );
+    } catch (error) {
+        console.warn('Unable to load saved AIS vessel colors:', error);
+        return {};
+    }
+}
+
+const VESSEL_TYPE_COLORS = {
+    ...DEFAULT_VESSEL_TYPE_COLORS,
+    ...loadStoredVesselColors()
 };
+
+function getReadableTextColor(backgroundColor) {
+    if (!isValidVesselColor(backgroundColor)) return '#ffffff';
+    const red = parseInt(backgroundColor.slice(1, 3), 16);
+    const green = parseInt(backgroundColor.slice(3, 5), 16);
+    const blue = parseInt(backgroundColor.slice(5, 7), 16);
+    return ((red * 299 + green * 587 + blue * 114) / 1000) >= 150 ? '#172033' : '#ffffff';
+}
+
+function updateVesselColorControls() {
+    document.querySelectorAll('[data-vessel-color-category]').forEach(swatch => {
+        const color = VESSEL_TYPE_COLORS[swatch.dataset.vesselColorCategory];
+        if (color) swatch.style.color = color;
+    });
+    document.querySelectorAll('[data-vessel-color-input]').forEach(input => {
+        const category = input.dataset.vesselColorInput;
+        if (VESSEL_TYPE_COLORS[category]) input.value = VESSEL_TYPE_COLORS[category];
+    });
+    document.querySelectorAll('[data-vessel-color-value]').forEach(output => {
+        const color = VESSEL_TYPE_COLORS[output.dataset.vesselColorValue];
+        if (color) output.textContent = color.toUpperCase();
+    });
+}
+
+function notifyVesselColorsChanged() {
+    updateVesselColorControls();
+    document.dispatchEvent(new CustomEvent('ais:vessel-colors-changed', {
+        detail: { colors: { ...VESSEL_TYPE_COLORS } }
+    }));
+}
+
+function setVesselTypeColor(category, color) {
+    if (!(category in DEFAULT_VESSEL_TYPE_COLORS) || !isValidVesselColor(color)) return;
+    VESSEL_TYPE_COLORS[category] = color.toLowerCase();
+    try {
+        localStorage.setItem(VESSEL_COLOR_STORAGE_KEY, JSON.stringify(VESSEL_TYPE_COLORS));
+    } catch (error) {
+        console.warn('Unable to save AIS vessel colors:', error);
+    }
+    notifyVesselColorsChanged();
+}
+
+function resetVesselTypeColors() {
+    Object.assign(VESSEL_TYPE_COLORS, DEFAULT_VESSEL_TYPE_COLORS);
+    try {
+        localStorage.removeItem(VESSEL_COLOR_STORAGE_KEY);
+    } catch (error) {
+        console.warn('Unable to reset AIS vessel colors:', error);
+    }
+    notifyVesselColorsChanged();
+}
+
+function initVesselColorControls() {
+    document.querySelectorAll('[data-ais-color-editor]').forEach(editor => {
+        if (editor.dataset.initialized === 'true') return;
+        editor.dataset.initialized = 'true';
+        editor.innerHTML = Object.keys(DEFAULT_VESSEL_TYPE_COLORS).map(category => `
+            <label class="ais-color-option">
+                <span>${VESSEL_TYPE_LABELS[category]}</span>
+                <span class="ais-color-control">
+                    <input type="color" value="${VESSEL_TYPE_COLORS[category]}" data-vessel-color-input="${category}" aria-label="${VESSEL_TYPE_LABELS[category]} vessel color">
+                    <output data-vessel-color-value="${category}">${VESSEL_TYPE_COLORS[category].toUpperCase()}</output>
+                </span>
+            </label>
+        `).join('');
+        editor.querySelectorAll('[data-vessel-color-input]').forEach(input => {
+            input.addEventListener('change', event => setVesselTypeColor(event.target.dataset.vesselColorInput, event.target.value));
+        });
+    });
+    document.querySelectorAll('[data-reset-vessel-colors]').forEach(button => {
+        if (button.dataset.initialized === 'true') return;
+        button.dataset.initialized = 'true';
+        button.addEventListener('click', resetVesselTypeColors);
+    });
+    updateVesselColorControls();
+}
+
+let vesselColorSettingsTrigger = null;
+
+function openAisColorSettings() {
+    const modal = document.getElementById('aisColorSettingsModal');
+    if (!modal) return;
+    vesselColorSettingsTrigger = document.activeElement;
+    initVesselColorControls();
+    modal.hidden = false;
+    const firstColorInput = modal.querySelector('[data-vessel-color-input]');
+    if (firstColorInput) firstColorInput.focus();
+}
+
+function closeAisColorSettings() {
+    const modal = document.getElementById('aisColorSettingsModal');
+    if (!modal) return;
+    modal.hidden = true;
+    if (vesselColorSettingsTrigger && typeof vesselColorSettingsTrigger.focus === 'function') {
+        vesselColorSettingsTrigger.focus();
+    }
+    vesselColorSettingsTrigger = null;
+}
+
+document.addEventListener('DOMContentLoaded', initVesselColorControls);
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeAisColorSettings();
+});
+window.addEventListener('storage', event => {
+    if (event.key !== VESSEL_COLOR_STORAGE_KEY) return;
+    Object.assign(VESSEL_TYPE_COLORS, DEFAULT_VESSEL_TYPE_COLORS, loadStoredVesselColors());
+    notifyVesselColorsChanged();
+});
+window.openAisColorSettings = openAisColorSettings;
+window.closeAisColorSettings = closeAisColorSettings;
 
 function classifyVesselType(typeStr) {
     if (!typeStr || typeof typeStr !== 'string') return 'Other';
@@ -130,6 +276,8 @@ function updateSliderBoundsDisplay() {
 
 function initAISVessels(mapInstance) {
     if (!mapInstance) return;
+
+    initVesselColorControls();
 
     aisVesselLayer = L.featureGroup();
 
@@ -761,6 +909,12 @@ function applyAisFilters() {
         renderVesselsOnMap(map);
     }
 }
+
+document.addEventListener('ais:vessel-colors-changed', () => {
+    if (typeof map !== 'undefined' && map && aisVesselLayer) {
+        renderVesselsOnMap(map);
+    }
+});
 
 function escapeHtml(str) {
     if (typeof str !== 'string') return String(str ?? '');

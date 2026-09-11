@@ -171,20 +171,24 @@
                     <button type="button" id="filterAisBtn" class="btn btn-sm btn-secondary" style="padding: 5px 8px; font-size: 0.8em; background: #64748b; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="toggleAisFilterPanel()">
                         Filter ▾
                     </button>
+                    <button type="button" id="aisColorSettingsBtn" class="btn btn-sm btn-secondary ais-color-settings-button" onclick="openAisColorSettings()" aria-label="Customize vessel colors" title="Customize vessel colors">
+                        ⚙
+                    </button>
                 </div>
 
                 <!-- AIS Vessel Legend & Type Filter -->
                 <div id="aisFilterPanel" style="display: none; margin-top: 10px; padding-top: 8px; border-top: 1px solid #dee2e6; font-size: 0.78em;">
                     <strong style="display: block; margin-bottom: 6px; color: #495057;">Filter by Ship Type:</strong>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Cargo" checked onchange="applyAisFilters()"> <span style="color: #28a745; font-weight: bold;">●</span> Cargo</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tanker" checked onchange="applyAisFilters()"> <span style="color: #dc3545; font-weight: bold;">●</span> Tanker</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Passenger" checked onchange="applyAisFilters()"> <span style="color: #007bff; font-weight: bold;">●</span> Passenger</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tug" checked onchange="applyAisFilters()"> <span style="color: #17a2b8; font-weight: bold;">●</span> Tug / Pilot</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Fishing" checked onchange="applyAisFilters()"> <span style="color: #fd7e14; font-weight: bold;">●</span> Fishing</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Military" checked onchange="applyAisFilters()"> <span style="color: #6f42c1; font-weight: bold;">●</span> Military/SAR</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Pleasure" checked onchange="applyAisFilters()"> <span style="color: #20c997; font-weight: bold;">●</span> Pleasure</label>
-                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Other" checked onchange="applyAisFilters()"> <span style="color: #6c757d; font-weight: bold;">●</span> Other</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Cargo" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Cargo" style="font-weight: bold;">●</span> Cargo</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tanker" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Tanker" style="font-weight: bold;">●</span> Tanker</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Passenger" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Passenger" style="font-weight: bold;">●</span> Passenger</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Tug" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Tug" style="font-weight: bold;">●</span> Tug / Pilot</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Fishing" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Fishing" style="font-weight: bold;">●</span> Fishing</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Military" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Military" style="font-weight: bold;">●</span> Military/SAR</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Pleasure" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Pleasure" style="font-weight: bold;">●</span> Pleasure</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="HighSpeed" checked onchange="applyAisFilters()"> <span data-vessel-color-category="HighSpeed" style="font-weight: bold;">●</span> High Speed</label>
+                        <label style="cursor: pointer;"><input type="checkbox" class="ais-type-filter" value="Other" checked onchange="applyAisFilters()"> <span data-vessel-color-category="Other" style="font-weight: bold;">●</span> Other</label>
                     </div>
                 </div>
 
@@ -584,6 +588,25 @@
                 <button type="submit" id="saveVesselBtn" style="padding: 7px 16px; font-size: 0.88em; background: #007bff; color: #ffffff; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">Save Changes</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- AIS Vessel Color Settings Modal -->
+<div id="aisColorSettingsModal" class="ais-color-modal" role="dialog" aria-modal="true" aria-labelledby="aisColorSettingsTitle" hidden onclick="if(event.target === this) closeAisColorSettings()">
+    <div class="ais-color-modal-card">
+        <div class="ais-color-modal-header">
+            <div>
+                <h3 id="aisColorSettingsTitle">Vessel Colors</h3>
+                <p>Choose the colors used for AIS markers, vectors, legends, and type badges.</p>
+            </div>
+            <button type="button" class="ais-color-modal-close" onclick="closeAisColorSettings()" aria-label="Close vessel color settings">&times;</button>
+        </div>
+        <div class="ais-color-editor" data-ais-color-editor></div>
+        <div class="ais-color-modal-actions">
+            <a class="btn btn-sm btn-light" href="/settings#map_ui">Open Settings</a>
+            <button class="btn btn-sm btn-light" type="button" data-reset-vessel-colors>Reset defaults</button>
+            <button class="btn btn-sm btn-primary" type="button" onclick="closeAisColorSettings()">Done</button>
+        </div>
     </div>
 </div>
 
