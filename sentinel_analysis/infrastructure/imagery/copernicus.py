@@ -2,6 +2,8 @@
 
 import hashlib
 import io
+import os
+import tempfile
 import time
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
@@ -182,6 +184,43 @@ class CopernicusImageryProvider:
 
     def _get_token(self, force_refresh: bool = False) -> str:
         return self._token_provider.get(force_refresh=force_refresh)
+
+    def _save_png_atomically(self, image: Image.Image, output_path: Path) -> None:
+        """Persist a PNG without sharing a predictable temporary filename.
+
+        A predictable ``.tmp`` path lets concurrent jobs (and Windows file
+        scanners) contend for the same open file.  Use a per-write temporary
+        file and retry short-lived sharing violations before giving up.
+        """
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{output_path.name}.",
+            suffix=".tmp",
+            dir=output_path.parent,
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            image.save(temporary, format="PNG")
+            for attempt in range(self._max_retries + 1):
+                try:
+                    temporary.replace(output_path)
+                    break
+                except PermissionError:
+                    if attempt >= self._max_retries:
+                        raise
+                    self._sleep(0.1 * (attempt + 1))
+        finally:
+            for attempt in range(self._max_retries + 1):
+                try:
+                    temporary.unlink(missing_ok=True)
+                    break
+                except PermissionError:
+                    if attempt >= self._max_retries:
+                        # Preserve the original write/replace error.  A
+                        # locked orphan can be removed by a later cleanup.
+                        break
+                    self._sleep(0.1 * (attempt + 1))
 
     def find_latest_acquisition(
         self,
@@ -438,15 +477,11 @@ class CopernicusImageryProvider:
                     with Image.open(io.BytesIO(cached_data)) as source:
                         source.load()
                         image = source.convert("RGBA")
-                    temporary = output_path.with_name(f"{output_path.name}.tmp")
                     try:
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        image.save(temporary, format="PNG")
-                        temporary.replace(output_path)
+                        self._save_png_atomically(image, output_path)
                         return
                     finally:
                         image.close()
-                        temporary.unlink(missing_ok=True)
                 except (OSError, ValueError):
                     pass
 
@@ -514,20 +549,17 @@ class CopernicusImageryProvider:
         try:
             if self._tile_cache:
                 self._tile_cache.set(cache_key, response.content)
-
             with Image.open(io.BytesIO(response.content)) as source:
                 source.load()
                 image = source.convert("RGBA")
-            temporary = output_path.with_name(f"{output_path.name}.tmp")
-            try:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                image.save(temporary, format="PNG")
-                temporary.replace(output_path)
-            finally:
-                image.close()
-                temporary.unlink(missing_ok=True)
         except (OSError, ValueError) as exc:
             raise ExternalServiceError("Copernicus returned an invalid image") from exc
+        try:
+            self._save_png_atomically(image, output_path)
+        except OSError as exc:
+            raise ExternalServiceError("Unable to persist Copernicus image") from exc
+        finally:
+            image.close()
 
     def download_dem_tile(self, tile: ImageTile, output_path: Path) -> None:
         dem_script_hash = hashlib.sha256(DEM.encode("utf-8")).hexdigest()
@@ -539,15 +571,11 @@ class CopernicusImageryProvider:
                     with Image.open(io.BytesIO(cached_data)) as source:
                         source.load()
                         image = source.convert("RGBA")
-                    temporary = output_path.with_name(f"{output_path.name}.tmp")
                     try:
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        image.save(temporary, format="PNG")
-                        temporary.replace(output_path)
+                        self._save_png_atomically(image, output_path)
                         return
                     finally:
                         image.close()
-                        temporary.unlink(missing_ok=True)
                 except (OSError, ValueError):
                     pass
 
@@ -605,18 +633,15 @@ class CopernicusImageryProvider:
         try:
             if self._tile_cache:
                 self._tile_cache.set(cache_key, response.content)
-
             with Image.open(io.BytesIO(response.content)) as source:
                 source.load()
                 image = source.convert("RGBA")
-            temporary = output_path.with_name(f"{output_path.name}.tmp")
-            try:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                image.save(temporary, format="PNG")
-                temporary.replace(output_path)
-            finally:
-                image.close()
-                temporary.unlink(missing_ok=True)
         except (OSError, ValueError) as exc:
             raise ExternalServiceError("Copernicus returned an invalid DEM image") from exc
+        try:
+            self._save_png_atomically(image, output_path)
+        except OSError as exc:
+            raise ExternalServiceError("Unable to persist Copernicus DEM image") from exc
+        finally:
+            image.close()
 

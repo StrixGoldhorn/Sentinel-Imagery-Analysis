@@ -140,6 +140,39 @@ def test_copernicus_download_tile_retries_transient_502_and_succeeds() -> None:
         out_file.unlink(missing_ok=True)
 
 
+def test_copernicus_download_dem_retries_windows_file_lock() -> None:
+    import io
+    from unittest.mock import patch
+
+    img_io = io.BytesIO()
+    Image.new("RGBA", (10, 10), (128, 128, 128, 255)).save(img_io, format="PNG")
+    client = FakeHTTPClient(post_responses=[FakeResponse(content=img_io.getvalue())])
+    provider = CopernicusImageryProvider(
+        StaticTokenProvider(),
+        http_client=client,
+        sleep_fn=lambda _: None,
+    )
+    tile = ImageTile(BBOX, 10, 10, 0, 0)
+    out_file = RUNTIME / "test_download_dem_file_lock.png"
+    original_replace = Path.replace
+    attempts = {"count": 0}
+
+    def flaky_replace(target: Path) -> None:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise PermissionError(32, "The process cannot access the file")
+        temporary = next(target.parent.glob(f".{target.name}.*.tmp"))
+        original_replace(temporary, target)
+
+    try:
+        with patch("pathlib.Path.replace", side_effect=flaky_replace):
+            provider.download_dem_tile(tile, out_file)
+        assert out_file.exists()
+        assert attempts["count"] == 2
+    finally:
+        out_file.unlink(missing_ok=True)
+
+
 def test_copernicus_download_tile_raises_formatted_error_on_persistent_502() -> None:
     client = FakeHTTPClient(
         post_responses=[
