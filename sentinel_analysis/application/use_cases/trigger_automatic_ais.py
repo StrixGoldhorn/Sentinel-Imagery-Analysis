@@ -11,6 +11,22 @@ from sentinel_analysis.domain.entities import AreaOfInterest, PostPassIngestionJ
 from sentinel_analysis.domain.satellite import is_historical_prediction
 
 
+def _as_utc_datetime(value: object) -> Optional[datetime]:
+    """Normalize provider-supplied acquisition metadata for the domain entity."""
+    if value is None or isinstance(value, datetime):
+        if value is None:
+            return None
+        parsed = value
+    elif isinstance(value, str):
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    else:
+        raise ValueError("Basis acquisition time must be a datetime or ISO-8601 string")
+
+    if parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 class TriggerAutomaticAISScrape:
     """Run an automatic AIS scrape and create its post-pass imagery job.
 
@@ -52,6 +68,9 @@ class TriggerAutomaticAISScrape:
         if existing is None:
             satellite = (active_pass_info or {}).get("satellite") or "Sentinel-1"
             orbit_direction = (active_pass_info or {}).get("orbit_direction")
+            basis_acquisition_time = _as_utc_datetime(
+                (active_pass_info or {}).get("basis_acquisition_time")
+            )
             status = "POLLING_CATALOG" if current >= end_utc else "PENDING_PASS"
             job = PostPassIngestionJob(
                 aoi_id=aoi.id,
@@ -63,7 +82,7 @@ class TriggerAutomaticAISScrape:
                 prediction_source=(active_pass_info or {}).get("source"),
                 workflow_id=f"aoi:{aoi.id}:pass:{pass_utc.isoformat()}",
                 basis_product_id=(active_pass_info or {}).get("basis_product_id"),
-                basis_acquisition_time=(active_pass_info or {}).get("basis_acquisition_time"),
+                basis_acquisition_time=basis_acquisition_time,
                 basis_satellite=(active_pass_info or {}).get("basis_satellite"),
                 basis_relative_orbit=(active_pass_info or {}).get("basis_relative_orbit"),
                 status=status,

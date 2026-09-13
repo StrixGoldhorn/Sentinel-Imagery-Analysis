@@ -131,6 +131,19 @@ class TestTriggerAutomaticAISScrape(unittest.TestCase):
         self.assertEqual(time_range, (now - timedelta(minutes=1), now + timedelta(minutes=1)))
         self.assertIn("Test AOI", reason)
 
+    def test_normalizes_iso_basis_acquisition_time(self):
+        ingest = IngestStub()
+        repo = PostPassRepoStub()
+        use_case = TriggerAutomaticAISScrape(ingest, repo)
+        info = {**self.info, "basis_acquisition_time": "2026-08-20T12:00:00Z"}
+
+        use_case.execute(self.aoi, self.pass_time, info, self.window_end, now=self.pass_time)
+
+        self.assertEqual(
+            repo.added[0].basis_acquisition_time,
+            datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc),
+        )
+
     def test_existing_job_is_reused_without_duplicate_registration(self):
         existing = PostPassIngestionJob(
             id=99,
