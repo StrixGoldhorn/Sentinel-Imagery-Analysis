@@ -7,10 +7,21 @@
  */
 (function () {
     function parseUtc(value) {
-        if (!value) return null;
+        if (value === null || value === undefined || value === '') return null;
         if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+        if (typeof value === 'number') {
+            if (!isFinite(value)) return null;
+            const date = new Date(value);
+            return isNaN(date.getTime()) ? null : date;
+        }
         let text = String(value).trim();
         if (!text) return null;
+        if (/^-?\d+(\.\d+)?$/.test(text)) {
+            const num = Number(text);
+            if (!isFinite(num)) return null;
+            const date = new Date(num);
+            return isNaN(date.getTime()) ? null : date;
+        }
         if (!text.endsWith('Z') && !text.includes('+') && !text.includes('-', 10)) {
             text = text.replace(' ', 'T') + 'Z';
         }

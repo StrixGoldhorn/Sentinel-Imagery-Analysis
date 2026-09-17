@@ -228,18 +228,41 @@ function getVesselColor(typeStr) {
 
 function formatAisDateTime(ts) {
     if (!ts) return '-';
-    const local = SentinelTime.formatLocal(ts, {
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit'
-    });
+    let local = null;
+    if (typeof SentinelTime !== 'undefined' && SentinelTime.formatLocal) {
+        local = SentinelTime.formatLocal(ts, {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+    if (!local) {
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!isNaN(d.getTime())) {
+            local = d.toLocaleString(undefined, {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+        }
+    }
     return local ? `${local} LOCAL` : '-';
 }
 
 function formatAisShortDate(ts) {
     if (!ts) return '-';
-    const local = SentinelTime.formatLocal(ts, {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    let local = null;
+    if (typeof SentinelTime !== 'undefined' && SentinelTime.formatLocal) {
+        local = SentinelTime.formatLocal(ts, {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+    }
+    if (!local) {
+        const d = (ts instanceof Date) ? ts : new Date(ts);
+        if (!isNaN(d.getTime())) {
+            local = d.toLocaleString(undefined, {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+        }
+    }
     return local ? `${local} LOCAL` : '-';
 }
 
@@ -357,9 +380,16 @@ function setSliderValue(val) {
 
 function updateTimelineLabels(targetTs) {
     const isLive = aisTimelineState.isLive;
-    const displayStr = isLive 
-        ? 'Latest Stored Positions (Last 12h)'
-        : `Historical: ${formatAisDateTime(targetTs)}`;
+    let displayStr = '';
+    if (isLive) {
+        displayStr = 'Latest Stored Positions (Last 12h)';
+    } else if (aisTimelineState.preset === 'custom') {
+        const startLabel = formatAisShortDate(aisTimelineState.minTime);
+        const endLabel = formatAisShortDate(aisTimelineState.maxTime);
+        displayStr = `Custom Range: ${startLabel} — ${endLabel}`;
+    } else {
+        displayStr = `Historical: ${formatAisDateTime(targetTs)}`;
+    }
 
     const sidebarDisplay = document.getElementById('aisSelectedDateDisplay');
     const floatingDisplay = document.getElementById('floatingTimelineTimeDisplay');
@@ -368,21 +398,47 @@ function updateTimelineLabels(targetTs) {
 
     if (sidebarDisplay) {
         sidebarDisplay.textContent = displayStr;
-        sidebarDisplay.style.color = isLive ? '#28a745' : '#007bff';
-        sidebarDisplay.style.borderColor = isLive ? '#28a745' : '#007bff';
+        sidebarDisplay.style.color = isLive ? '#28a745' : (aisTimelineState.preset === 'custom' ? '#4f46e5' : '#007bff');
+        sidebarDisplay.style.borderColor = isLive ? '#28a745' : (aisTimelineState.preset === 'custom' ? '#c7d2fe' : '#007bff');
     }
     if (floatingDisplay) {
-        floatingDisplay.textContent = isLive ? 'Latest Stored Positions (12h)' : formatAisDateTime(targetTs);
+        if (isLive) {
+            floatingDisplay.textContent = 'Latest Stored Positions (12h)';
+        } else if (aisTimelineState.preset === 'custom') {
+            floatingDisplay.textContent = `${formatAisShortDate(aisTimelineState.minTime)} — ${formatAisShortDate(aisTimelineState.maxTime)}`;
+        } else {
+            floatingDisplay.textContent = formatAisDateTime(targetTs);
+        }
     }
     if (sidebarBadge) {
-        sidebarBadge.textContent = isLive ? 'LATEST' : 'HISTORY';
-        sidebarBadge.className = isLive ? 'badge badge-primary' : 'badge badge-warning';
-        sidebarBadge.style.backgroundColor = isLive ? '#0284c7' : '#fd7e14';
+        if (isLive) {
+            sidebarBadge.textContent = 'LATEST';
+            sidebarBadge.className = 'badge badge-primary';
+            sidebarBadge.style.backgroundColor = '#0284c7';
+        } else if (aisTimelineState.preset === 'custom') {
+            sidebarBadge.textContent = 'CUSTOM';
+            sidebarBadge.className = 'badge badge-info';
+            sidebarBadge.style.backgroundColor = '#4f46e5';
+        } else {
+            sidebarBadge.textContent = 'HISTORY';
+            sidebarBadge.className = 'badge badge-warning';
+            sidebarBadge.style.backgroundColor = '#fd7e14';
+        }
     }
     if (floatingBadge) {
-        floatingBadge.textContent = isLive ? 'LATEST' : 'HISTORY';
-        floatingBadge.className = isLive ? 'badge badge-primary' : 'badge badge-warning';
-        floatingBadge.style.backgroundColor = isLive ? '#0284c7' : '#fd7e14';
+        if (isLive) {
+            floatingBadge.textContent = 'LATEST';
+            floatingBadge.className = 'badge badge-primary';
+            floatingBadge.style.backgroundColor = '#0284c7';
+        } else if (aisTimelineState.preset === 'custom') {
+            floatingBadge.textContent = 'CUSTOM';
+            floatingBadge.className = 'badge badge-info';
+            floatingBadge.style.backgroundColor = '#4f46e5';
+        } else {
+            floatingBadge.textContent = 'HISTORY';
+            floatingBadge.className = 'badge badge-warning';
+            floatingBadge.style.backgroundColor = '#fd7e14';
+        }
     }
 }
 
@@ -401,7 +457,12 @@ function onAisSliderInput(val) {
     const percent = parseFloat(val) / 100;
     const targetTs = aisTimelineState.minTime + (aisTimelineState.maxTime - aisTimelineState.minTime) * percent;
     aisTimelineState.selectedTime = targetTs;
-    aisTimelineState.isLive = (parseFloat(val) >= 99.5);
+    if (aisTimelineState.preset === 'custom') {
+        aisTimelineState.isLive = false;
+    } else {
+        const isNearNow = Math.abs(Date.now() - aisTimelineState.maxTime) < 600000;
+        aisTimelineState.isLive = (parseFloat(val) >= 99.5 && isNearNow);
+    }
 
     syncSliderElements(val);
     updateTimelineLabels(targetTs);
@@ -410,7 +471,9 @@ function onAisSliderInput(val) {
 let aisSliderDebounceTimer = null;
 function onAisSliderChange(val) {
     onAisSliderInput(val);
-    if (aisTimelineState.isLive) {
+    if (aisTimelineState.preset === 'custom') {
+        highlightPresetButton('custom');
+    } else if (aisTimelineState.isLive) {
         aisTimelineState.preset = 'live';
         highlightPresetButton('live');
     } else {
@@ -430,6 +493,11 @@ function setAisTimelinePreset(preset) {
     stopAisPlayback();
     aisTimelineState.preset = preset;
     highlightPresetButton(preset);
+
+    const customPanel = document.getElementById('aisCustomDatePanel');
+    if (customPanel && preset !== 'custom') {
+        customPanel.style.display = 'none';
+    }
 
     const now = Date.now();
     aisTimelineState.maxTime = now;
@@ -609,7 +677,12 @@ function stepAisTimeline(hours) {
     let targetTs = aisTimelineState.selectedTime + msDelta;
     targetTs = Math.max(aisTimelineState.minTime, Math.min(aisTimelineState.maxTime, targetTs));
     aisTimelineState.selectedTime = targetTs;
-    aisTimelineState.isLive = (targetTs >= aisTimelineState.maxTime - 60000);
+    if (aisTimelineState.preset === 'custom') {
+        aisTimelineState.isLive = false;
+    } else {
+        const isNearNow = Math.abs(Date.now() - aisTimelineState.maxTime) < 600000;
+        aisTimelineState.isLive = (targetTs >= aisTimelineState.maxTime - 60000 && isNearNow);
+    }
 
     const pct = ((targetTs - aisTimelineState.minTime) / range) * 100;
     setSliderValue(pct);
