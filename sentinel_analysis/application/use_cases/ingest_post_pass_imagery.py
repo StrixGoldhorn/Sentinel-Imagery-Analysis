@@ -136,6 +136,7 @@ class IngestPostPassImagery:
         create_scan: CreateScan,
         detect_ships: Optional[DetectShips] = None,
         max_wait_hours: float = 24.0,
+        detection_saver: Optional[Any] = None,
     ) -> None:
         self._jobs = post_pass_repository
         self._aois = aoi_repository
@@ -143,6 +144,7 @@ class IngestPostPassImagery:
         self._create_scan = create_scan
         self._detect_ships = detect_ships
         self._max_wait_hours = max_wait_hours
+        self._detection_saver = detection_saver
         if hasattr(self._jobs, "configure_max_wait_hours"):
             self._jobs.configure_max_wait_hours(max_wait_hours)
 
@@ -282,11 +284,26 @@ class IngestPostPassImagery:
                         try:
                             image_path = Path(scan.image_path)
                             dem_candidates = list(image_path.parent.glob("*_stitched_dem.png")) or list(image_path.parent.glob("*_dem.png"))
-                            self._detect_ships.execute(
+                            det_res = self._detect_ships.execute(
                                 image_path,
                                 dem_candidates[0] if dem_candidates else None,
                                 threshold=40,
                             )
+                            if self._detection_saver is not None:
+                                try:
+                                    self._detection_saver(
+                                        image_path=image_path,
+                                        detections=det_res.detections,
+                                        image_width=det_res.image_width,
+                                        image_height=det_res.image_height,
+                                        metadata={
+                                            "threshold": 40,
+                                            "land_masked": bool(dem_candidates),
+                                            "source": "post_pass_ingestion",
+                                        },
+                                    )
+                                except Exception:
+                                    pass
                         except Exception as exc:
                             detection_error = str(exc) or "Unknown ship-detection error"
 

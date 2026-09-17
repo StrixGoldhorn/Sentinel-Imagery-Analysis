@@ -1,7 +1,7 @@
 """Application-owned contract for ship detection."""
 
 from pathlib import Path
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from sentinel_analysis.domain.entities import ShipDetection
 
@@ -24,4 +24,19 @@ class ShipDetector(Protocol):
         dem_path: Path | None = None,
         threshold: int = 40,
     ) -> DetectionResult:
+        ...
+
+
+@runtime_checkable
+class DetectionSaver(Protocol):
+    """Save detection results and visual overlays in the image directory."""
+
+    def __call__(
+        self,
+        image_path: Path | str,
+        detections: list[Any],
+        image_width: int | None = None,
+        image_height: int | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         ...

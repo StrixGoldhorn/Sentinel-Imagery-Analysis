@@ -50,6 +50,20 @@ def detect_ships_basic(
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(destination), output):
         raise OSError(f"Unable to write detection image: {destination}")
+
+    try:
+        from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
+
+        save_detection_results(
+            image_path=Path(image_path),
+            detections=result.detections,
+            image_width=result.image_width,
+            image_height=result.image_height,
+            metadata={"threshold": threshold, "dem": bool(dem_path)},
+        )
+    except Exception:
+        pass
+
     print(f"Detected {len(result.detections)} possible ships.", file=stdout or sys.stdout)
     return len(result.detections)
 

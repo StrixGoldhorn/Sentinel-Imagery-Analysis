@@ -2,14 +2,17 @@
 
 import base64
 import io
+import json
 from pathlib import Path
 from typing import Any
 
 import cv2
 import numpy as np
-from flask import Blueprint, Response, jsonify, render_template, request, send_from_directory
+from flask import Blueprint, Response, jsonify, render_template, request, send_file, send_from_directory
 from PIL import Image
 
+from sentinel_analysis.domain.entities import Scan
+from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
     RequestValidationError,
@@ -188,6 +191,58 @@ def run_cv(folder_name: str):
     uncorrelated_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "uncorrelated")
     correlated_count = inside_box_count + outside_box_count
 
+    saved_meta = {
+        "threshold": threshold,
+        "coastal_buffer": coastal_buffer,
+        "land_masked": bool(dem_path is not None),
+        "ais_correlation_distance": ais_distance,
+    }
+    saved_info = save_detection_results(
+        image_path=image_path,
+        detections=enriched_detections,
+        image_width=result.image_width,
+        image_height=result.image_height,
+        metadata=saved_meta,
+    )
+
+    scan_meta = dict(scan.metadata)
+    scan_meta["latest_cv_results"] = {
+        "detected_at": saved_info["timestamp"],
+        "ship_count": saved_info["ship_count"],
+        "correlated_count": saved_info["correlated_count"],
+        "inside_box_count": saved_info["inside_box_count"],
+        "outside_box_count": saved_info["outside_box_count"],
+        "uncorrelated_count": saved_info["uncorrelated_count"],
+        "threshold": threshold,
+        "coastal_buffer": coastal_buffer,
+        "land_masked": bool(dem_path is not None),
+        "detected_image": saved_info.get("detected_image_name"),
+        "detections_json": saved_info.get("detections_json_name"),
+    }
+
+    if hasattr(cnt, "scan_repository") and hasattr(cnt.scan_repository, "save"):
+        try:
+            cnt.scan_repository.save(
+                Scan(
+                    folder_name=scan.folder_name,
+                    bbox=scan.bbox,
+                    acquisition=scan.acquisition,
+                    image_path=scan.image_path,
+                    metadata=scan_meta,
+                )
+            )
+        except Exception:
+            pass
+
+    meta_file = image_path.parent.parent / "metadata.json"
+    if meta_file.is_file():
+        try:
+            curr_data = json.loads(meta_file.read_text(encoding="utf-8"))
+            curr_data["latest_cv_results"] = scan_meta["latest_cv_results"]
+            meta_file.write_text(json.dumps(curr_data, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
     return jsonify(
         status="success",
         land_masked=bool(dem_path is not None),
@@ -201,6 +256,10 @@ def run_cv(folder_name: str):
         uncorrelated_count=uncorrelated_count,
         width=result.image_width,
         height=result.image_height,
+        saved_image=saved_info.get("detected_image_name"),
+        saved_json=saved_info.get("detections_json_name"),
+        detection_image_url=f"/api/scan/{folder_name}/detection_image",
+        detections_url=f"/api/scan/{folder_name}/detections",
     )
 
 
@@ -282,12 +341,63 @@ def get_detection_crop(folder_name: str):
 def get_scan(folder_name: str):
     scan = container().get_scan.execute(safe_folder_name(folder_name))
     bbox = scan.bbox
+    latest_cv = scan.metadata.get("latest_cv_results")
+    if not latest_cv:
+        det_json_path = Path(scan.image_path).parent / "detection_results.json"
+        if det_json_path.is_file():
+            try:
+                data = json.loads(det_json_path.read_text(encoding="utf-8"))
+                latest_cv = {
+                    "detected_at": data.get("timestamp"),
+                    "ship_count": data.get("ship_count", 0),
+                    "correlated_count": data.get("correlated_count", 0),
+                    "inside_box_count": data.get("inside_box_count", 0),
+                    "outside_box_count": data.get("outside_box_count", 0),
+                    "uncorrelated_count": data.get("uncorrelated_count", 0),
+                    "detected_image": data.get("detected_image"),
+                    "detections_json": "detection_results.json",
+                }
+            except Exception:
+                pass
     return jsonify(
         imageUrl=scan_image_url(scan, container().settings.output_root),
         bounds=[[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
         datetime=scan.acquisition.acquired_at.isoformat(),
         custom_name=scan.metadata.get("custom_name"),
+        latest_cv_results=latest_cv,
     )
+
+
+@blueprint.get("/api/scan/<folder_name>/detection_image")
+def get_detection_image(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    image_path = Path(scan.image_path)
+    candidates = [
+        image_path.parent / f"{image_path.stem}_detected.png",
+        image_path.parent / "detected_ships.png",
+    ]
+    for c in candidates:
+        if c.is_file():
+            return send_file(c, mimetype="image/png")
+    return jsonify(error="Detection image not found"), 404
+
+
+@blueprint.get("/api/scan/<folder_name>/detections")
+def get_scan_detections(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    image_path = Path(scan.image_path)
+    candidates = [
+        image_path.parent / f"{image_path.stem}_detections.json",
+        image_path.parent / "detection_results.json",
+    ]
+    for c in candidates:
+        if c.is_file():
+            try:
+                data = json.loads(c.read_text(encoding="utf-8"))
+                return jsonify(data)
+            except Exception:
+                pass
+    return jsonify(error="Detection results not found"), 404
 
 
 @blueprint.delete("/api/scan/<folder_name>")

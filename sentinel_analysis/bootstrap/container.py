@@ -42,6 +42,7 @@ from sentinel_analysis.application.use_cases import (
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
+from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.infrastructure.geocoding import NominatimLocationResolver
 from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
@@ -147,6 +148,7 @@ class ApplicationContainer:
             self.create_scan,
             self.detect_ships,
             max_wait_hours=post_pass_max_wait_hours,
+            detection_saver=save_detection_results,
         )
         self.trigger_automatic_ais = TriggerAutomaticAISScrape(
             self.ingest_ais,

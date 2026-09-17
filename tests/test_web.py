@@ -899,6 +899,48 @@ def test_run_cv_with_ais_correlation() -> None:
     assert data["detections"][0]["correlated_ais"]["mmsi"] == "111222333"
 
 
+def test_run_cv_saves_latest_results_in_image_folder() -> None:
+    client, container, settings, scan = make_client()
+    container.detect_ships = StubUseCase(DetectionResult([ShipDetection(2, 2, 4, 4, 0.95)], 10, 10))
+
+    resp = client.post("/api/run_cv/scan_1", json={})
+    assert resp.status_code == 200
+    data = resp.json
+    assert data["status"] == "success"
+    assert data["saved_image"] == "scan_detected.png"
+    assert data["saved_json"] == "scan_detections.json"
+    assert data["detection_image_url"] == "/api/scan/scan_1/detection_image"
+    assert data["detections_url"] == "/api/scan/scan_1/detections"
+
+    # Verify files created in image's parent folder
+    img_dir = Path(scan.image_path).parent
+    assert (img_dir / "scan_detected.png").is_file()
+    assert (img_dir / "detected_ships.png").is_file()
+    assert (img_dir / "scan_detections.json").is_file()
+    assert (img_dir / "detection_results.json").is_file()
+
+    # Test GET detection image endpoint
+    img_resp = client.get("/api/scan/scan_1/detection_image")
+    try:
+        assert img_resp.status_code == 200
+        assert img_resp.mimetype == "image/png"
+    finally:
+        img_resp.close()
+
+    # Test GET detections JSON endpoint
+    det_resp = client.get("/api/scan/scan_1/detections")
+    assert det_resp.status_code == 200
+    assert det_resp.json["ship_count"] == 1
+    assert det_resp.json["image_file"] == "scan.png"
+
+    # Test GET scan includes latest_cv_results
+    scan_resp = client.get("/api/scan/scan_1")
+    assert scan_resp.status_code == 200
+    latest = scan_resp.json.get("latest_cv_results")
+    assert latest is not None
+    assert latest["ship_count"] == 1
+
+
 def load_tests(loader, standard_tests, pattern):
 
 
