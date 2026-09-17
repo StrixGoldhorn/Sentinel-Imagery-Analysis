@@ -207,6 +207,12 @@
                             <p class="setting-description">Physical resolution for converting pixel length/beam to meters.</p>
                             <input type="number" id="input_cv_pixel_spacing_meters" class="form-input" min="1" max="100" step="0.5" value="10.0">
                         </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_ais_correlation_distance_meters" class="setting-title">AIS Correlation Distance (Meters)</label>
+                            <p class="setting-description">Geodesic search tolerance around detection bounding boxes for AIS vessel matching.</p>
+                            <input type="number" id="input_cv_ais_correlation_distance_meters" class="form-input" min="0" max="5000" step="10" value="100.0">
+                        </div>
                     </div>
                 </section>
 
@@ -426,12 +432,32 @@
                         </div>
 
                         <div class="settings-card">
-                            <label for="input_map_ui_color_cv_detection" class="setting-title">Standard Box Color</label>
-                            <p class="setting-description">Border color for standard bounding box ship detections.</p>
+                            <label for="input_map_ui_color_cv_detection" class="setting-title">Uncorrelated Box Color</label>
+                            <p class="setting-description">Border color for ship detections without correlating AIS ping.</p>
                             <div class="color-picker-group">
                                 <input type="color" id="input_map_ui_color_cv_detection" value="#ff3333">
                                 <input type="text" class="form-input hex-input" id="hex_map_ui_color_cv_detection" value="#ff3333"
                                        oninput="document.getElementById('input_map_ui_color_cv_detection').value = this.value">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_color_inside_box_detection" class="setting-title">AIS Inside Box Color</label>
+                            <p class="setting-description">Border color when correlating AIS ping is located inside the detection bounding box.</p>
+                            <div class="color-picker-group">
+                                <input type="color" id="input_map_ui_color_inside_box_detection" value="#10b981">
+                                <input type="text" class="form-input hex-input" id="hex_map_ui_color_inside_box_detection" value="#10b981"
+                                       oninput="document.getElementById('input_map_ui_color_inside_box_detection').value = this.value">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_color_outside_box_detection" class="setting-title">AIS Buffer Match Color</label>
+                            <p class="setting-description">Border color when correlating AIS ping is outside the box but within tolerance distance.</p>
+                            <div class="color-picker-group">
+                                <input type="color" id="input_map_ui_color_outside_box_detection" value="#06b6d4">
+                                <input type="text" class="form-input hex-input" id="hex_map_ui_color_outside_box_detection" value="#06b6d4"
+                                       oninput="document.getElementById('input_map_ui_color_outside_box_detection').value = this.value">
                             </div>
                         </div>
 

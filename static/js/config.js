@@ -24,6 +24,9 @@ const CONFIG = {
     COLOR_SAR_OUTLINE: '#3498db',
     COLOR_CV_DETECTION: '#ff3333',
     COLOR_OBB_DETECTION: '#e67e22',
+    COLOR_INSIDE_BOX_DETECTION: '#10b981',
+    COLOR_OUTSIDE_BOX_DETECTION: '#06b6d4',
+    AIS_CORRELATION_DISTANCE_METERS: 100,
     COLOR_AOI_OUTLINE: '#28a745',
     COLOR_DRAW_RECTANGLE: '#007bff',
 
@@ -55,9 +58,12 @@ async function loadSystemSettings() {
                     if (typeof s.map_ui.nautical_chart_default_enabled === 'boolean') CONFIG.DEFAULT_NAUTICAL_CHART_ENABLED = s.map_ui.nautical_chart_default_enabled;
                     if (s.map_ui.color_cv_detection) CONFIG.COLOR_CV_DETECTION = s.map_ui.color_cv_detection;
                     if (s.map_ui.color_obb_detection) CONFIG.COLOR_OBB_DETECTION = s.map_ui.color_obb_detection;
+                    if (s.map_ui.color_inside_box_detection) CONFIG.COLOR_INSIDE_BOX_DETECTION = s.map_ui.color_inside_box_detection;
+                    if (s.map_ui.color_outside_box_detection) CONFIG.COLOR_OUTSIDE_BOX_DETECTION = s.map_ui.color_outside_box_detection;
                 }
                 if (s.cv) {
                     if (typeof s.cv.threshold === 'number') CONFIG.CV_DEFAULT_THRESHOLD = s.cv.threshold;
+                    if (typeof s.cv.ais_correlation_distance_meters === 'number') CONFIG.AIS_CORRELATION_DISTANCE_METERS = s.cv.ais_correlation_distance_meters;
                 }
             }
         }

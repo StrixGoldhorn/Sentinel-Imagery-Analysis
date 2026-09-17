@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
     AnalyzeMissionPasses,
     CheckAndScheduleAOIs,
+    CorrelateDetectionsWithAIS,
     CreateScan,
     DeleteAreaOfInterest,
     DeleteScan,
@@ -96,6 +97,10 @@ class ApplicationContainer:
             NominatimLocationResolver(),
         )
         self.detect_ships = DetectShips(ClassicalShipDetector(settings_repo=self.settings_repository))
+        self.correlate_ais_detections = CorrelateDetectionsWithAIS(
+            self.ais_repository,
+            self.settings_repository,
+        )
         self.get_scan = GetScan(self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)

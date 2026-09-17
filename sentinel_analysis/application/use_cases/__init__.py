@@ -1,5 +1,6 @@
 from sentinel_analysis.application.use_cases.analyze_mission_passes import AnalyzeMissionPasses
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
+from sentinel_analysis.application.use_cases.correlate_ais_detections import CorrelateDetectionsWithAIS
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
@@ -54,6 +55,7 @@ __all__ = [
     "AnnotationSummary",
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",
+    "CorrelateDetectionsWithAIS",
     "CreateScan",
     "DeleteAreaOfInterest",
     "DeleteScan",

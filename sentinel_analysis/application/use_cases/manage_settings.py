@@ -1,5 +1,6 @@
 """Use cases for managing application and feature configuration."""
 
+import re
 from typing import Any
 
 from sentinel_analysis.application.ports.settings_repository import SettingsRepository
@@ -117,6 +118,15 @@ class UpdateSettings:
                 return fval
             except (TypeError, ValueError):
                 raise ValueError("Pixel spacing meters must be a positive number")
+
+        if key == "ais_correlation_distance_meters":
+            try:
+                fval = float(value)
+                if not (0.0 <= fval <= 5000.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("AIS correlation distance must be a number between 0 and 5000 meters")
 
         if key == "resolution_meters":
             try:
@@ -275,6 +285,12 @@ class UpdateSettings:
             if invalid:
                 raise ValueError(f"Unknown satellite(s): {', '.join(invalid)}. Supported: {', '.join(ALL_SATELLITE_NAMES)}")
             return sats
+
+        if key in ("color_cv_detection", "color_obb_detection", "color_inside_box_detection", "color_outside_box_detection"):
+            sval = str(value).strip()
+            if not re.match(r"^#[0-9a-fA-F]{6}$", sval):
+                raise ValueError(f"{key} must be a valid 6-character hex color (e.g. #ff3333)")
+            return sval
 
         if isinstance(value, str):
             return value.strip()

@@ -215,6 +215,32 @@ class TestSettingsUseCases(unittest.TestCase):
         self.update_settings.execute({"scheduler": {"post_pass_worker_count": 4}})
         self.assertEqual(self.get_settings.execute("scheduler")["post_pass_worker_count"], 4)
 
+    def test_correlation_settings_validation(self):
+        self.update_settings.execute({"cv": {"ais_correlation_distance_meters": 150.0}})
+        self.assertEqual(self.get_settings.execute("cv")["ais_correlation_distance_meters"], 150.0)
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"ais_correlation_distance_meters": -5.0}})
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"ais_correlation_distance_meters": 6000.0}})
+
+        self.update_settings.execute({
+            "map_ui": {
+                "color_inside_box_detection": "#00ff00",
+                "color_outside_box_detection": "#00ffff",
+                "color_cv_detection": "#ff0000",
+            }
+        })
+        map_ui = self.get_settings.execute("map_ui")
+        self.assertEqual(map_ui["color_inside_box_detection"], "#00ff00")
+        self.assertEqual(map_ui["color_outside_box_detection"], "#00ffff")
+        self.assertEqual(map_ui["color_cv_detection"], "#ff0000")
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"map_ui": {"color_inside_box_detection": "invalid-hex"}})
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"map_ui": {"color_outside_box_detection": "#12345"}})
+
 
 class TestSettingsWebAPI(unittest.TestCase):
     def setUp(self):

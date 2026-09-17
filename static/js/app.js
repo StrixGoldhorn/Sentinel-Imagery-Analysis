@@ -641,36 +641,80 @@ function openSarDetectionInShipSidebar(folderName, item) {
     const sourceEl = document.getElementById('shipSidebarSource');
     const sarCard = document.getElementById('shipSidebarSarCard');
 
-    if (nameEl) nameEl.textContent = `SAR Target #${item.id || item.index || '1'}`;
-    if (subEl) subEl.textContent = `Scan: ${folderName}`;
-    if (iconEl) iconEl.textContent = '🛰️';
+    const correlatedAis = item.correlated_ais;
+    const isCorrelated = Boolean(item.is_correlated && correlatedAis);
+
+    if (nameEl) {
+        if (isCorrelated && correlatedAis.name) {
+            nameEl.textContent = correlatedAis.name;
+        } else {
+            nameEl.textContent = `SAR Target #${item.id || item.index || '1'}`;
+        }
+    }
+    if (subEl) {
+        if (isCorrelated) {
+            const statusLabel = item.correlation_status === 'inside_box'
+                ? 'Inside Detection Bounding Box'
+                : `Buffer Match (+${Math.round(correlatedAis.distance_to_box_meters || 0)}m)`;
+            subEl.textContent = `Correlated AIS Vessel • ${statusLabel}`;
+        } else {
+            subEl.textContent = `Scan: ${folderName}`;
+        }
+    }
+    if (iconEl) iconEl.textContent = isCorrelated ? '🚢' : '🛰️';
 
     if (typeBadge) {
-        typeBadge.textContent = 'SAR Contact';
-        typeBadge.style.backgroundColor = '#9333ea';
+        if (isCorrelated && correlatedAis.type) {
+            typeBadge.textContent = correlatedAis.type;
+            typeBadge.style.backgroundColor = item.correlation_status === 'inside_box'
+                ? (CONFIG.COLOR_INSIDE_BOX_DETECTION || '#10b981')
+                : (CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4');
+        } else {
+            typeBadge.textContent = 'SAR Contact';
+            typeBadge.style.backgroundColor = '#9333ea';
+        }
     }
 
     if (statusTag) {
-        statusTag.textContent = 'Radar Non-Cooperative Target';
-        statusTag.style.color = '#a855f7';
+        if (isCorrelated) {
+            statusTag.textContent = item.correlation_status === 'inside_box'
+                ? 'Cooperative Target (AIS In-Box)'
+                : `Cooperative Target (AIS Buffer Match +${Math.round(correlatedAis.distance_to_box_meters || 0)}m)`;
+            statusTag.style.color = item.correlation_status === 'inside_box'
+                ? (CONFIG.COLOR_INSIDE_BOX_DETECTION || '#10b981')
+                : (CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4');
+        } else {
+            statusTag.textContent = 'Radar Non-Cooperative Target (Dark / Uncorrelated)';
+            statusTag.style.color = '#ef4444';
+        }
     }
 
-    if (mmsiEl) mmsiEl.textContent = 'N/A (Dark / Uncorrelated)';
-    if (imoEl) imoEl.textContent = 'N/A';
-    if (callsignEl) callsignEl.textContent = 'N/A';
-    if (flagEl) flagEl.textContent = 'Unregistered Target';
+    if (mmsiEl) mmsiEl.textContent = (isCorrelated && correlatedAis.mmsi) ? correlatedAis.mmsi : 'N/A (Dark / Uncorrelated)';
+    if (imoEl) imoEl.textContent = (isCorrelated && correlatedAis.imo) ? correlatedAis.imo : 'N/A';
+    if (callsignEl) callsignEl.textContent = (isCorrelated && correlatedAis.callsign) ? correlatedAis.callsign : 'N/A';
+    if (flagEl) flagEl.textContent = (isCorrelated && correlatedAis.flag) ? correlatedAis.flag : (isCorrelated ? 'Verified Vessel' : 'Unregistered Target');
 
-    if (speedEl) speedEl.innerHTML = `--- <small>kn</small>`;
+    if (speedEl) {
+        if (isCorrelated && correlatedAis.speed !== undefined && correlatedAis.speed !== null) {
+            speedEl.innerHTML = `${correlatedAis.speed} <small>kn</small>`;
+        } else {
+            speedEl.innerHTML = `--- <small>kn</small>`;
+        }
+    }
     if (headingEl) {
-        headingEl.textContent = item.angle !== undefined ? `${item.angle.toFixed(1)}°` : (item.heading ? `${item.heading}°` : 'N/A');
+        if (isCorrelated && correlatedAis.heading !== undefined && correlatedAis.heading !== null) {
+            headingEl.textContent = `${correlatedAis.heading}° (AIS) / ${item.angle !== undefined ? `${item.angle.toFixed(1)}° (SAR)` : 'N/A'}`;
+        } else {
+            headingEl.textContent = item.angle !== undefined ? `${item.angle.toFixed(1)}°` : (item.heading ? `${item.heading}°` : 'N/A');
+        }
     }
 
     if (coordsEl && lat !== undefined && lng !== undefined) {
         coordsEl.textContent = `${Number(lat).toFixed(5)}° N, ${Number(lng).toFixed(5)}° E`;
     }
 
-    if (timeEl) timeEl.textContent = 'Satellite Radar Flyby';
-    if (sourceEl) sourceEl.textContent = 'Sentinel-1 SAR CV';
+    if (timeEl) timeEl.textContent = isCorrelated && correlatedAis.timestamp ? `AIS Ping: ${correlatedAis.timestamp}` : 'Satellite Radar Flyby';
+    if (sourceEl) sourceEl.textContent = isCorrelated ? `Sentinel-1 SAR CV + AIS (${correlatedAis.mmsi})` : 'Sentinel-1 SAR CV';
 
     if (sarCard) {
         sarCard.style.display = 'block';
@@ -686,7 +730,7 @@ function openSarDetectionInShipSidebar(folderName, item) {
 
         const cropPreview = document.getElementById('shipSidebarCropPreview');
         const cropImg = document.getElementById('shipSidebarCropImg');
-        const coords = item.coords || item.pixel_bbox || item.bbox;
+        const coords = item.coords || item.pixel_bbox || item.bbox || (item.x !== undefined ? [item.x, item.y, item.width, item.height] : null);
         if (cropPreview && cropImg && coords && folderName) {
             const bboxStr = Array.isArray(coords) ? coords.join(',') : coords;
             cropImg.src = `/api/scan/${folderName}/crop?raw=1&bbox=${encodeURIComponent(bboxStr)}`;

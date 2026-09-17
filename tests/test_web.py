@@ -14,7 +14,7 @@ from sentinel_analysis.application.exceptions import (
 )
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.bootstrap.config import Settings
-from sentinel_analysis.domain.entities import Acquisition, AreaOfInterest, BackgroundTask, BoundingBox, Scan
+from sentinel_analysis.domain.entities import Acquisition, AreaOfInterest, BackgroundTask, BoundingBox, Scan, ShipDetection
 from sentinel_analysis.interfaces.web.application import create_app
 
 
@@ -191,6 +191,7 @@ class StubContainer:
         self.ais_repository = None
         self.pass_scheduler = None
         self.settings_repository = None
+        self.correlate_ais_detections = None
 
 
 
@@ -304,6 +305,8 @@ def test_route_fields_are_strictly_typed_and_folder_names_are_not_rewritten() ->
     assert client.post("/api/update_metadata/scan_1", json={"custom_name": 42}).status_code == 400
     assert client.post("/api/run_cv/scan_1", json={"threshold": True}).status_code == 400
     assert client.post("/api/run_cv/scan_1", json={"threshold": 40.5}).status_code == 400
+    assert client.post("/api/run_cv/scan_1", json={"ais_correlation_distance": -10}).status_code == 400
+    assert client.post("/api/run_cv/scan_1", json={"ais_correlation_distance": 9999}).status_code == 400
     assert client.get("/api/scan/bad%20name").status_code == 400
 
 
@@ -858,6 +861,42 @@ def test_create_scan_route_with_date_range() -> None:
     call_kwargs = container.create_scan.keyword_calls[0]
     assert call_kwargs["start_date"] == datetime(2026, 8, 1, 8, 30, tzinfo=timezone.utc)
     assert call_kwargs["end_date"] == datetime(2026, 8, 10, 14, 45, tzinfo=timezone.utc)
+
+
+def test_run_cv_with_ais_correlation() -> None:
+    client, container, _, _ = make_client()
+    container.correlate_ais_detections = StubUseCase([
+        {
+            "index": 0,
+            "x": 1,
+            "y": 1,
+            "width": 2,
+            "height": 2,
+            "confidence": 0.9,
+            "angle": 0.0,
+            "length": 20.0,
+            "beam": 10.0,
+            "center_x": 2.0,
+            "center_y": 2.0,
+            "polygon_points": None,
+            "correlation_status": "inside_box",
+            "is_correlated": True,
+            "correlated_ais": {"mmsi": "111222333", "distance_to_box_meters": 0.0},
+        }
+    ])
+    container.detect_ships = StubUseCase(DetectionResult([ShipDetection(1, 1, 2, 2, 0.9)], 10, 10))
+
+    resp = client.post("/api/run_cv/scan_1", json={"ais_correlation_distance": 150.0})
+    assert resp.status_code == 200
+    data = resp.json
+    assert data["status"] == "success"
+    assert data["ais_correlation_distance"] == 150.0
+    assert data["inside_box_count"] == 1
+    assert data["outside_box_count"] == 0
+    assert data["uncorrelated_count"] == 0
+    assert data["correlated_count"] == 1
+    assert data["detections"][0]["correlation_status"] == "inside_box"
+    assert data["detections"][0]["correlated_ais"]["mmsi"] == "111222333"
 
 
 def load_tests(loader, standard_tests, pattern):

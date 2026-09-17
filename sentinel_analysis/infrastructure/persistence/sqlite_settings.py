@@ -90,6 +90,14 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "description": "Physical ground resolution in meters per pixel for vessel dimension calculations.",
             "min": 1.0,
         },
+        "ais_correlation_distance_meters": {
+            "value": 100.0,
+            "type": "number",
+            "label": "AIS Correlation Distance (Meters)",
+            "description": "Tolerance search buffer radius in meters around the SAR bounding box for AIS vessel association.",
+            "min": 0.0,
+            "max": 5000.0,
+        },
     },
     "imagery": {
         "default_evalscript": {
@@ -220,6 +228,18 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "type": "color",
             "label": "OBB Oriented Box Color",
             "description": "Border color for oriented bounding box ship detections with heading.",
+        },
+        "color_inside_box_detection": {
+            "value": "#10b981",
+            "type": "color",
+            "label": "AIS Inside Box Color",
+            "description": "Border and fill color for SAR detections with an AIS ping strictly inside the bounding box.",
+        },
+        "color_outside_box_detection": {
+            "value": "#06b6d4",
+            "type": "color",
+            "label": "AIS Buffer Match Color",
+            "description": "Border and fill color for SAR detections with an AIS ping outside the box but within the buffer distance.",
         },
     },
     "notifications": {

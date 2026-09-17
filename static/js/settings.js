@@ -314,6 +314,7 @@ function collectFormData() {
             maximum_area: getFloat('input_cv_maximum_area', 5000.0),
             dilation_iterations: getInt('input_cv_dilation_iterations', 2),
             pixel_spacing_meters: getFloat('input_cv_pixel_spacing_meters', 10.0),
+            ais_correlation_distance_meters: getFloat('input_cv_ais_correlation_distance_meters', 100.0),
         },
         imagery: {
             default_evalscript: getString('input_imagery_default_evalscript', 'SAR'),
@@ -338,6 +339,8 @@ function collectFormData() {
             nautical_chart_default_enabled: getBool('input_map_ui_nautical_chart_default_enabled', false),
             color_cv_detection: getString('input_map_ui_color_cv_detection', '#ff3333'),
             color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
+            color_inside_box_detection: getString('input_map_ui_color_inside_box_detection', '#10b981'),
+            color_outside_box_detection: getString('input_map_ui_color_outside_box_detection', '#06b6d4'),
         },
         notifications: {
             enabled: getBool('input_notifications_enabled', true),

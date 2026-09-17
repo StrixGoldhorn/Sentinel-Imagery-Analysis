@@ -308,7 +308,10 @@ async function runCVDetection(folderName, uiId) {
         const res = await fetch(`${CONFIG.API_RUN_CV}/${folderName}`, { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ threshold: thresholdVal })
+            body: JSON.stringify({
+                threshold: thresholdVal,
+                ais_correlation_distance: CONFIG.AIS_CORRELATION_DISTANCE_METERS || 100
+            })
         });
         const data = await res.json();
 
@@ -350,6 +353,18 @@ async function runCVDetection(folderName, uiId) {
 
                 const cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
 
+                // Determine 3-tier bounding box / polygon color based on AIS correlation state
+                let strokeColor;
+                if (item.correlation_status === 'inside_box') {
+                    strokeColor = CONFIG.COLOR_INSIDE_BOX_DETECTION || '#10b981';
+                } else if (item.correlation_status === 'outside_box') {
+                    strokeColor = CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4';
+                } else {
+                    strokeColor = (item.polygon_points && item.polygon_points.length === 4)
+                        ? (CONFIG.COLOR_OBB_DETECTION || '#e67e22')
+                        : (CONFIG.COLOR_CV_DETECTION || '#ff3333');
+                }
+
                 // If Oriented Bounding Box polygon vertices exist, draw polygon, else rectangle
                 let shapeLayer;
                 if (item.polygon_points && item.polygon_points.length === 4) {
@@ -358,27 +373,54 @@ async function runCVDetection(folderName, uiId) {
                         minLon + pt[0] * lonScale
                     ]);
                     shapeLayer = L.polygon(geoPoints, {
-                        color: CONFIG.COLOR_OBB_DETECTION || '#e67e22',
+                        color: strokeColor,
                         weight: 2,
-                        fillColor: '#e67e22',
+                        fillColor: strokeColor,
                         fillOpacity: 0.15,
                         interactive: true
                     });
                 } else {
                     shapeLayer = L.rectangle(cvBounds, {
-                        color: CONFIG.COLOR_CV_DETECTION,
+                        color: strokeColor,
                         weight: 2,
-                        fill: false,
+                        fillColor: strokeColor,
+                        fillOpacity: 0.08,
+                        fill: true,
                         interactive: true
                     });
                 }
 
-                // Popup with vessel metrology + button to open crop inspector
+                // Popup with vessel metrology + correlation badge + button to open dossier
                 const confVal = item.confidence !== undefined ? (item.confidence * 100).toFixed(1) : null;
                 const confNum = item.confidence !== undefined ? item.confidence : 1;
                 let confClass = 'high';
                 if (confNum < 0.6) confClass = 'low';
                 else if (confNum < 0.8) confClass = 'medium';
+
+                let aisBadgeHtml = '';
+                let aisDetailHtml = '';
+                if (item.correlation_status === 'inside_box') {
+                    const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
+                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">AIS In-Box (${vesselName})</span>`;
+                    aisDetailHtml = `
+                        <div class="cv-popup-cell" style="grid-column: span 2;">
+                            <span class="cv-lbl">AIS Match (Inside Box)</span>
+                            <span class="cv-val" style="color: #10b981;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
+                        </div>
+                    `;
+                } else if (item.correlation_status === 'outside_box') {
+                    const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
+                    const dist = item.correlated_ais && item.correlated_ais.distance_to_box_meters !== undefined ? `${Math.round(item.correlated_ais.distance_to_box_meters)}m` : 'Buffer';
+                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid #06b6d4;">AIS Buffer +${dist} (${vesselName})</span>`;
+                    aisDetailHtml = `
+                        <div class="cv-popup-cell" style="grid-column: span 2;">
+                            <span class="cv-lbl">AIS Match (Buffer +${dist})</span>
+                            <span class="cv-val" style="color: #06b6d4;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
+                        </div>
+                    `;
+                } else {
+                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;">No AIS Ping</span>`;
+                }
 
                 const popupContent = `
                     <div class="cv-detection-popup-card">
@@ -390,9 +432,13 @@ async function runCVDetection(folderName, uiId) {
                                     <div class="cv-popup-sub">SAR Computer Vision</div>
                                 </div>
                             </div>
-                            ${confVal !== null ? `<span class="cv-conf-badge ${confClass}">${confVal}% Conf</span>` : ''}
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                                ${confVal !== null ? `<span class="cv-conf-badge ${confClass}">${confVal}% Conf</span>` : ''}
+                                ${aisBadgeHtml}
+                            </div>
                         </div>
                         <div class="cv-popup-grid">
+                            ${aisDetailHtml}
                             <div class="cv-popup-cell">
                                 <span class="cv-lbl">Est. Length</span>
                                 <span class="cv-val">${item.length ? `${item.length} m` : 'N/A'}</span>
@@ -434,8 +480,17 @@ async function runCVDetection(folderName, uiId) {
 
                 shapeLayer.addTo(detectLayer);
 
+                let tabTooltipText = `<strong>Ship Detected #${idx + 1}</strong>`;
+                if (item.correlation_status === 'inside_box') {
+                    tabTooltipText += `<br><span style="color:#10b981;">AIS In-Box: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
+                } else if (item.correlation_status === 'outside_box') {
+                    tabTooltipText += `<br><span style="color:#06b6d4;">AIS Buffer: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
+                } else {
+                    tabTooltipText += `<br><span style="color:#ef4444;">No AIS Ping</span>`;
+                }
+
                 const tabMarker = L.circleMarker(cvBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
-                    .bindTooltip(`<strong>Ship Detected #${idx + 1}</strong><br>Type: OBB Detection`, { permanent: true, className: 'folder-tab-tooltip folder-tab-cv', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+                    .bindTooltip(tabTooltipText, { permanent: true, className: 'folder-tab-tooltip folder-tab-cv', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
                 
                 layerObj.cvTabs.push({ marker: tabMarker, bounds: cvBounds });
             });
@@ -443,9 +498,18 @@ async function runCVDetection(folderName, uiId) {
             if (!toggleCb || toggleCb.checked) {
                 detectLayer.addTo(map);
             }
+
+            const insideCount = typeof data.inside_box_count === 'number' ? data.inside_box_count : detectionsList.filter(d => d.correlation_status === 'inside_box').length;
+            const outsideCount = typeof data.outside_box_count === 'number' ? data.outside_box_count : detectionsList.filter(d => d.correlation_status === 'outside_box').length;
+            const correlatedCount = insideCount + outsideCount;
+
             if (toggleContainer) {
                 toggleContainer.style.display = 'flex';
-                resultsText.innerText = `${detectionsList.length} Ships Detected`;
+                if (correlatedCount > 0) {
+                    resultsText.innerText = `${detectionsList.length} Ships (${insideCount} in-box, ${outsideCount} buffer)`;
+                } else {
+                    resultsText.innerText = `${detectionsList.length} Ships Detected`;
+                }
             }
             if (shipsCountLabel) {
                 shipsCountLabel.innerText = detectionsList.length;
@@ -462,7 +526,11 @@ async function runCVDetection(folderName, uiId) {
                 btn.disabled = false;
                 btn.innerText = "Update Detection";
             }
-            showNotification(`CV Detection completed: ${detectionsList.length} vessels found.`, "success");
+            if (correlatedCount > 0) {
+                showNotification(`CV Detection: ${detectionsList.length} vessels found (${insideCount} inside box, ${outsideCount} buffer match).`, "success");
+            } else {
+                showNotification(`CV Detection completed: ${detectionsList.length} vessels found.`, "success");
+            }
 
             // If modal is currently open for this layer, re-render its list
             if (currentModalLayerId === uiId) {
@@ -630,17 +698,48 @@ function renderSarDetectionsList() {
         const shipLat = (maxLat - (item.center_y || (item.y + item.height/2)) * latScale).toFixed(5);
         const shipLon = (minLon + (item.center_x || (item.x + item.width/2)) * lonScale).toFixed(5);
 
+        let correlationBadge = '';
+        let aisFieldHtml = '';
+        if (item.correlation_status === 'inside_box') {
+            correlationBadge = `<span style="font-size:0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.2); color: #10b981; font-weight: 600; border: 1px solid #10b981;">AIS In-Box</span>`;
+            if (item.correlated_ais) {
+                aisFieldHtml = `
+                    <div class="detection-item-field" style="grid-column: span 2;">
+                        <span class="lbl">Correlated Vessel</span>
+                        <span class="val" style="color: #10b981; font-weight: 600;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
+                    </div>
+                `;
+            }
+        } else if (item.correlation_status === 'outside_box') {
+            const dist = item.correlated_ais && item.correlated_ais.distance_to_box_meters !== undefined ? `${Math.round(item.correlated_ais.distance_to_box_meters)}m` : 'Buffer';
+            correlationBadge = `<span style="font-size:0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(6, 182, 212, 0.2); color: #06b6d4; font-weight: 600; border: 1px solid #06b6d4;">AIS Buffer (+${dist})</span>`;
+            if (item.correlated_ais) {
+                aisFieldHtml = `
+                    <div class="detection-item-field" style="grid-column: span 2;">
+                        <span class="lbl">Correlated Vessel (Buffer +${dist})</span>
+                        <span class="val" style="color: #06b6d4; font-weight: 600;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'})</span>
+                    </div>
+                `;
+            }
+        } else {
+            correlationBadge = `<span style="font-size:0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #ef4444; font-weight: 600; border: 1px solid #ef4444;">No AIS Ping</span>`;
+        }
+
         return `
             <div class="detection-item-card">
                 <div class="detection-item-header">
                     <span class="detection-item-title">
                         <span>🚢 Vessel #${item.origIdx + 1}</span>
                     </span>
-                    <span class="${confBadgeClass}">
-                        Confidence: ${confVal}%
-                    </span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        ${correlationBadge}
+                        <span class="${confBadgeClass}">
+                            Confidence: ${confVal}%
+                        </span>
+                    </div>
                 </div>
                 <div class="detection-item-grid">
+                    ${aisFieldHtml}
                     <div class="detection-item-field">
                         <span class="lbl">Est. Length</span>
                         <span class="val">${item.length ? `${item.length} m` : 'N/A'}</span>

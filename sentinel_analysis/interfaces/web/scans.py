@@ -110,6 +110,17 @@ def run_cv(folder_name: str):
     else:
         coastal_buffer = _get_setting("coastal_buffer_pixels", 81)
 
+    raw_dist = payload.get("ais_correlation_distance")
+    if raw_dist is not None:
+        try:
+            ais_distance = float(raw_dist)
+            if not 0.0 <= ais_distance <= 5000.0:
+                raise ValueError()
+        except (TypeError, ValueError) as exc:
+            raise RequestValidationError("ais_correlation_distance must be a number between 0 and 5000 meters") from exc
+    else:
+        ais_distance = _get_setting("ais_correlation_distance_meters", 100.0)
+
     dem_enabled = payload.get("dem_land_mask_enabled")
     if dem_enabled is None:
         dem_enabled = _get_setting("dem_land_mask_enabled", True)
@@ -135,13 +146,27 @@ def run_cv(folder_name: str):
         threshold,
         coastal_buffer=coastal_buffer,
     )
-    return jsonify(
-        status="success",
-        land_masked=bool(dem_path is not None),
-        coastal_buffer=coastal_buffer,
-        boxes=[(item.x, item.y, item.width, item.height) for item in result.detections],
-        detections=[
-            {
+
+    cnt = container()
+    enriched_detections = []
+    if hasattr(cnt, "correlate_ais_detections") and cnt.correlate_ais_detections is not None:
+        try:
+            enriched = cnt.correlate_ais_detections.execute(
+                result.detections,
+                scan,
+                result.image_width,
+                result.image_height,
+                tolerance_meters=ais_distance,
+            )
+            if isinstance(enriched, list) and (len(enriched) == len(result.detections) or not result.detections):
+                enriched_detections = enriched
+        except Exception:
+            pass
+
+    if not enriched_detections and result.detections:
+        for idx, item in enumerate(result.detections):
+            enriched_detections.append({
+                "index": idx,
                 "x": item.x,
                 "y": item.y,
                 "width": item.width,
@@ -152,10 +177,28 @@ def run_cv(folder_name: str):
                 "beam": item.beam,
                 "center_x": item.center_x,
                 "center_y": item.center_y,
-                "polygon_points": item.polygon_points,
-            }
-            for item in result.detections
-        ],
+                "polygon_points": getattr(item, "polygon_points", None),
+                "correlation_status": "uncorrelated",
+                "is_correlated": False,
+                "correlated_ais": None,
+            })
+
+    inside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "inside_box")
+    outside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "outside_box")
+    uncorrelated_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "uncorrelated")
+    correlated_count = inside_box_count + outside_box_count
+
+    return jsonify(
+        status="success",
+        land_masked=bool(dem_path is not None),
+        coastal_buffer=coastal_buffer,
+        ais_correlation_distance=ais_distance,
+        boxes=[(item.x, item.y, item.width, item.height) for item in result.detections],
+        detections=enriched_detections,
+        correlated_count=correlated_count,
+        inside_box_count=inside_box_count,
+        outside_box_count=outside_box_count,
+        uncorrelated_count=uncorrelated_count,
         width=result.image_width,
         height=result.image_height,
     )
