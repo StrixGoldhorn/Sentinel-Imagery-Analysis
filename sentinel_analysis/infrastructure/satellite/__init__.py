@@ -2,6 +2,7 @@ from sentinel_analysis.infrastructure.satellite.asf_client import ASFProduct, AS
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
+from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDataClient, UmbraSARScene
 
 from sentinel_analysis.infrastructure.satellite.constants import (
     ALL_SATELLITE_NAMES,
@@ -20,4 +21,6 @@ __all__ = [
     "SATELLITE_CATALOG",
     "SATELLITE_NAME_TO_NORAD",
     "Sentinel1MissionAnalyzer",
+    "UmbraOpenDataClient",
+    "UmbraSARScene",
 ]
