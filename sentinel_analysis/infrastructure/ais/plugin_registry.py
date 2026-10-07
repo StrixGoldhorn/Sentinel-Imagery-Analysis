@@ -6,6 +6,7 @@ from sentinel_analysis.application.ports.ais import AISPlugin
 from sentinel_analysis.infrastructure.ais.plugins import (
     AISFriendsPlugin,
     AprsFiPlugin,
+    DigiTrafficPlugin,
     MockAISPlugin,
     MockPublicAISPlugin,
     UDPListenerPlugin,
@@ -32,6 +33,13 @@ PLUGIN_METADATA: dict[str, dict[str, object]] = {
         "display_name": "Aprs.fi (APRS-IS Gateway)",
         "category": "Radio Gateway",
         "description": "Ingests marine AIS positions reported through APRS-IS radio internet gateways.",
+        "requires_network": True,
+        "default_enabled": True,
+    },
+    "DigiTrafficPlugin": {
+        "display_name": "DigiTraffic Marine (Fintraffic)",
+        "category": "Open Government API",
+        "description": "Public open-access AIS telemetry for the Baltic Sea and Gulf of Finland without API keys.",
         "requires_network": True,
         "default_enabled": True,
     },
@@ -76,6 +84,7 @@ class DynamicAISPluginRegistry:
                 AISFriendsPlugin(),
                 VesselFinderPlugin(),
                 AprsFiPlugin(),
+                DigiTrafficPlugin(),
                 UDPListenerPlugin(),
             ]
         )

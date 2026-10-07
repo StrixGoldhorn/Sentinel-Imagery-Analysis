@@ -133,7 +133,7 @@ def test_all_plugins_conform_to_ais_plugin_protocol() -> None:
         assert plugin.authenticate() is None
 
 
-def test_dynamic_registry_registers_all_six_plugins_by_default() -> None:
+def test_dynamic_registry_registers_all_plugins_by_default() -> None:
     registry = DynamicAISPluginRegistry()
     plugins = registry.get_plugins()
     names = [p.name for p in plugins]
@@ -144,6 +144,7 @@ def test_dynamic_registry_registers_all_six_plugins_by_default() -> None:
         "AISFriendsPlugin",
         "VesselFinderPlugin",
         "AprsFiPlugin",
+        "DigiTrafficPlugin",
         "UDPListenerPlugin",
     ]
     assert names == expected
