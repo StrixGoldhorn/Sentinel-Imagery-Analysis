@@ -1,5 +1,4 @@
-"""Satellite-pass provider adapters and mission analyzers."""
-
+from sentinel_analysis.infrastructure.satellite.asf_client import ASFProduct, ASFSearchClient
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
@@ -13,6 +12,8 @@ from sentinel_analysis.infrastructure.satellite.constants import (
 
 __all__ = [
     "ALL_SATELLITE_NAMES",
+    "ASFProduct",
+    "ASFSearchClient",
     "DEFAULT_ENABLED_SATELLITES",
     "HybridPassPredictor",
     "N2YOPassPredictor",
