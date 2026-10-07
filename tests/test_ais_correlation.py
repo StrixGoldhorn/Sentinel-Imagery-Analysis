@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     dead_reckon_position,
     distance_to_bbox_meters,
     haversine_distance_meters,
+    point_in_polygon_and_distance,
 )
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, Scan, ShipDetection
 
@@ -307,6 +308,82 @@ class TestAISCorrelation(unittest.TestCase):
         self.assertEqual(results_no_kin[0]["correlation_status"], "uncorrelated")
         self.assertFalse(results_no_kin[0]["is_correlated"])
         self.assertIsNone(results_no_kin[0]["correlated_ais"])
+
+    def test_point_in_polygon_and_distance_pure_math(self):
+        m_lat = 111195.0
+        m_lon = 111195.0
+
+        # Square polygon 100m x 100m around (1.25, 103.75)
+        poly = [
+            (1.25 - 50 / m_lat, 103.75 - 50 / m_lon),
+            (1.25 - 50 / m_lat, 103.75 + 50 / m_lon),
+            (1.25 + 50 / m_lat, 103.75 + 50 / m_lon),
+            (1.25 + 50 / m_lat, 103.75 - 50 / m_lon),
+        ]
+
+        # Inside center
+        inside, dist = point_in_polygon_and_distance(1.25, 103.75, poly)
+        self.assertTrue(inside)
+        self.assertEqual(dist, 0.0)
+
+        # 20m East of edge (dx = +70m from center)
+        inside_e, dist_e = point_in_polygon_and_distance(1.25, 103.75 + 70 / m_lon, poly)
+        self.assertFalse(inside_e)
+        self.assertAlmostEqual(dist_e, 20.0, delta=1.0)
+
+        # Degenerate polygon (< 3 points)
+        inside_deg, dist_deg = point_in_polygon_and_distance(1.25, 103.75, [(1.25, 103.75)])
+        self.assertFalse(inside_deg)
+        self.assertEqual(dist_deg, float("inf"))
+
+    def test_correlation_with_rotated_obb_polygon(self):
+        # Rotated diamond ship hull inside AABB [400..600, 400..600]
+        # Pixel vertices: (500, 420), (580, 500), (500, 580), (420, 500)
+        obb_vertices = ((500.0, 420.0), (580.0, 500.0), (500.0, 580.0), (420.0, 500.0))
+        det = ShipDetection(
+            x=400,
+            y=400,
+            width=200,
+            height=200,
+            confidence=0.95,
+            polygon_points=obb_vertices,
+        )
+
+        # Point at pixel (405, 405) is inside the AABB [400..600], but > 500m away from the rotated diamond hull
+        # 1 pixel = 0.0001 deg lat/lon ~= 11.1 meters
+        # Pixel (405, 405) in lat/lon:
+        corner_lat = 1.30 - 405 * 0.0001
+        corner_lon = 103.70 + 405 * 0.0001
+
+        vessel_at_empty_corner = {
+            "mmsi": "111222333",
+            "vessel_name": "CORNER VESSEL",
+            "latitude": corner_lat,
+            "longitude": corner_lon,
+        }
+
+        use_case = CorrelateDetectionsWithAIS(StubAISRepo([vessel_at_empty_corner]))
+
+        # With rotated OBB polygon, it correctly determines the vessel is outside tolerance from the true hull
+        results = use_case.execute([det], self.scan, self.image_width, self.image_height, tolerance_meters=100.0)
+        self.assertEqual(results[0]["correlation_status"], "uncorrelated")
+        self.assertFalse(results[0]["is_correlated"])
+
+        # Now test a vessel directly on the ship center (500, 500)
+        center_lat = 1.30 - 500 * 0.0001
+        center_lon = 103.70 + 500 * 0.0001
+        vessel_at_center = {
+            "mmsi": "444555666",
+            "vessel_name": "CENTER VESSEL",
+            "latitude": center_lat,
+            "longitude": center_lon,
+        }
+
+        use_case_center = CorrelateDetectionsWithAIS(StubAISRepo([vessel_at_center]))
+        results_center = use_case_center.execute([det], self.scan, self.image_width, self.image_height, tolerance_meters=100.0)
+        self.assertEqual(results_center[0]["correlation_status"], "inside_box")
+        self.assertTrue(results_center[0]["is_correlated"])
+        self.assertEqual(results_center[0]["correlated_ais"]["mmsi"], "444555666")
 
 
 if __name__ == "__main__":

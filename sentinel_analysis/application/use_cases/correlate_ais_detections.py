@@ -47,6 +47,72 @@ def distance_to_bbox_meters(
     return haversine_distance_meters(lat, lon, clamped_lat, clamped_lon)
 
 
+def point_in_polygon_and_distance(
+    lat: float,
+    lon: float,
+    geo_polygon: list[tuple[float, float]],
+) -> tuple[bool, float]:
+    """Check if point is inside a polygon and calculate shortest distance in meters.
+
+    Parameters:
+        lat: WGS-84 latitude in degrees.
+        lon: WGS-84 longitude in degrees.
+        geo_polygon: Sequence of (lat, lon) vertices defining the closed boundary.
+
+    Returns:
+        tuple[bool, float]: (is_inside, distance_meters) where distance_meters == 0.0 if inside.
+    """
+    if not geo_polygon or len(geo_polygon) < 3:
+        return False, float("inf")
+
+    lat0, lon0 = geo_polygon[0]
+    lat_rad = math.radians(lat0)
+    cos_lat = max(0.01, math.cos(lat_rad))
+    m_per_deg_lat = 111195.0
+    m_per_deg_lon = 111195.0 * cos_lat
+
+    poly_xy = [
+        ((p_lon - lon0) * m_per_deg_lon, (p_lat - lat0) * m_per_deg_lat)
+        for p_lat, p_lon in geo_polygon
+    ]
+    px = (lon - lon0) * m_per_deg_lon
+    py = (lat - lat0) * m_per_deg_lat
+
+    # 1. Point in polygon test via Ray Casting
+    inside = False
+    n = len(poly_xy)
+    for i in range(n):
+        x1, y1 = poly_xy[i]
+        x2, y2 = poly_xy[(i + 1) % n]
+        if (y1 > py) != (y2 > py):
+            x_int = (py - y1) * (x2 - x1) / (y2 - y1 + 1e-12) + x1
+            if px < x_int:
+                inside = not inside
+
+    if inside:
+        return True, 0.0
+
+    # 2. Shortest distance to boundary segments
+    min_dist_sq = float("inf")
+    for i in range(n):
+        x1, y1 = poly_xy[i]
+        x2, y2 = poly_xy[(i + 1) % n]
+        vx = x2 - x1
+        vy = y2 - y1
+        l2 = vx * vx + vy * vy
+        if l2 <= 1e-9:
+            d2 = (px - x1) ** 2 + (py - y1) ** 2
+        else:
+            t = max(0.0, min(1.0, ((px - x1) * vx + (py - y1) * vy) / l2))
+            proj_x = x1 + t * vx
+            proj_y = y1 + t * vy
+            d2 = (px - proj_x) ** 2 + (py - proj_y) ** 2
+        if d2 < min_dist_sq:
+            min_dist_sq = d2
+
+    return False, math.sqrt(max(0.0, min_dist_sq))
+
+
 def _parse_timestamp(val: Any) -> Optional[datetime]:
     """Parse string or datetime object into a UTC timezone-aware datetime."""
     if not val:
@@ -257,6 +323,16 @@ class CorrelateDetectionsWithAIS:
             center_lat = scan_bbox.max_latitude - center_y * lat_scale
             center_lon = scan_bbox.min_longitude + center_x * lon_scale
 
+            geo_polygon = None
+            if polygon_points and len(polygon_points) >= 3:
+                geo_polygon = [
+                    (
+                        round(scan_bbox.max_latitude - float(pt[1]) * lat_scale, 7),
+                        round(scan_bbox.min_longitude + float(pt[0]) * lon_scale, 7),
+                    )
+                    for pt in polygon_points
+                ]
+
             projected_detections.append({
                 "index": idx,
                 "x": int(x),
@@ -270,6 +346,7 @@ class CorrelateDetectionsWithAIS:
                 "length": length,
                 "beam": beam,
                 "polygon_points": polygon_points,
+                "geo_polygon": geo_polygon,
                 "lat": round(center_lat, 5),
                 "lng": round(center_lon, 5),
                 "geo_bbox": {
@@ -343,19 +420,27 @@ class CorrelateDetectionsWithAIS:
 
         for p_det in projected_detections:
             g_box = p_det["geo_bbox"]
+            geo_poly = p_det.get("geo_polygon")
             det_idx = p_det["index"]
             c_lat = p_det["lat"]
             c_lon = p_det["lng"]
 
             for cand in prepared_candidates:
-                dist_to_box = distance_to_bbox_meters(
-                    cand["eff_lat"],
-                    cand["eff_lon"],
-                    g_box["min_lat"],
-                    g_box["max_lat"],
-                    g_box["min_lon"],
-                    g_box["max_lon"],
-                )
+                if geo_poly:
+                    _, dist_to_box = point_in_polygon_and_distance(
+                        cand["eff_lat"],
+                        cand["eff_lon"],
+                        geo_poly,
+                    )
+                else:
+                    dist_to_box = distance_to_bbox_meters(
+                        cand["eff_lat"],
+                        cand["eff_lon"],
+                        g_box["min_lat"],
+                        g_box["max_lat"],
+                        g_box["min_lon"],
+                        g_box["max_lon"],
+                    )
 
                 if dist_to_box <= tolerance_meters:
                     dist_to_center = haversine_distance_meters(cand["eff_lat"], cand["eff_lon"], c_lat, c_lon)
