@@ -128,6 +128,18 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("AIS correlation distance must be a number between 0 and 5000 meters")
 
+        if key == "ais_dead_reckoning_enabled":
+            return bool(value)
+
+        if key == "ais_max_dead_reckoning_seconds":
+            try:
+                ival = int(value)
+                if not (60 <= ival <= 86400):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("AIS max dead reckoning seconds must be an integer between 60 and 86400")
+
         if key == "resolution_meters":
             try:
                 fval = float(value)

@@ -47,6 +47,84 @@ def distance_to_bbox_meters(
     return haversine_distance_meters(lat, lon, clamped_lat, clamped_lon)
 
 
+def _parse_timestamp(val: Any) -> Optional[datetime]:
+    """Parse string or datetime object into a UTC timezone-aware datetime."""
+    if not val:
+        return None
+    if isinstance(val, datetime):
+        return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+    if isinstance(val, str):
+        try:
+            cleaned = val.replace("Z", "+00:00").replace(" ", "T")
+            dt = datetime.fromisoformat(cleaned)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return None
+
+
+def dead_reckon_position(
+    lat: float,
+    lon: float,
+    speed_knots: Optional[float],
+    heading_deg: Optional[float],
+    time_delta_seconds: float,
+    max_propagation_seconds: float = 7200.0,
+) -> tuple[float, float, float]:
+    """Extrapolate a vessel's geographic position along its SOG and COG/heading vector.
+
+    Parameters:
+        lat: Initial WGS-84 latitude in degrees.
+        lon: Initial WGS-84 longitude in degrees.
+        speed_knots: Speed Over Ground in knots (1 knot = 1852/3600 m/s ~ 0.514444 m/s).
+        heading_deg: Heading or Course Over Ground in degrees [0, 360) clockwise from True North.
+        time_delta_seconds: Propagation time interval (t_target - t_source).
+                            Positive means predicting into the future;
+                            negative means back-propagating into the past.
+        max_propagation_seconds: Maximum allowable extrapolation window in seconds.
+
+    Returns:
+        tuple[float, float, float]: (projected_latitude, projected_longitude, distance_traveled_meters)
+    """
+    if (
+        speed_knots is None
+        or heading_deg is None
+        or abs(time_delta_seconds) < 1.0
+        or abs(time_delta_seconds) > max_propagation_seconds
+    ):
+        return lat, lon, 0.0
+
+    try:
+        speed = float(speed_knots)
+        heading = float(heading_deg) % 360.0
+    except (TypeError, ValueError):
+        return lat, lon, 0.0
+
+    # Sanity checks on physical vessel speeds (0.05 to 70 knots)
+    if speed <= 0.05 or speed > 70.0:
+        return lat, lon, 0.0
+
+    speed_mps = speed * (1852.0 / 3600.0)
+    distance_meters = speed_mps * time_delta_seconds
+
+    theta = math.radians(heading)
+    dy = distance_meters * math.cos(theta)  # displacement North (meters)
+    dx = distance_meters * math.sin(theta)  # displacement East (meters)
+
+    earth_radius = 6371000.0
+    d_lat = math.degrees(dy / earth_radius)
+
+    # Scale longitude displacement by mean latitude cosine
+    mean_lat_rad = math.radians(lat + d_lat / 2.0)
+    cos_lat = max(0.01, math.cos(mean_lat_rad))
+    d_lon = math.degrees(dx / (earth_radius * cos_lat))
+
+    new_lat = max(-90.0, min(90.0, lat + d_lat))
+    new_lon = ((lon + d_lon + 180.0) % 360.0) - 180.0
+
+    return new_lat, new_lon, abs(distance_meters)
+
+
 class CorrelateDetectionsWithAIS:
     """Correlate SAR ship detections against known AIS vessel locations.
 
@@ -76,6 +154,30 @@ class CorrelateDetectionsWithAIS:
                 pass
         return 100.0
 
+    def get_kinematics_enabled(self) -> bool:
+        """Check if AIS kinematic dead-reckoning is enabled, defaulting to True."""
+        if self._settings_repo is not None:
+            try:
+                cv_settings = self._settings_repo.get_section("cv") or {}
+                raw = cv_settings.get("ais_dead_reckoning_enabled")
+                if raw is not None:
+                    return bool(raw)
+            except Exception:
+                pass
+        return True
+
+    def get_max_dead_reckoning_seconds(self) -> float:
+        """Fetch maximum dead-reckoning time window, defaulting to 7200s (2 hours)."""
+        if self._settings_repo is not None:
+            try:
+                cv_settings = self._settings_repo.get_section("cv") or {}
+                raw = cv_settings.get("ais_max_dead_reckoning_seconds")
+                if raw is not None:
+                    return max(60.0, float(raw))
+            except Exception:
+                pass
+        return 7200.0
+
     def execute(
         self,
         detections: list[ShipDetection | dict[str, Any]],
@@ -85,6 +187,8 @@ class CorrelateDetectionsWithAIS:
         *,
         tolerance_meters: Optional[float] = None,
         candidate_vessels: Optional[list[dict[str, Any]]] = None,
+        enable_kinematics: Optional[bool] = None,
+        max_propagation_seconds: Optional[float] = None,
     ) -> list[dict[str, Any]]:
         """Perform proximity correlation on detections and return enriched detection dictionaries."""
         if tolerance_meters is None or tolerance_meters < 0.0:
@@ -94,6 +198,15 @@ class CorrelateDetectionsWithAIS:
         scan_bbox = scan.bbox
         img_w = max(1, int(image_width))
         img_h = max(1, int(image_height))
+
+        if enable_kinematics is None:
+            enable_kinematics = self.get_kinematics_enabled()
+        if max_propagation_seconds is None or max_propagation_seconds <= 0.0:
+            max_propagation_seconds = self.get_max_dead_reckoning_seconds()
+
+        target_time: Optional[datetime] = None
+        if scan.acquisition and getattr(scan.acquisition, "acquired_at", None):
+            target_time = _parse_timestamp(scan.acquisition.acquired_at)
 
         # Query candidate AIS records if not explicitly passed
         if candidate_vessels is None:
@@ -170,7 +283,62 @@ class CorrelateDetectionsWithAIS:
                 "correlated_ais": None,
             })
 
-        # 2. Build candidate match pairs: (detection_index, vessel_dict, dist_to_box, dist_to_center)
+        # 2. Pre-process candidates with kinematic dead-reckoning (if enabled)
+        prepared_candidates: list[dict[str, Any]] = []
+        for vessel in candidate_vessels:
+            v_lat = vessel.get("latitude")
+            v_lon = vessel.get("longitude")
+            if v_lat is None or v_lon is None:
+                continue
+
+            try:
+                base_lat = float(v_lat)
+                base_lon = float(v_lon)
+            except (TypeError, ValueError):
+                continue
+
+            eff_lat = base_lat
+            eff_lon = base_lon
+            delta_seconds = 0.0
+            prop_dist = 0.0
+            dead_reckoned = False
+
+            if enable_kinematics and target_time is not None:
+                v_time = _parse_timestamp(vessel.get("timestamp"))
+                if v_time is not None:
+                    dt = (target_time - v_time).total_seconds()
+                    spd = vessel.get("speed") if vessel.get("speed") is not None else vessel.get("sog")
+                    hdg = vessel.get("course") if vessel.get("course") is not None else vessel.get("cog")
+                    if hdg is None:
+                        hdg = vessel.get("heading")
+
+                    proj_lat, proj_lon, p_dist = dead_reckon_position(
+                        base_lat,
+                        base_lon,
+                        spd,
+                        hdg,
+                        dt,
+                        max_propagation_seconds=max_propagation_seconds,
+                    )
+                    if p_dist > 0.0:
+                        eff_lat = proj_lat
+                        eff_lon = proj_lon
+                        delta_seconds = dt
+                        prop_dist = p_dist
+                        dead_reckoned = True
+
+            prepared_candidates.append({
+                "vessel": vessel,
+                "eff_lat": eff_lat,
+                "eff_lon": eff_lon,
+                "raw_lat": base_lat,
+                "raw_lon": base_lon,
+                "dead_reckoned": dead_reckoned,
+                "delta_seconds": delta_seconds,
+                "prop_dist": prop_dist,
+            })
+
+        # 3. Build candidate match pairs: (detection_index, cand_dict, dist_to_box, dist_to_center)
         candidate_matches: list[tuple[int, dict[str, Any], float, float]] = []
 
         for p_det in projected_detections:
@@ -179,18 +347,10 @@ class CorrelateDetectionsWithAIS:
             c_lat = p_det["lat"]
             c_lon = p_det["lng"]
 
-            for vessel in candidate_vessels:
-                v_lat = vessel.get("latitude")
-                v_lon = vessel.get("longitude")
-                if v_lat is None or v_lon is None:
-                    continue
-
-                v_lat = float(v_lat)
-                v_lon = float(v_lon)
-
+            for cand in prepared_candidates:
                 dist_to_box = distance_to_bbox_meters(
-                    v_lat,
-                    v_lon,
+                    cand["eff_lat"],
+                    cand["eff_lon"],
                     g_box["min_lat"],
                     g_box["max_lat"],
                     g_box["min_lon"],
@@ -198,19 +358,20 @@ class CorrelateDetectionsWithAIS:
                 )
 
                 if dist_to_box <= tolerance_meters:
-                    dist_to_center = haversine_distance_meters(v_lat, v_lon, c_lat, c_lon)
-                    candidate_matches.append((det_idx, vessel, dist_to_box, dist_to_center))
+                    dist_to_center = haversine_distance_meters(cand["eff_lat"], cand["eff_lon"], c_lat, c_lon)
+                    candidate_matches.append((det_idx, cand, dist_to_box, dist_to_center))
 
-        # 3. Resolve conflicts: Greedy assignment by (dist_to_box, dist_to_center)
+        # 4. Resolve conflicts: Greedy assignment by (dist_to_box, dist_to_center)
         candidate_matches.sort(key=lambda item: (item[2], item[3]))
 
         matched_detections: set[int] = set()
         matched_vessel_keys: set[str] = set()
 
-        for det_idx, vessel, dist_to_box, dist_to_center in candidate_matches:
+        for det_idx, cand, dist_to_box, dist_to_center in candidate_matches:
             if det_idx in matched_detections:
                 continue
 
+            vessel = cand["vessel"]
             v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
             if v_key in matched_vessel_keys:
                 continue
@@ -230,8 +391,13 @@ class CorrelateDetectionsWithAIS:
                 "callsign": vessel.get("callsign"),
                 "speed": vessel.get("speed"),
                 "heading": vessel.get("heading"),
-                "latitude": vessel.get("latitude"),
-                "longitude": vessel.get("longitude"),
+                "latitude": round(cand["eff_lat"], 6),
+                "longitude": round(cand["eff_lon"], 6),
+                "raw_latitude": cand["raw_lat"],
+                "raw_longitude": cand["raw_lon"],
+                "dead_reckoned": cand["dead_reckoned"],
+                "propagation_delta_seconds": round(cand["delta_seconds"], 1) if cand["dead_reckoned"] else 0.0,
+                "propagated_distance_meters": round(cand["prop_dist"], 1),
                 "distance_to_box_meters": round(dist_to_box, 1),
                 "distance_to_center_meters": round(dist_to_center, 1),
                 "match_type": match_status,
@@ -252,13 +418,17 @@ class CorrelateDetectionsWithAIS:
         tolerance_meters: float,
     ) -> list[dict[str, Any]]:
         """Fetch AIS vessel positions within or near the scan bounding box."""
-        deg_margin = max(0.005, (tolerance_meters / 111000.0) * 1.5)
+        center_lat = (scan.bbox.min_latitude + scan.bbox.max_latitude) / 2.0
+        lat_rad = math.radians(center_lat)
+        cos_lat = max(0.1, math.cos(lat_rad))
+        lat_margin = max(0.01, (tolerance_meters / 111320.0) * 1.5)
+        lon_margin = max(0.01, lat_margin / cos_lat)
 
         expanded_bbox = BoundingBox(
-            min_latitude=scan.bbox.min_latitude - deg_margin,
-            max_latitude=scan.bbox.max_latitude + deg_margin,
-            min_longitude=scan.bbox.min_longitude - deg_margin,
-            max_longitude=scan.bbox.max_longitude + deg_margin,
+            min_latitude=max(-90.0, scan.bbox.min_latitude - lat_margin),
+            max_latitude=min(90.0, scan.bbox.max_latitude + lat_margin),
+            min_longitude=max(-180.0, scan.bbox.min_longitude - lon_margin),
+            max_longitude=min(180.0, scan.bbox.max_longitude + lon_margin),
         )
 
         time_range = None

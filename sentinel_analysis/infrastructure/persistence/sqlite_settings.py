@@ -98,6 +98,20 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "min": 0.0,
             "max": 5000.0,
         },
+        "ais_dead_reckoning_enabled": {
+            "value": True,
+            "type": "boolean",
+            "label": "AIS Dead-Reckoning Extrapolation",
+            "description": "Propagate AIS vessel positions along speed/course vectors to match exact satellite pass timestamp.",
+        },
+        "ais_max_dead_reckoning_seconds": {
+            "value": 7200,
+            "type": "integer",
+            "label": "Max Dead-Reckoning Window (Seconds)",
+            "description": "Maximum time difference allowed between AIS ping and satellite acquisition for kinematic extrapolation.",
+            "min": 60,
+            "max": 86400,
+        },
     },
     "imagery": {
         "default_evalscript": {

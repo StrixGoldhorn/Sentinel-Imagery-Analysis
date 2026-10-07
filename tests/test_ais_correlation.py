@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     CorrelateDetectionsWithAIS,
+    dead_reckon_position,
     distance_to_bbox_meters,
     haversine_distance_meters,
 )
@@ -233,6 +234,79 @@ class TestAISCorrelation(unittest.TestCase):
         self.assertEqual(results[0]["correlated_ais"]["mmsi"], "333333333")
         self.assertEqual(results[1]["correlation_status"], "uncorrelated")
         self.assertIsNone(results[1]["correlated_ais"])
+
+    def test_dead_reckon_position_pure_function(self):
+        # 10 knots = 5.14444 m/s. In 3600s => 18,520m North (~0.1665 deg lat)
+        new_lat, new_lon, dist = dead_reckon_position(0.0, 0.0, 10.0, 0.0, 3600.0)
+        self.assertAlmostEqual(new_lat, 0.1665, places=3)
+        self.assertEqual(new_lon, 0.0)
+        self.assertAlmostEqual(dist, 18520.0, delta=10.0)
+
+        # 0 time delta => exact coordinates
+        lat0, lon0, dist0 = dead_reckon_position(1.25, 103.75, 12.0, 90.0, 0.0)
+        self.assertEqual(lat0, 1.25)
+        self.assertEqual(lon0, 103.75)
+        self.assertEqual(dist0, 0.0)
+
+        # Missing speed or heading => exact coordinates
+        lat_none, lon_none, dist_none = dead_reckon_position(1.25, 103.75, None, 90.0, 500.0)
+        self.assertEqual(lat_none, 1.25)
+        self.assertEqual(dist_none, 0.0)
+
+    def test_kinematic_correlation_matches_moving_vessel_that_would_otherwise_miss(self):
+        # Detection box: Lat [1.245, 1.255], Lon [103.745, 103.755], Centroid (1.250, 103.750)
+        det = ShipDetection(x=450, y=450, width=100, height=100, confidence=0.92)
+
+        # Vessel reported 10 minutes prior to scan (11:50:00 vs scan at 12:00:00 = 600s)
+        # Position: Lat 1.222, Lon 103.750.
+        # Distance to box is ~2,500 meters South (far outside 100m tolerance).
+        # SOG: ~29.15 knots (~15 m/s). Heading: 0 (True North).
+        # In 600s, vessel travels 9000 meters North (~0.081 deg).
+        # Projected Lat: 1.222 + 9000/111195 ~= 1.222 + 0.0809 = 1.3029... wait,
+        # Let's calibrate distance precisely:
+        # Distance from 1.242 to 1.250 is 0.008 deg * 111,195 m/deg = 889.5 meters.
+        # At speed 10.0 knots = 5.1444 m/s for 172.9 seconds => ~889 meters.
+        # Let's use dt = 300 seconds (5 minutes prior):
+        # Speed: 10.0 knots (5.1444 m/s). In 300s, travels 1543 meters (~0.01387 deg lat).
+        # Base Lat: 1.250 - 0.01387 = 1.23613.
+        # Base position is 1.23613, which is ~985 meters south of the detection box edge (1.245).
+        # Without dead reckoning, it would miss completely (uncorrelated).
+        # With dead reckoning, it projects exactly to Lat 1.250 (inside_box).
+        vessel = {
+            "mmsi": "777888999",
+            "vessel_name": "FAST COMMUTER",
+            "latitude": 1.23613,
+            "longitude": 103.750,
+            "speed": 10.0,
+            "heading": 0.0,
+            "timestamp": "2026-09-01T11:55:00Z",  # 300s before scan
+        }
+
+        # 1. With kinematics enabled (default)
+        use_case = CorrelateDetectionsWithAIS(StubAISRepo([vessel]))
+        results = use_case.execute([det], self.scan, self.image_width, self.image_height, tolerance_meters=100.0)
+
+        self.assertEqual(len(results), 1)
+        res = results[0]
+        self.assertEqual(res["correlation_status"], "inside_box")
+        self.assertTrue(res["is_correlated"])
+        self.assertTrue(res["correlated_ais"]["dead_reckoned"])
+        self.assertAlmostEqual(res["correlated_ais"]["propagation_delta_seconds"], 300.0, places=0)
+        self.assertAlmostEqual(res["correlated_ais"]["raw_latitude"], 1.23613, places=4)
+        self.assertAlmostEqual(res["correlated_ais"]["latitude"], 1.250, places=3)
+
+        # 2. With kinematics explicitly disabled
+        results_no_kin = use_case.execute(
+            [det],
+            self.scan,
+            self.image_width,
+            self.image_height,
+            tolerance_meters=100.0,
+            enable_kinematics=False,
+        )
+        self.assertEqual(results_no_kin[0]["correlation_status"], "uncorrelated")
+        self.assertFalse(results_no_kin[0]["is_correlated"])
+        self.assertIsNone(results_no_kin[0]["correlated_ais"])
 
 
 if __name__ == "__main__":

@@ -154,12 +154,15 @@ def run_cv(folder_name: str):
     enriched_detections = []
     if hasattr(cnt, "correlate_ais_detections") and cnt.correlate_ais_detections is not None:
         try:
+            raw_kinematics = payload.get("enable_kinematics")
+            enable_kinematics = bool(raw_kinematics) if raw_kinematics is not None else None
             enriched = cnt.correlate_ais_detections.execute(
                 result.detections,
                 scan,
                 result.image_width,
                 result.image_height,
                 tolerance_meters=ais_distance,
+                enable_kinematics=enable_kinematics,
             )
             if isinstance(enriched, list) and (len(enriched) == len(result.detections) or not result.detections):
                 enriched_detections = enriched
