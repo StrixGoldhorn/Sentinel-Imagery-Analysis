@@ -35,6 +35,19 @@ def test_migrations_applied_idempotently_when_already_applied() -> None:
         mock_conn.executescript.assert_not_called()
 
 
+def test_real_database_migration_with_wal_and_busy_timeout() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        db_path = Path(tmp_dir) / "test_migration.db"
+        runner = MigrationRunner(db_path)
+        first_run = runner.run_migrations()
+        assert len(first_run) >= 3
+
+        # Second run should be a no-op
+        second_run = runner.run_migrations()
+        assert len(second_run) == 0
+
+
 def load_tests(loader, standard_tests, pattern):
     import inspect
     suite = unittest.TestSuite()

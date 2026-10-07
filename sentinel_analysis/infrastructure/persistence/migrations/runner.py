@@ -19,8 +19,13 @@ class MigrationRunner:
     def run_migrations(self) -> list[str]:
         """Apply all pending migrations in alphabetical order within a transaction."""
         applied: list[str] = []
-        connection = sqlite3.connect(self._database_path)
+        connection = sqlite3.connect(self._database_path, timeout=60.0)
         try:
+            try:
+                connection.execute("PRAGMA busy_timeout = 60000;")
+                connection.execute("PRAGMA journal_mode = WAL;")
+            except Exception:
+                pass
             with connection:
                 connection.execute(
                     """
