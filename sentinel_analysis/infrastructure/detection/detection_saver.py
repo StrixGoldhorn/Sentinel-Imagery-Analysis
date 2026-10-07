@@ -41,20 +41,134 @@ def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> di
     }
 
 
+WGS84_ESRI_PRJ = (
+    'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],'
+    'PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]\n'
+)
+
+
+def _extract_bbox_coords(bbox: Any) -> tuple[float, float, float, float] | None:
+    """Extract (min_lat, max_lat, min_lon, max_lon) from a BoundingBox or dictionary."""
+    if bbox is None:
+        return None
+    if hasattr(bbox, "min_latitude") and hasattr(bbox, "max_latitude"):
+        return (
+            float(bbox.min_latitude),
+            float(bbox.max_latitude),
+            float(bbox.min_longitude),
+            float(bbox.max_longitude),
+        )
+    if isinstance(bbox, dict):
+        min_lat = bbox.get("min_latitude", bbox.get("min_lat"))
+        max_lat = bbox.get("max_latitude", bbox.get("max_lat"))
+        min_lon = bbox.get("min_longitude", bbox.get("min_lon"))
+        max_lon = bbox.get("max_longitude", bbox.get("max_lon"))
+        if None not in (min_lat, max_lat, min_lon, max_lon):
+            return float(min_lat), float(max_lat), float(min_lon), float(max_lon)
+    return None
+
+
+def _build_geojson_feature_collection(
+    detections: list[dict[str, Any]],
+    image_name: str | None = None,
+) -> dict[str, Any]:
+    """Generate RFC 7946 GeoJSON FeatureCollection from serialized detections."""
+    features = []
+    for d in detections:
+        geo_poly = d.get("geo_polygon")
+        geo_box = d.get("geo_bbox")
+        lat = d.get("lat")
+        lng = d.get("lng")
+
+        geometry = None
+        if geo_poly and len(geo_poly) >= 3:
+            # geo_poly is list of (lat, lon) -> GeoJSON requires [lon, lat]
+            ring = [[round(float(p[1]), 6), round(float(p[0]), 6)] for p in geo_poly]
+            if ring[0] != ring[-1]:
+                ring.append(ring[0])
+            geometry = {
+                "type": "Polygon",
+                "coordinates": [ring],
+            }
+        elif geo_box and isinstance(geo_box, dict):
+            min_lat = geo_box.get("min_lat")
+            max_lat = geo_box.get("max_lat")
+            min_lon = geo_box.get("min_lon")
+            max_lon = geo_box.get("max_lon")
+            if None not in (min_lat, max_lat, min_lon, max_lon):
+                ring = [
+                    [round(float(min_lon), 6), round(float(min_lat), 6)],
+                    [round(float(max_lon), 6), round(float(min_lat), 6)],
+                    [round(float(max_lon), 6), round(float(max_lat), 6)],
+                    [round(float(min_lon), 6), round(float(max_lat), 6)],
+                    [round(float(min_lon), 6), round(float(min_lat), 6)],
+                ]
+                geometry = {
+                    "type": "Polygon",
+                    "coordinates": [ring],
+                }
+        elif lat is not None and lng is not None:
+            geometry = {
+                "type": "Point",
+                "coordinates": [round(float(lng), 6), round(float(lat), 6)],
+            }
+
+        ais = d.get("correlated_ais") or {}
+        properties = {
+            "index": d.get("index"),
+            "confidence": d.get("confidence"),
+            "length_m": d.get("length"),
+            "beam_m": d.get("beam"),
+            "angle_deg": d.get("angle"),
+            "center_pixel": [d.get("center_x"), d.get("center_y")],
+            "correlation_status": d.get("correlation_status", "uncorrelated"),
+            "is_correlated": bool(d.get("is_correlated", False)),
+            "vessel_name": ais.get("vessel_name") or ais.get("name"),
+            "mmsi": ais.get("mmsi"),
+            "vessel_type": ais.get("vessel_type") or ais.get("type"),
+            "speed_knots": ais.get("speed"),
+            "heading_deg": ais.get("heading"),
+            "dead_reckoned": ais.get("dead_reckoned", False),
+            "distance_to_shape_meters": ais.get("distance_to_box_meters"),
+        }
+
+        features.append({
+            "type": "Feature",
+            "geometry": geometry,
+            "properties": properties,
+        })
+
+    return {
+        "type": "FeatureCollection",
+        "name": f"Detections - {image_name}" if image_name else "Sentinel-1 Ship Detections",
+        "crs": {
+            "type": "name",
+            "properties": {
+                "name": "urn:ogc:def:crs:OGC:1.3:CRS84",
+            },
+        },
+        "features": features,
+    }
+
+
 def save_detection_results(
     image_path: Path | str,
     detections: list[ShipDetection | dict[str, Any]],
     image_width: int | None = None,
     image_height: int | None = None,
     metadata: dict[str, Any] | None = None,
+    bbox: Any | None = None,
 ) -> dict[str, Any]:
-    """Render detection overlays directly onto a copy of the image and persist both visual PNG and JSON results.
+    """Render detection overlays directly onto a copy of the image and persist visual PNG, JSON, and GeoJSON results.
 
     Saves in the same folder as image_path:
       - <image_stem>_detected.png
       - detected_ships.png
       - <image_stem>_detections.json
       - detection_results.json
+      - <image_stem>_detections.geojson
+      - detections.geojson
+      - ESRI World Files (.pgw, .prj) when bbox coordinates are available.
     """
     target_img = Path(image_path).resolve()
     target_dir = target_img.parent
@@ -169,13 +283,49 @@ def save_detection_results(
     detections_json_path.write_text(json_str, encoding="utf-8")
     standard_json_path.write_text(json_str, encoding="utf-8")
 
+    # 4. Create standard GeoJSON FeatureCollection
+    geojson_payload = _build_geojson_feature_collection(serialized_detections, target_img.name)
+    geojson_str = json.dumps(geojson_payload, indent=2)
+    detections_geojson_path = target_dir / f"{target_img.stem}_detections.geojson"
+    standard_geojson_path = target_dir / "detections.geojson"
+    detections_geojson_path.write_text(geojson_str, encoding="utf-8")
+    standard_geojson_path.write_text(geojson_str, encoding="utf-8")
+
+    # 5. Create ESRI World Files (.pgw and .prj) when bbox coordinates are present
+    bbox_coords = _extract_bbox_coords(bbox or (metadata.get("bbox") if metadata else None))
+    world_files_created = False
+    if bbox_coords and actual_w > 0 and actual_h > 0:
+        min_lat, max_lat, min_lon, max_lon = bbox_coords
+        dx = (max_lon - min_lon) / float(actual_w)
+        dy = -(max_lat - min_lat) / float(actual_h)
+        x_center = min_lon + dx / 2.0
+        y_center = max_lat + dy / 2.0
+        pgw_content = f"{dx:.10f}\n0.0000000000\n0.0000000000\n{dy:.10f}\n{x_center:.10f}\n{y_center:.10f}\n"
+
+        target_stems = []
+        if detected_image_path:
+            target_stems.append(detected_image_path.stem)
+        if standard_image_path:
+            target_stems.append(standard_image_path.stem)
+        if target_img.is_file():
+            target_stems.append(target_img.stem)
+
+        for stem in set(target_stems):
+            (target_dir / f"{stem}.pgw").write_text(pgw_content, encoding="utf-8")
+            (target_dir / f"{stem}.prj").write_text(WGS84_ESRI_PRJ, encoding="utf-8")
+        world_files_created = True
+
     return {
         "detected_image_path": str(detected_image_path) if detected_image_path else None,
         "standard_image_path": str(standard_image_path) if standard_image_path else None,
         "detections_json_path": str(detections_json_path),
         "standard_json_path": str(standard_json_path),
+        "detections_geojson_path": str(detections_geojson_path),
+        "standard_geojson_path": str(standard_geojson_path),
         "detected_image_name": detected_image_name,
         "detections_json_name": detections_json_name,
+        "detections_geojson_name": detections_geojson_path.name,
+        "world_files_created": world_files_created,
         "ship_count": len(serialized_detections),
         "correlated_count": correlated_count,
         "inside_box_count": inside_count,

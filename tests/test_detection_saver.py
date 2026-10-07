@@ -175,6 +175,106 @@ class TestDetectionSaver(unittest.TestCase):
         self.assertEqual(result["ship_count"], 1)
         self.assertIsNone(result["detected_image_path"])
         self.assertTrue((self.dir_path / "nonexistent_detections.json").is_file())
+        self.assertTrue((self.dir_path / "nonexistent_detections.geojson").is_file())
+
+    def test_save_detection_results_generates_geojson(self) -> None:
+        detections = [
+            {
+                "index": 0,
+                "x": 20,
+                "y": 20,
+                "width": 25,
+                "height": 25,
+                "confidence": 0.88,
+                "length": 85.0,
+                "beam": 18.0,
+                "angle": 45.0,
+                "lat": 1.250,
+                "lng": 103.750,
+                "geo_polygon": [
+                    (1.2505, 103.7495),
+                    (1.2505, 103.7505),
+                    (1.2495, 103.7505),
+                    (1.2495, 103.7495),
+                ],
+                "correlation_status": "inside_box",
+                "is_correlated": True,
+                "correlated_ais": {
+                    "mmsi": "123456789",
+                    "vessel_name": "SEA GLORY",
+                    "vessel_type": "Tanker",
+                    "speed": 12.5,
+                },
+            }
+        ]
+
+        result = save_detection_results(
+            image_path=self.image_path,
+            detections=detections,
+            image_width=100,
+            image_height=100,
+        )
+
+        geojson_file = self.dir_path / "test_sar_detections.geojson"
+        std_geojson_file = self.dir_path / "detections.geojson"
+        self.assertTrue(geojson_file.is_file())
+        self.assertTrue(std_geojson_file.is_file())
+
+        gj = json.loads(geojson_file.read_text(encoding="utf-8"))
+        self.assertEqual(gj["type"], "FeatureCollection")
+        self.assertEqual(len(gj["features"]), 1)
+
+        feat = gj["features"][0]
+        self.assertEqual(feat["type"], "Feature")
+        self.assertEqual(feat["geometry"]["type"], "Polygon")
+        # In GeoJSON coordinates are [lon, lat]
+        coords = feat["geometry"]["coordinates"][0]
+        self.assertEqual(len(coords), 5)  # closed ring (4 points + first point repeated)
+        self.assertAlmostEqual(coords[0][0], 103.7495, places=4)
+        self.assertAlmostEqual(coords[0][1], 1.2505, places=4)
+        self.assertEqual(feat["properties"]["vessel_name"], "SEA GLORY")
+        self.assertEqual(feat["properties"]["vessel_type"], "Tanker")
+        self.assertEqual(feat["properties"]["is_correlated"], True)
+
+    def test_save_detection_results_generates_esri_world_files(self) -> None:
+        bbox = {
+            "min_latitude": 1.20,
+            "max_latitude": 1.30,
+            "min_longitude": 103.70,
+            "max_longitude": 103.80,
+        }
+
+        result = save_detection_results(
+            image_path=self.image_path,
+            detections=[],
+            image_width=100,
+            image_height=100,
+            bbox=bbox,
+        )
+
+        self.assertTrue(result["world_files_created"])
+        detected_pgw = self.dir_path / "test_sar_detected.pgw"
+        detected_prj = self.dir_path / "test_sar_detected.prj"
+        std_pgw = self.dir_path / "detected_ships.pgw"
+        std_prj = self.dir_path / "detected_ships.prj"
+
+        self.assertTrue(detected_pgw.is_file())
+        self.assertTrue(detected_prj.is_file())
+        self.assertTrue(std_pgw.is_file())
+        self.assertTrue(std_prj.is_file())
+
+        lines = [line.strip() for line in detected_pgw.read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(lines), 6)
+        dx = float(lines[0])
+        dy = float(lines[3])
+        x_center = float(lines[4])
+        y_center = float(lines[5])
+
+        self.assertAlmostEqual(dx, 0.001, places=5)
+        self.assertAlmostEqual(dy, -0.001, places=5)
+        self.assertAlmostEqual(x_center, 103.7005, places=5)
+        self.assertAlmostEqual(y_center, 1.2995, places=5)
+        self.assertIn("GCS_WGS_1984", detected_prj.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

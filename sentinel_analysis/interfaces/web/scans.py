@@ -206,6 +206,7 @@ def run_cv(folder_name: str):
         image_width=result.image_width,
         image_height=result.image_height,
         metadata=saved_meta,
+        bbox=scan.bbox,
     )
 
     scan_meta = dict(scan.metadata)
