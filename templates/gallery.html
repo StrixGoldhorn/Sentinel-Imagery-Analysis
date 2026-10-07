@@ -60,6 +60,26 @@
                     <span class="value js-local-time" data-utc-time="{{ (scan.metadata.scraped_datetime or '')|e }}">{{ scan.metadata.scraped_datetime or "N/A" }}</span>
                 </div>
 
+                {% if scan.metadata.latest_cv_results %}
+                <div class="meta-group">
+                    <span class="label">Detection Intelligence</span>
+                    <span class="value" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <span>Ships: <strong>{{ scan.metadata.latest_cv_results.ship_count }}</strong></span>
+                        <span>AIS: <strong>{{ scan.metadata.latest_cv_results.correlated_count }}</strong></span>
+                        {% if scan.metadata.latest_cv_results.dark_vessel_count %}
+                        <span style="background: rgba(239, 68, 68, 0.15); color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 600;">
+                            ⚠️ {{ scan.metadata.latest_cv_results.dark_vessel_count }} Dark Vessels
+                        </span>
+                        {% endif %}
+                        {% if scan.metadata.latest_cv_results.ghost_vessel_count %}
+                        <span style="background: rgba(147, 51, 234, 0.15); color: #9333ea; padding: 2px 8px; border-radius: 4px; font-weight: 600;">
+                            👻 {{ scan.metadata.latest_cv_results.ghost_vessel_count }} Ghost AIS
+                        </span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endif %}
+
                 <details>
                     <summary>Technical Request Settings</summary>
                     {% if scan.metadata.settings %}
@@ -73,7 +93,12 @@
                     <button class="btn btn-primary btn-add" onclick='toggleMapLayer({{ scan.folder|tojson }}, true)'>Add to Map</button>
                     <button class="btn btn-danger btn-remove" onclick='toggleMapLayer({{ scan.folder|tojson }}, false)'>Remove from Map</button>
                     {% if scan.images %}
-                    <a href="{{ scan.images[0] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open Imagery in New Tab</a>
+                    <a href="{{ scan.images[0] }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Open Imagery</a>
+                    {% endif %}
+                    {% if scan.metadata.latest_cv_results %}
+                    <a href="/api/scan/{{ scan.folder }}/detection_image" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Detected Ships</a>
+                    <a href="/api/scan/{{ scan.folder }}/geojson?download=1" class="btn btn-outline" download>GeoJSON</a>
+                    <a href="/api/scan/{{ scan.folder }}/gis_bundle" class="btn btn-outline" download>GIS Bundle (.zip)</a>
                     {% endif %}
                     <button class="btn btn-delete" onclick='openDeleteModal({{ scan.folder|tojson }}, {{ (scan.metadata.custom_name or scan.folder)|tojson }})'>Delete</button>
                 </div>

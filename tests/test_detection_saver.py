@@ -276,6 +276,77 @@ class TestDetectionSaver(unittest.TestCase):
         self.assertAlmostEqual(y_center, 1.2995, places=5)
         self.assertIn("GCS_WGS_1984", detected_prj.read_text(encoding="utf-8"))
 
+    def test_save_detection_results_includes_dark_and_ghost_vessels(self):
+        dark_det = {
+            "x": 30,
+            "y": 30,
+            "width": 20,
+            "height": 10,
+            "confidence": 0.94,
+            "length": 150.0,
+            "beam": 25.0,
+            "lat": 1.25,
+            "lng": 103.75,
+            "correlation_status": "uncorrelated",
+            "is_correlated": False,
+            "is_dark_vessel": True,
+            "dark_vessel_risk": "CRITICAL",
+            "dark_vessel_score": 92.5,
+            "estimated_class": "Large Commercial / Cargo / Tanker",
+            "dark_vessel_reasons": ["Uncorrelated large vessel (150m >= 100m)"],
+        }
+        ghost_vessel = {
+            "mmsi": "999000111",
+            "vessel_name": "PHANTOM GHOST",
+            "vessel_type": "Fishing",
+            "latitude": 1.26,
+            "longitude": 103.76,
+            "speed": 8.5,
+            "heading": 180.0,
+            "dead_reckoned": True,
+            "reason": "No corresponding radar return detected within SAR footprint",
+        }
+
+        result = save_detection_results(
+            image_path=self.image_path,
+            detections=[dark_det],
+            image_width=100,
+            image_height=100,
+            ghost_vessels=[ghost_vessel],
+        )
+
+        self.assertEqual(result["dark_vessel_count"], 1)
+        self.assertEqual(result["critical_dark_count"], 1)
+        self.assertEqual(result["ghost_vessel_count"], 1)
+        self.assertEqual(len(result["ghost_vessels"]), 1)
+
+        # Verify JSON
+        json_path = Path(result["detections_json_path"])
+        json_data = json.loads(json_path.read_text(encoding="utf-8"))
+        self.assertEqual(json_data["dark_vessel_count"], 1)
+        self.assertEqual(json_data["critical_dark_count"], 1)
+        self.assertEqual(json_data["ghost_vessel_count"], 1)
+        self.assertEqual(len(json_data["ghost_vessels"]), 1)
+        self.assertEqual(json_data["ghost_vessels"][0]["mmsi"], "999000111")
+
+        # Verify GeoJSON
+        geojson_path = Path(result["detections_geojson_path"])
+        geojson_data = json.loads(geojson_path.read_text(encoding="utf-8"))
+        features = geojson_data["features"]
+        self.assertEqual(len(features), 2)
+
+        det_feat = features[0]
+        self.assertTrue(det_feat["properties"]["is_dark_vessel"])
+        self.assertEqual(det_feat["properties"]["dark_vessel_risk"], "CRITICAL")
+        self.assertEqual(det_feat["properties"]["dark_vessel_score"], 92.5)
+
+        ghost_feat = features[1]
+        self.assertEqual(ghost_feat["geometry"]["type"], "Point")
+        self.assertEqual(ghost_feat["geometry"]["coordinates"], [103.76, 1.26])
+        self.assertEqual(ghost_feat["properties"]["feature_type"], "ghost_vessel")
+        self.assertEqual(ghost_feat["properties"]["mmsi"], "999000111")
+        self.assertEqual(ghost_feat["properties"]["vessel_name"], "PHANTOM GHOST")
+
 
 if __name__ == "__main__":
     unittest.main()

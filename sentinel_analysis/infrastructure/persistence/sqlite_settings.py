@@ -112,6 +112,22 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "min": 60,
             "max": 86400,
         },
+        "dark_vessel_solas_length_threshold": {
+            "value": 30.0,
+            "type": "number",
+            "label": "Dark Vessel SOLAS Threshold (Meters)",
+            "description": "Estimated vessel length in meters triggering mandatory AIS carriage assessment under IMO SOLAS regulations.",
+            "min": 10.0,
+            "max": 100.0,
+        },
+        "dark_vessel_critical_length_threshold": {
+            "value": 100.0,
+            "type": "number",
+            "label": "Critical Dark Vessel Threshold (Meters)",
+            "description": "Estimated vessel length in meters triggering CRITICAL priority security alert for uncorrelated radar detections.",
+            "min": 50.0,
+            "max": 300.0,
+        },
     },
     "imagery": {
         "default_evalscript": {
@@ -254,6 +270,12 @@ DEFAULT_SETTINGS_DEFINITIONS: dict[str, dict[str, dict[str, Any]]] = {
             "type": "color",
             "label": "AIS Buffer Match Color",
             "description": "Border and fill color for SAR detections with an AIS ping outside the box but within the buffer distance.",
+        },
+        "color_dark_vessel": {
+            "value": "#e11d48",
+            "type": "color",
+            "label": "Dark Vessel Alert Color",
+            "description": "Border and highlight color for uncorrelated dark vessels on the map.",
         },
     },
     "notifications": {

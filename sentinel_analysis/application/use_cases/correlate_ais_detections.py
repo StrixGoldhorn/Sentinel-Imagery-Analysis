@@ -191,6 +191,155 @@ def dead_reckon_position(
     return new_lat, new_lon, abs(distance_meters)
 
 
+def assess_dark_vessel(
+    is_correlated: Any = False,
+    length: float | None = None,
+    beam: float | None = None,
+    confidence: float | None = None,
+    solas_threshold: float = 30.0,
+    critical_threshold: float = 100.0,
+) -> dict[str, Any]:
+    """Evaluate whether an uncorrelated detection represents a potential Dark Vessel.
+
+    Incorporates IMO SOLAS Class-A mandatory carriage thresholds (typically >= 30-35m / 300 GT),
+    vessel hull aspect ratio (naval architecture plausibility), and detection confidence.
+    Supports either passing a detection dictionary/object directly or passing individual attributes.
+    """
+    if isinstance(is_correlated, dict):
+        det_dict = is_correlated
+        is_corr = bool(det_dict.get("is_correlated", False))
+        length = det_dict.get("length", length)
+        beam = det_dict.get("beam", beam)
+        confidence = det_dict.get("confidence", confidence)
+    elif not isinstance(is_correlated, bool) and hasattr(is_correlated, "is_correlated"):
+        is_corr = bool(getattr(is_correlated, "is_correlated", False))
+        length = getattr(is_correlated, "length", length)
+        beam = getattr(is_correlated, "beam", beam)
+        confidence = getattr(is_correlated, "confidence", confidence)
+    else:
+        is_corr = bool(is_correlated)
+
+    if is_corr:
+        return {
+            "is_dark_vessel": False,
+            "dark_vessel_score": 0.0,
+            "dark_vessel_risk": "NOMINAL",
+            "estimated_class": "Identified Vessel",
+            "dark_vessel_reasons": ["Correlated with active AIS broadcast"],
+        }
+
+    conf = max(0.1, min(1.0, float(confidence if confidence is not None else 0.6)))
+    est_len = float(length) if length is not None and length > 0 else 15.0
+    est_beam = float(beam) if beam is not None and beam > 0 else max(3.0, est_len / 4.5)
+    aspect_ratio = est_len / max(1.0, est_beam)
+
+    reasons: list[str] = ["Uncorrelated with active AIS broadcasts"]
+
+    if est_len >= critical_threshold:
+        base_score = 0.85
+        est_class = "Large Commercial / Cargo / Tanker"
+        reasons.append(
+            f"Estimated length ({est_len:.0f}m) exceeds {critical_threshold:.0f}m large ship threshold; Class-A AIS legally mandated under SOLAS"
+        )
+    elif est_len >= solas_threshold:
+        base_score = 0.70
+        est_class = "Commercial Vessel (SOLAS Mandated)"
+        reasons.append(
+            f"Estimated length ({est_len:.0f}m) exceeds {solas_threshold:.0f}m mandatory AIS carriage threshold"
+        )
+    elif est_len >= 18.0:
+        base_score = 0.45
+        est_class = "Medium Vessel / Trawler"
+        reasons.append(
+            f"Estimated length ({est_len:.0f}m) indicates medium craft or commercial fishing vessel"
+        )
+    else:
+        base_score = 0.20
+        est_class = "Small Craft or Radar Clutter"
+        reasons.append(
+            f"Estimated length ({est_len:.0f}m) is below mandatory AIS carriage threshold"
+        )
+
+    aspect_adj = 0.0
+    if 2.5 <= aspect_ratio <= 9.0:
+        aspect_adj = 0.08
+        reasons.append(f"Hull aspect ratio ({aspect_ratio:.1f}) is characteristic of a naval vessel profile")
+    elif aspect_ratio < 1.6:
+        aspect_adj = -0.12
+        reasons.append(f"Low hull aspect ratio ({aspect_ratio:.1f}) suggests circular radar clutter or buoy")
+
+    score = (base_score * (0.6 + 0.4 * conf)) + aspect_adj
+    score = max(0.05, min(0.99, score))
+
+    if score >= 0.75:
+        risk_level = "CRITICAL"
+    elif score >= 0.55:
+        risk_level = "HIGH"
+    elif score >= 0.35:
+        risk_level = "MEDIUM"
+    elif score >= 0.20:
+        risk_level = "LOW"
+    else:
+        risk_level = "NOMINAL"
+
+    is_dark = (score >= 0.50) or (est_len >= solas_threshold and conf >= 0.45)
+
+    return {
+        "is_dark_vessel": is_dark,
+        "dark_vessel_score": round(score, 2),
+        "dark_vessel_risk": risk_level,
+        "estimated_class": est_class,
+        "dark_vessel_reasons": reasons,
+    }
+
+
+def extract_ghost_vessels(
+    prepared_candidates: list[dict[str, Any]],
+    matched_vessel_keys: set[str],
+    bbox: BoundingBox,
+) -> list[dict[str, Any]]:
+    """Identify candidate AIS vessels broadcasting inside the SAR footprint with no radar match."""
+    ghosts: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for cand in prepared_candidates:
+        if "vessel" in cand:
+            vessel = cand["vessel"]
+            lat = cand.get("eff_lat", vessel.get("latitude"))
+            lon = cand.get("eff_lon", vessel.get("longitude"))
+            dead_reck = cand.get("dead_reckoned", False)
+        else:
+            vessel = cand
+            lat = vessel.get("latitude")
+            lon = vessel.get("longitude")
+            dead_reck = vessel.get("dead_reckoned", False)
+
+        if lat is None or lon is None:
+            continue
+
+        v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
+        if v_key in matched_vessel_keys or v_key in seen_keys:
+            continue
+        if (
+            bbox.min_latitude <= lat <= bbox.max_latitude
+            and bbox.min_longitude <= lon <= bbox.max_longitude
+        ):
+            seen_keys.add(v_key)
+            ghosts.append({
+                "mmsi": vessel.get("mmsi"),
+                "vessel_name": vessel.get("vessel_name") or vessel.get("name"),
+                "vessel_type": vessel.get("vessel_type") or vessel.get("type"),
+                "callsign": vessel.get("callsign"),
+                "latitude": round(lat, 6),
+                "longitude": round(lon, 6),
+                "speed": vessel.get("speed") if vessel.get("speed") is not None else vessel.get("sog"),
+                "heading": vessel.get("heading") if vessel.get("heading") is not None else vessel.get("course"),
+                "dead_reckoned": dead_reck,
+                "anomaly_type": "GHOST_VESSEL",
+                "reason": "AIS broadcast present within SAR footprint but no corresponding radar detection found (potential AIS spoofing or phantom vessel)",
+            })
+    return ghosts
+
+
 class CorrelateDetectionsWithAIS:
     """Correlate SAR ship detections against known AIS vessel locations.
 
@@ -207,6 +356,25 @@ class CorrelateDetectionsWithAIS:
     ) -> None:
         self._ais_repo = ais_repository
         self._settings_repo = settings_repository
+        self.last_ghost_vessels: list[dict[str, Any]] = []
+        self.last_dark_vessels: list[dict[str, Any]] = []
+
+    def get_dark_vessel_thresholds(self) -> tuple[float, float]:
+        """Fetch configured dark vessel length thresholds from settings (SOLAS and Critical)."""
+        solas_thresh = 30.0
+        crit_thresh = 100.0
+        if self._settings_repo is not None:
+            try:
+                cv_settings = self._settings_repo.get_section("cv") or {}
+                s_val = cv_settings.get("dark_vessel_solas_length_threshold")
+                c_val = cv_settings.get("dark_vessel_critical_length_threshold")
+                if s_val is not None:
+                    solas_thresh = max(5.0, float(s_val))
+                if c_val is not None:
+                    crit_thresh = max(solas_thresh, float(c_val))
+            except Exception:
+                pass
+        return solas_thresh, crit_thresh
 
     def get_default_tolerance_meters(self) -> float:
         """Fetch configured correlation tolerance from settings repository, defaulting to 100.0m."""
@@ -495,7 +663,67 @@ class CorrelateDetectionsWithAIS:
                 "vessel_id": vessel.get("vessel_id") or vessel.get("id"),
             }
 
+        # 5. Assess Dark Vessel risk and IMO SOLAS mandate compliance for all detections
+        solas_thresh, crit_thresh = self.get_dark_vessel_thresholds()
+        for p_det in projected_detections:
+            dv_assessment = assess_dark_vessel(
+                is_correlated=p_det["is_correlated"],
+                length=p_det.get("length"),
+                beam=p_det.get("beam"),
+                confidence=p_det.get("confidence"),
+                solas_threshold=solas_thresh,
+                critical_threshold=crit_thresh,
+            )
+            p_det.update(dv_assessment)
+
+        # 6. Extract ghost vessels (AIS broadcasts within scan bbox with no radar match)
+        ghosts = extract_ghost_vessels(prepared_candidates, matched_vessel_keys, scan_bbox)
+        self.last_ghost_vessels = ghosts
+        self.last_dark_vessels = [d for d in projected_detections if d.get("is_dark_vessel")]
+
         return projected_detections
+
+    def execute_with_intelligence(
+        self,
+        detections: list[ShipDetection | dict[str, Any]],
+        scan: Scan,
+        image_width: int,
+        image_height: int,
+        *,
+        tolerance_meters: Optional[float] = None,
+        candidate_vessels: Optional[list[dict[str, Any]]] = None,
+        enable_kinematics: Optional[bool] = None,
+        max_propagation_seconds: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """Perform correlation and return structured intelligence payload with dark and ghost vessels."""
+        results = self.execute(
+            detections,
+            scan,
+            image_width,
+            image_height,
+            tolerance_meters=tolerance_meters,
+            candidate_vessels=candidate_vessels,
+            enable_kinematics=enable_kinematics,
+            max_propagation_seconds=max_propagation_seconds,
+        )
+        inside_count = sum(1 for d in results if d.get("correlation_status") == "inside_box")
+        outside_count = sum(1 for d in results if d.get("correlation_status") == "outside_box")
+        uncorrelated_count = sum(1 for d in results if d.get("correlation_status") == "uncorrelated")
+        correlated_count = inside_count + outside_count
+
+        return {
+            "detections": results,
+            "ship_count": len(results),
+            "correlated_count": correlated_count,
+            "inside_box_count": inside_count,
+            "outside_box_count": outside_count,
+            "uncorrelated_count": uncorrelated_count,
+            "dark_vessels": list(self.last_dark_vessels),
+            "ghost_vessels": list(self.last_ghost_vessels),
+            "dark_vessel_count": len(self.last_dark_vessels),
+            "critical_dark_count": sum(1 for d in self.last_dark_vessels if d.get("dark_vessel_risk") == "CRITICAL"),
+            "ghost_vessel_count": len(self.last_ghost_vessels),
+        }
 
     def _fetch_candidate_vessels(
         self,

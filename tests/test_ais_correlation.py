@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 
 from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     CorrelateDetectionsWithAIS,
+    assess_dark_vessel,
     dead_reckon_position,
     distance_to_bbox_meters,
+    extract_ghost_vessels,
     haversine_distance_meters,
     point_in_polygon_and_distance,
 )
@@ -384,6 +386,132 @@ class TestAISCorrelation(unittest.TestCase):
         self.assertEqual(results_center[0]["correlation_status"], "inside_box")
         self.assertTrue(results_center[0]["is_correlated"])
         self.assertEqual(results_center[0]["correlated_ais"]["mmsi"], "444555666")
+
+    def test_assess_dark_vessel_correlated(self):
+        det = {
+            "is_correlated": True,
+            "correlation_status": "inside_box",
+            "length": 150.0,
+            "beam": 25.0,
+            "confidence": 0.95,
+        }
+        res = assess_dark_vessel(det)
+        self.assertFalse(res["is_dark_vessel"])
+        self.assertEqual(res["dark_vessel_risk"], "NOMINAL")
+        self.assertEqual(res["dark_vessel_score"], 0.0)
+
+    def test_assess_dark_vessel_critical_solas(self):
+        # 140m vessel without AIS, realistic naval architecture aspect ratio 5.6
+        det = {
+            "is_correlated": False,
+            "correlation_status": "uncorrelated",
+            "length": 140.0,
+            "beam": 25.0,
+            "confidence": 0.92,
+        }
+        res = assess_dark_vessel(det)
+        self.assertTrue(res["is_dark_vessel"])
+        self.assertEqual(res["dark_vessel_risk"], "CRITICAL")
+        self.assertGreaterEqual(res["dark_vessel_score"], 0.80)
+        self.assertEqual(res["estimated_class"], "Large Commercial / Cargo / Tanker")
+        self.assertTrue(any("SOLAS" in r for r in res["dark_vessel_reasons"]))
+
+    def test_assess_dark_vessel_high_solas(self):
+        # 45m vessel without AIS
+        det = {
+            "is_correlated": False,
+            "correlation_status": "uncorrelated",
+            "length": 45.0,
+            "beam": 10.0,
+            "confidence": 0.85,
+        }
+        res = assess_dark_vessel(det)
+        self.assertTrue(res["is_dark_vessel"])
+        self.assertIn(res["dark_vessel_risk"], ("HIGH", "CRITICAL"))
+        self.assertGreaterEqual(res["dark_vessel_score"], 0.50)
+
+    def test_assess_dark_vessel_small_craft_or_clutter(self):
+        # 12m vessel with low confidence
+        det = {
+            "is_correlated": False,
+            "correlation_status": "uncorrelated",
+            "length": 12.0,
+            "beam": 6.0,
+            "confidence": 0.40,
+        }
+        res = assess_dark_vessel(det)
+        self.assertFalse(res["is_dark_vessel"])
+        self.assertIn(res["dark_vessel_risk"], ("LOW", "NOMINAL"))
+
+    def test_extract_ghost_vessels(self):
+        # Scan bbox is lat 1.20..1.30, lon 103.70..103.80
+        # Vessel 1: inside bbox, matched
+        # Vessel 2: inside bbox, NOT matched -> Ghost vessel anomaly!
+        # Vessel 3: outside bbox, NOT matched -> Ignored
+        vessels = [
+            {
+                "mmsi": "111",
+                "vessel_name": "MATCHED VESSEL",
+                "latitude": 1.25,
+                "longitude": 103.75,
+                "speed": 10.0,
+            },
+            {
+                "mmsi": "222",
+                "vessel_name": "GHOST VESSEL",
+                "latitude": 1.26,
+                "longitude": 103.76,
+                "speed": 12.5,
+            },
+            {
+                "mmsi": "333",
+                "vessel_name": "DISTANT VESSEL",
+                "latitude": 2.50,
+                "longitude": 105.00,
+                "speed": 5.0,
+            },
+        ]
+        matched_mmsis = {"111"}
+        ghosts = extract_ghost_vessels(vessels, matched_mmsis, self.scan.bbox)
+        self.assertEqual(len(ghosts), 1)
+        self.assertEqual(ghosts[0]["mmsi"], "222")
+        self.assertEqual(ghosts[0]["vessel_name"], "GHOST VESSEL")
+        self.assertIn("no corresponding radar detection found", ghosts[0]["reason"].lower())
+
+    def test_execute_with_intelligence(self):
+        # 1 radar detection (120m long, uncorrelated) and 1 candidate AIS inside footprint not matched
+        det = ShipDetection(
+            x=200,
+            y=200,
+            width=80,
+            height=30,
+            confidence=0.90,
+            length=120.0,
+            beam=25.0,
+        )
+        ghost_ais = {
+            "mmsi": "999888777",
+            "vessel_name": "PHANTOM SHIP",
+            "latitude": 1.22,
+            "longitude": 103.72,
+            "speed": 14.0,
+        }
+        use_case = CorrelateDetectionsWithAIS(StubAISRepo([ghost_ais]))
+        intelligence = use_case.execute_with_intelligence(
+            [det],
+            self.scan,
+            self.image_width,
+            self.image_height,
+            tolerance_meters=50.0,
+        )
+        self.assertEqual(intelligence["ship_count"], 1)
+        self.assertEqual(intelligence["correlated_count"], 0)
+        self.assertEqual(intelligence["dark_vessel_count"], 1)
+        self.assertEqual(intelligence["ghost_vessel_count"], 1)
+        self.assertEqual(len(intelligence["dark_vessels"]), 1)
+        self.assertEqual(intelligence["dark_vessels"][0]["dark_vessel_risk"], "CRITICAL")
+        self.assertEqual(len(intelligence["ghost_vessels"]), 1)
+        self.assertEqual(intelligence["ghost_vessels"][0]["mmsi"], "999888777")
 
 
 if __name__ == "__main__":

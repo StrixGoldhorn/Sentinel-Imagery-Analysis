@@ -911,6 +911,8 @@ def test_run_cv_saves_latest_results_in_image_folder() -> None:
     assert data["saved_json"] == "scan_detections.json"
     assert data["detection_image_url"] == "/api/scan/scan_1/detection_image"
     assert data["detections_url"] == "/api/scan/scan_1/detections"
+    assert data["geojson_url"] == "/api/scan/scan_1/geojson"
+    assert data["gis_bundle_url"] == "/api/scan/scan_1/gis_bundle"
 
     # Verify files created in image's parent folder
     img_dir = Path(scan.image_path).parent
@@ -918,6 +920,8 @@ def test_run_cv_saves_latest_results_in_image_folder() -> None:
     assert (img_dir / "detected_ships.png").is_file()
     assert (img_dir / "scan_detections.json").is_file()
     assert (img_dir / "detection_results.json").is_file()
+    assert (img_dir / "scan_detections.geojson").is_file()
+    assert (img_dir / "detections.geojson").is_file()
 
     # Test GET detection image endpoint
     img_resp = client.get("/api/scan/scan_1/detection_image")
@@ -932,6 +936,23 @@ def test_run_cv_saves_latest_results_in_image_folder() -> None:
     assert det_resp.status_code == 200
     assert det_resp.json["ship_count"] == 1
     assert det_resp.json["image_file"] == "scan.png"
+
+    # Test GET GeoJSON endpoint
+    geo_resp = client.get("/api/scan/scan_1/geojson")
+    try:
+        assert geo_resp.status_code == 200
+        assert geo_resp.json["type"] == "FeatureCollection"
+        assert len(geo_resp.json["features"]) == 1
+    finally:
+        geo_resp.close()
+
+    # Test GET GIS bundle zip endpoint
+    bundle_resp = client.get("/api/scan/scan_1/gis_bundle")
+    try:
+        assert bundle_resp.status_code == 200
+        assert bundle_resp.mimetype == "application/zip"
+    finally:
+        bundle_resp.close()
 
     # Test GET scan includes latest_cv_results
     scan_resp = client.get("/api/scan/scan_1")

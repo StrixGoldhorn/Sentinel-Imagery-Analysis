@@ -5,6 +5,7 @@ import io
 import json
 from pathlib import Path
 from typing import Any
+import zipfile
 
 import cv2
 import numpy as np
@@ -152,6 +153,7 @@ def run_cv(folder_name: str):
 
     cnt = container()
     enriched_detections = []
+    ghost_vessels = []
     if hasattr(cnt, "correlate_ais_detections") and cnt.correlate_ais_detections is not None:
         try:
             raw_kinematics = payload.get("enable_kinematics")
@@ -166,6 +168,7 @@ def run_cv(folder_name: str):
             )
             if isinstance(enriched, list) and (len(enriched) == len(result.detections) or not result.detections):
                 enriched_detections = enriched
+            ghost_vessels = getattr(cnt.correlate_ais_detections, "last_ghost_vessels", [])
         except Exception:
             pass
 
@@ -186,6 +189,9 @@ def run_cv(folder_name: str):
                 "polygon_points": getattr(item, "polygon_points", None),
                 "correlation_status": "uncorrelated",
                 "is_correlated": False,
+                "is_dark_vessel": False,
+                "dark_vessel_risk": "NOMINAL",
+                "dark_vessel_score": 0.0,
                 "correlated_ais": None,
             })
 
@@ -207,6 +213,7 @@ def run_cv(folder_name: str):
         image_height=result.image_height,
         metadata=saved_meta,
         bbox=scan.bbox,
+        ghost_vessels=ghost_vessels,
     )
 
     scan_meta = dict(scan.metadata)
@@ -217,6 +224,9 @@ def run_cv(folder_name: str):
         "inside_box_count": saved_info["inside_box_count"],
         "outside_box_count": saved_info["outside_box_count"],
         "uncorrelated_count": saved_info["uncorrelated_count"],
+        "dark_vessel_count": saved_info.get("dark_vessel_count", 0),
+        "critical_dark_count": saved_info.get("critical_dark_count", 0),
+        "ghost_vessel_count": saved_info.get("ghost_vessel_count", 0),
         "threshold": threshold,
         "coastal_buffer": coastal_buffer,
         "land_masked": bool(dem_path is not None),
@@ -258,12 +268,18 @@ def run_cv(folder_name: str):
         inside_box_count=inside_box_count,
         outside_box_count=outside_box_count,
         uncorrelated_count=uncorrelated_count,
+        dark_vessel_count=saved_info.get("dark_vessel_count", 0),
+        critical_dark_count=saved_info.get("critical_dark_count", 0),
+        ghost_vessel_count=saved_info.get("ghost_vessel_count", 0),
+        ghost_vessels=ghost_vessels,
         width=result.image_width,
         height=result.image_height,
         saved_image=saved_info.get("detected_image_name"),
         saved_json=saved_info.get("detections_json_name"),
         detection_image_url=f"/api/scan/{folder_name}/detection_image",
         detections_url=f"/api/scan/{folder_name}/detections",
+        geojson_url=f"/api/scan/{folder_name}/geojson",
+        gis_bundle_url=f"/api/scan/{folder_name}/gis_bundle",
     )
 
 
@@ -358,6 +374,9 @@ def get_scan(folder_name: str):
                     "inside_box_count": data.get("inside_box_count", 0),
                     "outside_box_count": data.get("outside_box_count", 0),
                     "uncorrelated_count": data.get("uncorrelated_count", 0),
+                    "dark_vessel_count": data.get("dark_vessel_count", 0),
+                    "critical_dark_count": data.get("critical_dark_count", 0),
+                    "ghost_vessel_count": data.get("ghost_vessel_count", 0),
                     "detected_image": data.get("detected_image"),
                     "detections_json": "detection_results.json",
                 }
@@ -402,6 +421,57 @@ def get_scan_detections(folder_name: str):
             except Exception:
                 pass
     return jsonify(error="Detection results not found"), 404
+
+
+@blueprint.get("/api/scan/<folder_name>/geojson")
+def get_scan_geojson(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    image_path = Path(scan.image_path)
+    candidates = [
+        image_path.parent / f"{image_path.stem}_detections.geojson",
+        image_path.parent / "detections.geojson",
+    ]
+    for c in candidates:
+        if c.is_file():
+            as_att = request.args.get("download") in ("1", "true")
+            return send_file(c, mimetype="application/geo+json", as_attachment=as_att, download_name=c.name)
+    return jsonify(error="GeoJSON detections not found"), 404
+
+
+@blueprint.get("/api/scan/<folder_name>/gis_bundle")
+def get_scan_gis_bundle(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    image_path = Path(scan.image_path)
+    folder_dir = image_path.parent
+
+    extensions = [".pgw", ".prj", ".geojson", ".json"]
+    files_to_pack: list[Path] = []
+
+    for img_cand in [folder_dir / f"{image_path.stem}_detected.png", folder_dir / "detected_ships.png", image_path]:
+        if img_cand.is_file():
+            files_to_pack.append(img_cand)
+            break
+
+    for ext in extensions:
+        for p in folder_dir.glob(f"*{ext}"):
+            if p.is_file() and p not in files_to_pack:
+                files_to_pack.append(p)
+
+    if not files_to_pack:
+        return jsonify(error="No GIS assets found for scan"), 404
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for f in files_to_pack:
+            zip_file.write(f, arcname=f.name)
+
+    zip_buffer.seek(0)
+    return send_file(
+        zip_buffer,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"{scan.folder_name}_gis_bundle.zip",
+    )
 
 
 @blueprint.delete("/api/scan/<folder_name>")

@@ -71,8 +71,9 @@ def _extract_bbox_coords(bbox: Any) -> tuple[float, float, float, float] | None:
 def _build_geojson_feature_collection(
     detections: list[dict[str, Any]],
     image_name: str | None = None,
+    ghost_vessels: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Generate RFC 7946 GeoJSON FeatureCollection from serialized detections."""
+    """Generate RFC 7946 GeoJSON FeatureCollection from serialized detections and ghost vessels."""
     features = []
     for d in detections:
         geo_poly = d.get("geo_polygon")
@@ -123,6 +124,11 @@ def _build_geojson_feature_collection(
             "center_pixel": [d.get("center_x"), d.get("center_y")],
             "correlation_status": d.get("correlation_status", "uncorrelated"),
             "is_correlated": bool(d.get("is_correlated", False)),
+            "is_dark_vessel": bool(d.get("is_dark_vessel", False)),
+            "dark_vessel_risk": d.get("dark_vessel_risk", "NOMINAL"),
+            "dark_vessel_score": d.get("dark_vessel_score", 0.0),
+            "estimated_class": d.get("estimated_class"),
+            "dark_vessel_reasons": d.get("dark_vessel_reasons", []),
             "vessel_name": ais.get("vessel_name") or ais.get("name"),
             "mmsi": ais.get("mmsi"),
             "vessel_type": ais.get("vessel_type") or ais.get("type"),
@@ -137,6 +143,31 @@ def _build_geojson_feature_collection(
             "geometry": geometry,
             "properties": properties,
         })
+
+    if ghost_vessels:
+        for gv in ghost_vessels:
+            glat = gv.get("latitude")
+            glon = gv.get("longitude")
+            if glat is not None and glon is not None:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [round(float(glon), 6), round(float(glat), 6)],
+                    },
+                    "properties": {
+                        "feature_type": "ghost_vessel",
+                        "anomaly_type": "GHOST_VESSEL",
+                        "mmsi": gv.get("mmsi"),
+                        "vessel_name": gv.get("vessel_name") or gv.get("name"),
+                        "vessel_type": gv.get("vessel_type") or gv.get("type"),
+                        "callsign": gv.get("callsign"),
+                        "speed_knots": gv.get("speed"),
+                        "heading_deg": gv.get("heading"),
+                        "dead_reckoned": gv.get("dead_reckoned", False),
+                        "reason": gv.get("reason"),
+                    },
+                })
 
     return {
         "type": "FeatureCollection",
@@ -158,6 +189,7 @@ def save_detection_results(
     image_height: int | None = None,
     metadata: dict[str, Any] | None = None,
     bbox: Any | None = None,
+    ghost_vessels: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Render detection overlays directly onto a copy of the image and persist visual PNG, JSON, and GeoJSON results.
 
@@ -191,12 +223,16 @@ def save_detection_results(
         color_outside_box = (212, 182, 6)   # #06b6d4 (cyan)
         color_uncorrelated = (51, 51, 255)  # #ff3333 (red)
         color_obb = (34, 126, 230)          # #e67e22 (orange)
+        color_dark_vessel = (0, 0, 230)     # High-alert crimson
 
         for det in serialized_detections:
             corr_status = det.get("correlation_status")
             polygon_pts = det.get("polygon_points")
+            is_dark = det.get("is_dark_vessel", False)
 
-            if corr_status == "inside_box":
+            if is_dark:
+                stroke_color = color_dark_vessel
+            elif corr_status == "inside_box":
                 stroke_color = color_inside_box
             elif corr_status == "outside_box":
                 stroke_color = color_outside_box
@@ -226,6 +262,11 @@ def save_detection_results(
                 v_name = ais.get("vessel_name") or ais.get("name")
                 if v_name:
                     label_text += f": {v_name}"
+            elif is_dark:
+                risk = det.get("dark_vessel_risk", "ALERT")
+                len_val = det.get("length")
+                len_str = f" [{risk} DARK {int(len_val)}m]" if len_val else f" [{risk} DARK]"
+                label_text += len_str
 
             x_text = int(det.get("x", 0))
             y_text = max(15, int(det.get("y", 0)) - 5)
@@ -258,6 +299,8 @@ def save_detection_results(
     outside_count = sum(1 for d in serialized_detections if d.get("correlation_status") == "outside_box")
     uncorrelated_count = sum(1 for d in serialized_detections if d.get("correlation_status") == "uncorrelated")
     correlated_count = inside_count + outside_count
+    dark_vessel_count = sum(1 for d in serialized_detections if d.get("is_dark_vessel"))
+    critical_dark_count = sum(1 for d in serialized_detections if d.get("dark_vessel_risk") == "CRITICAL")
 
     json_payload = {
         "timestamp": now_iso,
@@ -270,10 +313,15 @@ def save_detection_results(
         "inside_box_count": inside_count,
         "outside_box_count": outside_count,
         "uncorrelated_count": uncorrelated_count,
+        "dark_vessel_count": dark_vessel_count,
+        "critical_dark_count": critical_dark_count,
+        "ghost_vessel_count": len(ghost_vessels or []),
         "detected_image": detected_image_name,
         "parameters": metadata or {},
         "detections": serialized_detections,
     }
+    if ghost_vessels:
+        json_payload["ghost_vessels"] = ghost_vessels
 
     detections_json_name = f"{target_img.stem}_detections.json"
     detections_json_path = target_dir / detections_json_name
@@ -284,7 +332,11 @@ def save_detection_results(
     standard_json_path.write_text(json_str, encoding="utf-8")
 
     # 4. Create standard GeoJSON FeatureCollection
-    geojson_payload = _build_geojson_feature_collection(serialized_detections, target_img.name)
+    geojson_payload = _build_geojson_feature_collection(
+        serialized_detections,
+        target_img.name,
+        ghost_vessels=ghost_vessels,
+    )
     geojson_str = json.dumps(geojson_payload, indent=2)
     detections_geojson_path = target_dir / f"{target_img.stem}_detections.geojson"
     standard_geojson_path = target_dir / "detections.geojson"
@@ -331,5 +383,9 @@ def save_detection_results(
         "inside_box_count": inside_count,
         "outside_box_count": outside_count,
         "uncorrelated_count": uncorrelated_count,
+        "dark_vessel_count": dark_vessel_count,
+        "critical_dark_count": critical_dark_count,
+        "ghost_vessel_count": len(ghost_vessels or []),
+        "ghost_vessels": ghost_vessels or [],
         "timestamp": now_iso,
     }
