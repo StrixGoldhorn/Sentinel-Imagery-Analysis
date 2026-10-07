@@ -7,6 +7,7 @@ from sentinel_analysis.infrastructure.ais.plugins import (
     AISFriendsPlugin,
     AprsFiPlugin,
     DigiTrafficPlugin,
+    GlobalFishingWatchPlugin,
     MockAISPlugin,
     MockPublicAISPlugin,
     UDPListenerPlugin,
@@ -40,6 +41,13 @@ PLUGIN_METADATA: dict[str, dict[str, object]] = {
         "display_name": "DigiTraffic Marine (Fintraffic)",
         "category": "Open Government API",
         "description": "Public open-access AIS telemetry for the Baltic Sea and Gulf of Finland without API keys.",
+        "requires_network": True,
+        "default_enabled": True,
+    },
+    "GlobalFishingWatchPlugin": {
+        "display_name": "Global Fishing Watch (GFW)",
+        "category": "Intelligence API",
+        "description": "Global fishing vessel tracking, loitering events, and intentional AIS disabling gap detection.",
         "requires_network": True,
         "default_enabled": True,
     },
@@ -85,6 +93,7 @@ class DynamicAISPluginRegistry:
                 VesselFinderPlugin(),
                 AprsFiPlugin(),
                 DigiTrafficPlugin(),
+                GlobalFishingWatchPlugin(),
                 UDPListenerPlugin(),
             ]
         )

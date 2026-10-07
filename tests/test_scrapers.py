@@ -145,6 +145,7 @@ def test_dynamic_registry_registers_all_plugins_by_default() -> None:
         "VesselFinderPlugin",
         "AprsFiPlugin",
         "DigiTrafficPlugin",
+        "GlobalFishingWatchPlugin",
         "UDPListenerPlugin",
     ]
     assert names == expected
