@@ -23,7 +23,10 @@ class SQLiteDatabase:
     def connection(self, *, rows: bool = False) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path, timeout=self._timeout)
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
+        busy_ms = int(max(1000, self._timeout * 1000))
+        connection.execute(f"PRAGMA busy_timeout = {busy_ms}")
+        if self.path != ":memory:":
+            connection.execute("PRAGMA journal_mode = WAL")
         if rows:
             connection.row_factory = sqlite3.Row
         try:

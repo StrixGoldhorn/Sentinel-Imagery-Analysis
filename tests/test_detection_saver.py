@@ -126,6 +126,33 @@ class TestDetectionSaver(unittest.TestCase):
         self.assertEqual(payload["correlated_count"], 1)
         self.assertEqual(payload["detections"][0]["correlated_ais"]["name"], "CARGO VESSEL")
 
+    def test_save_detection_results_with_vessel_name_in_ais(self) -> None:
+        detections = [
+            {
+                "index": 0,
+                "x": 20,
+                "y": 20,
+                "width": 25,
+                "height": 25,
+                "confidence": 0.92,
+                "correlation_status": "inside_box",
+                "is_correlated": True,
+                "correlated_ais": {"mmsi": "987654321", "vessel_name": "PACIFIC EXPLORER"},
+            }
+        ]
+
+        result = save_detection_results(
+            image_path=self.image_path,
+            detections=detections,
+            image_width=100,
+            image_height=100,
+        )
+
+        self.assertEqual(result["ship_count"], 1)
+        self.assertEqual(result["inside_box_count"], 1)
+        payload = json.loads((self.dir_path / "test_sar_detections.json").read_text(encoding="utf-8"))
+        self.assertEqual(payload["detections"][0]["correlated_ais"]["vessel_name"], "PACIFIC EXPLORER")
+
     def test_save_empty_detections(self) -> None:
         result = save_detection_results(
             image_path=self.image_path,

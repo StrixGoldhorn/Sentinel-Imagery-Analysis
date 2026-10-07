@@ -108,8 +108,10 @@ def save_detection_results(
             conf_str = f" {int(conf * 100)}%" if conf is not None else ""
             label_text = f"Ship {idx_num}{conf_str}"
             ais = det.get("correlated_ais")
-            if ais and isinstance(ais, dict) and ais.get("name"):
-                label_text += f": {ais['name']}"
+            if ais and isinstance(ais, dict):
+                v_name = ais.get("vessel_name") or ais.get("name")
+                if v_name:
+                    label_text += f": {v_name}"
 
             x_text = int(det.get("x", 0))
             y_text = max(15, int(det.get("y", 0)) - 5)

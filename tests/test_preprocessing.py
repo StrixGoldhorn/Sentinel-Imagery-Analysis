@@ -32,6 +32,19 @@ def test_frost_filter_execution() -> None:
     assert filtered.dtype == np.uint8
 
 
+def test_frost_filter_reduces_variance_on_larger_image() -> None:
+    np.random.seed(42)
+    base = np.full((100, 100), 120.0, dtype=np.float32)
+    noise = np.random.normal(0, 20.0, (100, 100)).astype(np.float32)
+    noisy_img = np.clip(base + noise, 0, 255).astype(np.uint8)
+
+    filtered = apply_frost_filter(noisy_img, window_size=5, damping_factor=2.0)
+
+    assert filtered.shape == (100, 100)
+    assert filtered.dtype == np.uint8
+    assert np.var(filtered) < np.var(noisy_img)
+
+
 def test_preprocess_sar_pipeline() -> None:
     # Test 3-channel composite
     img_rgb = np.random.randint(0, 255, (40, 40, 3), dtype=np.uint8)

@@ -52,25 +52,31 @@ def frost_filter(
     pad = window_size // 2
     padded = np.pad(image_float, pad, mode="reflect")
 
-    # Spatial distance matrix
-    y_coords, x_coords = np.mgrid[-pad : pad + 1, -pad : pad + 1]
-    distances = np.sqrt(x_coords**2 + y_coords**2)
+    ksize = (window_size, window_size)
+    mean_full = cv2.boxFilter(padded, cv2.CV_64F, ksize, borderType=cv2.BORDER_REFLECT)
+    mean_sq_full = cv2.boxFilter(padded**2, cv2.CV_64F, ksize, borderType=cv2.BORDER_REFLECT)
 
-    output = np.zeros_like(image_float)
-    for i in range(height):
-        for j in range(width):
-            window = padded[i : i + window_size, j : j + window_size]
-            mean = np.mean(window)
-            if mean > 0:
-                std = np.std(window)
-                c = std / mean
-                weights = np.exp(-damping_factor * c * distances)
-                total_w = np.sum(weights)
-                output[i, j] = np.sum(weights * window) / total_w if total_w > 0 else mean
-            else:
-                output[i, j] = 0.0
+    local_mean = mean_full[pad : pad + height, pad : pad + width]
+    local_mean_sq = mean_sq_full[pad : pad + height, pad : pad + width]
+    local_var = np.maximum(local_mean_sq - local_mean**2, 0.0)
+    local_std = np.sqrt(local_var)
 
-    return np.clip(output, 0, 255).astype(image.dtype)
+    c = np.divide(local_std, local_mean, out=np.zeros_like(local_mean), where=local_mean > 0)
+
+    numerator = np.zeros_like(image_float)
+    denominator = np.zeros_like(image_float)
+
+    for dy in range(-pad, pad + 1):
+        for dx in range(-pad, pad + 1):
+            dist = np.sqrt(dy**2 + dx**2)
+            w = np.exp(-damping_factor * c * dist)
+            shifted = padded[pad + dy : pad + dy + height, pad + dx : pad + dx + width]
+            numerator += w * shifted
+            denominator += w
+
+    out = np.divide(numerator, denominator, out=local_mean.copy(), where=denominator > 0)
+    out = np.where(local_mean > 0, out, 0.0)
+    return np.clip(out, 0, 255).astype(image.dtype)
 
 
 def preprocess_sar(
