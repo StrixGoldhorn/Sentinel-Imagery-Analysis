@@ -117,6 +117,102 @@ class TestIntelligenceBriefGenerator(unittest.TestCase):
             header = f.read(5)
             self.assertEqual(header, b"%PDF-")
 
+    def test_disk_detection_results_discovery_and_normalization(self):
+        # Create a scan where detections are ONLY on disk in detection_results.json
+        disk_scan_folder = "test_disk_detections_scan"
+        scan_dir = self.scan_repo.prepare(disk_scan_folder)
+        img_path = scan_dir / "images" / f"{disk_scan_folder}_sar.png"
+        Image.fromarray(np.full((128, 128), 120, dtype=np.uint8)).save(img_path)
+
+        # Write disk detection json
+        det_json_path = scan_dir / "images" / "detection_results.json"
+        det_payload = {
+            "timestamp": "2026-10-08T12:00:00Z",
+            "ship_count": 2,
+            "detections": [
+                {
+                    "index": 0,
+                    "center_x": 45.0,
+                    "center_y": 60.0,
+                    "lat": 1.35,
+                    "lng": 103.95,
+                    "length": 110.0,
+                    "beam": 20.0,
+                    "confidence": 0.95,
+                    "is_dark_vessel": False,
+                    "correlated_ais": {
+                        "vessel_name": "STAR HORIZON",
+                        "mmsi": 211554000,
+                        "latitude": 1.3502,
+                        "longitude": 103.9501,
+                    },
+                },
+                {
+                    "index": 1,
+                    "center_x": 90.0,
+                    "center_y": 100.0,
+                    "lat": 1.40,
+                    "lng": 104.10,
+                    "length": 85.0,
+                    "beam": 15.0,
+                    "confidence": 0.88,
+                    "is_dark_vessel": True,
+                    "dark_vessel_risk": "HIGH",
+                },
+            ],
+            "ghost_vessels": [
+                {
+                    "mmsi": "999888777",
+                    "vessel_name": "GHOST ONE",
+                    "latitude": 1.30,
+                    "longitude": 103.70,
+                }
+            ],
+        }
+        det_json_path.write_text(json.dumps(det_payload), encoding="utf-8")
+
+        metadata = {
+            "aoi_name": "Disk Scan AOI",
+            "latest_cv_results": {
+                "detections_json": "detection_results.json",
+                "ship_count": 2,
+            },
+        }
+        disk_scan = Scan(disk_scan_folder, self.bbox, self.acq, str(img_path), metadata)
+        self.scan_repo.save(disk_scan)
+
+        summary = self.use_case.generate_summary(disk_scan_folder)
+        self.assertEqual(summary["total_vessels"], 2)
+        self.assertEqual(summary["dark_vessels"], 1)
+        self.assertEqual(summary["ais_correlated"], 1)
+        self.assertEqual(summary["solas_suspect_count"], 1)  # 85m dark vessel
+        self.assertEqual(len(summary["high_risk_targets"]), 1)
+
+        pdf_path = self.use_case.execute(disk_scan_folder)
+        self.assertTrue(pdf_path.is_file())
+        self.assertGreater(pdf_path.stat().st_size, 5000)
+
+    def test_zero_detections_graceful_handling(self):
+        zero_scan_folder = "test_zero_detections_scan"
+        scan_dir = self.scan_repo.prepare(zero_scan_folder)
+        img_path = scan_dir / "images" / f"{zero_scan_folder}_sar.png"
+        Image.fromarray(np.full((64, 64), 100, dtype=np.uint8)).save(img_path)
+
+        metadata = {"aoi_name": "Zero Scan AOI"}
+        zero_scan = Scan(zero_scan_folder, self.bbox, self.acq, str(img_path), metadata)
+        self.scan_repo.save(zero_scan)
+
+        summary = self.use_case.generate_summary(zero_scan_folder)
+        self.assertEqual(summary["total_vessels"], 0)
+        self.assertEqual(summary["dark_vessels"], 0)
+        self.assertEqual(summary["ais_correlated"], 0)
+        self.assertEqual(summary["solas_suspect_count"], 0)
+
+        pdf_path = self.use_case.execute(zero_scan_folder)
+        self.assertTrue(pdf_path.is_file())
+        self.assertGreater(pdf_path.stat().st_size, 1000)
+
+
 
 class TestIntelligenceBriefWebAPI(unittest.TestCase):
     def setUp(self):
