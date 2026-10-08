@@ -9,6 +9,7 @@ from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
+from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
@@ -71,6 +72,7 @@ __all__ = [
     "DetectShips",
     "ExportGeospatial",
     "GenerateDEM",
+    "GenerateIntelligenceBrief",
     "GetScan",
     "GetScraperDetail",
     "GetScraperLogsUseCase",

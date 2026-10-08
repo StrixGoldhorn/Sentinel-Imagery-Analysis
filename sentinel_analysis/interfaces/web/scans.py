@@ -841,6 +841,38 @@ def export_scan_stac(folder_name: str):
         return jsonify(error=f"STAC export failed: {exc}"), 500
 
 
+@blueprint.get("/api/scan/<folder_name>/briefing/pdf")
+@blueprint.get("/api/scan/<folder_name>/briefing.pdf")
+def export_scan_briefing_pdf(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    try:
+        pdf_path = cnt.generate_briefing.execute(safe_name)
+        as_att = request.args.get("download", "false").lower() in ("1", "true")
+        return send_file(
+            pdf_path,
+            mimetype="application/pdf",
+            as_attachment=as_att,
+            download_name=f"{safe_name}_intelligence_brief.pdf",
+        )
+    except Exception as exc:
+        return jsonify(error=f"Intelligence brief generation failed: {exc}"), 500
+
+
+@blueprint.get("/api/scan/<folder_name>/briefing")
+def get_scan_briefing(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    format_type = request.args.get("format", "").lower()
+    if format_type == "pdf" or "application/pdf" in request.headers.get("Accept", ""):
+        return export_scan_briefing_pdf(folder_name)
+    try:
+        summary = cnt.generate_briefing.generate_summary(safe_name)
+        return jsonify(summary)
+    except Exception as exc:
+        return jsonify(error=f"Briefing summary failed: {exc}"), 500
+
+
 @blueprint.get("/api/scan/<folder_name>/gis_bundle")
 def get_scan_gis_bundle(folder_name: str):
     scan = container().get_scan.execute(safe_folder_name(folder_name))
