@@ -192,6 +192,12 @@ class StubContainer:
         self.pass_scheduler = None
         self.settings_repository = None
         self.correlate_ais_detections = None
+        self.cross_validate_optical = StubUseCase({
+            "status": "success",
+            "confirmed_count": 1,
+            "scenes_found": 1,
+            "results": [{"detection_index": 0, "status": "CONFIRMED_VESSEL"}],
+        })
 
 
 
@@ -351,6 +357,12 @@ def test_async_task_and_crop_routes() -> None:
     assert crop_res.status_code == 200
     assert "data_uri" in crop_res.json
     assert "stats" in crop_res.json
+
+    # Cross-validate optical route
+    opt_res = client.post("/api/scan/scan_1/optical_validation", json={"time_window_hours": 24.0, "max_cloud_cover": 30.0})
+    assert opt_res.status_code == 200
+    assert opt_res.json["status"] == "success"
+    assert opt_res.json["confirmed_count"] == 1
 
 
 def test_templates_escape_dynamic_values_in_browser_generated_markup() -> None:

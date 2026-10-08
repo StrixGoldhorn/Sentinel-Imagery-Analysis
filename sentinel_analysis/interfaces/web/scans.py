@@ -587,6 +587,22 @@ def generate_scan_dem(folder_name: str):
 
 
 
+@blueprint.route("/api/scan/<folder_name>/optical_validation", methods=["GET", "POST"])
+def cross_validate_optical_scan(folder_name: str):
+    payload = request.get_json(silent=True) or {}
+    time_window = payload.get("time_window_hours")
+    max_cloud = payload.get("max_cloud_cover")
+    time_window_hours = float(time_window) if time_window is not None else 48.0
+    max_cloud_cover = float(max_cloud) if max_cloud is not None else 50.0
+
+    result = container().cross_validate_optical.execute(
+        folder_name=safe_folder_name(folder_name),
+        time_window_hours=time_window_hours,
+        max_cloud_cover=max_cloud_cover,
+    )
+    return jsonify(result)
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

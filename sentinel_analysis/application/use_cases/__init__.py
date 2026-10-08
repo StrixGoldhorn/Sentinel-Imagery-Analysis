@@ -6,6 +6,7 @@ from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     extract_ghost_vessels,
 )
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
+from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
@@ -63,6 +64,7 @@ __all__ = [
     "assess_dark_vessel",
     "extract_ghost_vessels",
     "CreateScan",
+    "CrossValidateOptical",
     "DeleteAreaOfInterest",
     "DeleteScan",
     "DetectShips",

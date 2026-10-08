@@ -10,6 +10,7 @@ from sentinel_analysis.application.use_cases import (
     CheckAndScheduleAOIs,
     CorrelateDetectionsWithAIS,
     CreateScan,
+    CrossValidateOptical,
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
@@ -58,6 +59,7 @@ from sentinel_analysis.infrastructure.satellite.asf_provider import ASFImageryPr
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
+from sentinel_analysis.infrastructure.satellite.sentinel2_client import Sentinel2Client
 from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDataClient
 from sentinel_analysis.infrastructure.satellite.umbra_provider import UmbraImageryProvider
 from sentinel_analysis.infrastructure.scheduler.pass_monitor import BackgroundPassMonitor
@@ -121,6 +123,11 @@ class ApplicationContainer:
         self.correlate_ais_detections = CorrelateDetectionsWithAIS(
             self.ais_repository,
             self.settings_repository,
+        )
+        self.sentinel2_client = Sentinel2Client(token_provider=token_provider)
+        self.cross_validate_optical = CrossValidateOptical(
+            self.scan_repository,
+            self.sentinel2_client,
         )
         self.get_scan = GetScan(self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)

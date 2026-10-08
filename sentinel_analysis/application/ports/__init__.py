@@ -14,6 +14,11 @@ from sentinel_analysis.application.ports.cache import TileCache
 from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.optical import (
+    OpticalCrossValidator,
+    OpticalScene,
+    OpticalValidationResult,
+)
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
@@ -36,6 +41,9 @@ __all__ = [
     "ImageStitcher",
     "ImageryProvider",
     "LocationResolver",
+    "OpticalCrossValidator",
+    "OpticalScene",
+    "OpticalValidationResult",
     "PassPrediction",
     "PassPredictor",
     "PostPassIngestionRepository",

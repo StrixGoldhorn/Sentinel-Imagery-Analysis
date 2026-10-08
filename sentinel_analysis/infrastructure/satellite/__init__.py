@@ -11,6 +11,12 @@ from sentinel_analysis.infrastructure.satellite.constants import (
     SATELLITE_NAME_TO_NORAD,
 )
 
+from sentinel_analysis.infrastructure.satellite.sentinel2_client import (
+    OpticalValidationResult,
+    Sentinel2Client,
+    Sentinel2Scene,
+)
+
 __all__ = [
     "ALL_SATELLITE_NAMES",
     "ASFProduct",
@@ -21,6 +27,9 @@ __all__ = [
     "SATELLITE_CATALOG",
     "SATELLITE_NAME_TO_NORAD",
     "Sentinel1MissionAnalyzer",
+    "Sentinel2Client",
+    "Sentinel2Scene",
+    "OpticalValidationResult",
     "UmbraOpenDataClient",
     "UmbraSARScene",
 ]
