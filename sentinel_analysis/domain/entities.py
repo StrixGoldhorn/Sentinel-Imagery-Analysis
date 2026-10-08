@@ -452,3 +452,59 @@ class PostPassIngestionJob:
             object.__setattr__(self, "expected_imagery_time", _utc_datetime(self.expected_imagery_time, "Expected imagery time"))
         else:
             object.__setattr__(self, "expected_imagery_time", self.pass_time)
+
+
+@dataclass(frozen=True)
+class TransshipmentRendezvous:
+    vessel_a_index: int
+    vessel_b_index: int
+    distance_meters: float
+    relative_bearing_deg: float
+    vessel_a_is_dark: bool
+    vessel_b_is_dark: bool
+    risk_level: str
+    risk_score: float
+    vessel_a_lat: float
+    vessel_a_lon: float
+    vessel_b_lat: float
+    vessel_b_lon: float
+    vessel_a_length: Optional[float] = None
+    vessel_b_length: Optional[float] = None
+    vessel_a_identifier: Optional[str] = None
+    vessel_b_identifier: Optional[str] = None
+    narrative: str = ""
+
+    def __post_init__(self) -> None:
+        _non_negative_integer(self.vessel_a_index, "Vessel A index")
+        _non_negative_integer(self.vessel_b_index, "Vessel B index")
+        object.__setattr__(self, "distance_meters", _number(self.distance_meters, "Distance meters"))
+        object.__setattr__(self, "relative_bearing_deg", _number(self.relative_bearing_deg, "Relative bearing"))
+        object.__setattr__(self, "risk_score", _number(self.risk_score, "Risk score"))
+        object.__setattr__(self, "vessel_a_lat", _number(self.vessel_a_lat, "Vessel A latitude"))
+        object.__setattr__(self, "vessel_a_lon", _number(self.vessel_a_lon, "Vessel A longitude"))
+        object.__setattr__(self, "vessel_b_lat", _number(self.vessel_b_lat, "Vessel B latitude"))
+        object.__setattr__(self, "vessel_b_lon", _number(self.vessel_b_lon, "Vessel B longitude"))
+        object.__setattr__(self, "risk_level", _required_text(self.risk_level, "Risk level").upper())
+
+
+@dataclass(frozen=True)
+class LoiteringAnomaly:
+    vessel_index: int
+    lat: float
+    lon: float
+    is_dark: bool
+    speed_knots: float
+    risk_level: str
+    risk_score: float
+    length: Optional[float] = None
+    identifier: Optional[str] = None
+    narrative: str = ""
+
+    def __post_init__(self) -> None:
+        _non_negative_integer(self.vessel_index, "Vessel index")
+        object.__setattr__(self, "lat", _number(self.lat, "Latitude"))
+        object.__setattr__(self, "lon", _number(self.lon, "Longitude"))
+        object.__setattr__(self, "speed_knots", _number(self.speed_knots, "Speed knots"))
+        object.__setattr__(self, "risk_score", _number(self.risk_score, "Risk score"))
+        object.__setattr__(self, "risk_level", _required_text(self.risk_level, "Risk level").upper())
+

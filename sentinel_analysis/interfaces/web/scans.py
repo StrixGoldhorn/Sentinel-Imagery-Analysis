@@ -944,6 +944,23 @@ def cross_validate_optical_scan(folder_name: str):
     return jsonify(result)
 
 
+@blueprint.get("/api/scan/<folder_name>/transshipment")
+@blueprint.get("/api/scan/<folder_name>/anomalies/transshipment")
+def get_scan_transshipment(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    max_dist = request.args.get("max_distance", type=float) or 600.0
+    max_speed = request.args.get("max_speed", type=float) or 3.5
+    min_length = request.args.get("min_loiter_length", type=float) or 25.0
+
+    result = container().detect_transshipment.execute(
+        safe_name,
+        max_rendezvous_distance_meters=max_dist,
+        max_rendezvous_speed_knots=max_speed,
+        min_loiter_length_meters=min_length,
+    )
+    return jsonify(result)
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

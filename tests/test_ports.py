@@ -180,6 +180,15 @@ class CompleteAdapter:
     def update_progress(self, task_id, progress, message=""):
         return None
 
+    def list_tasks(self, status=None, task_type=None, limit=50, offset=0):
+        return []
+
+    def cancel_task(self, task_id):
+        return False
+
+    def recover_crashed_tasks(self, lease_timeout_seconds=300):
+        return []
+
     def get_section(self, section):
         return {}
 

@@ -14,6 +14,7 @@ from sentinel_analysis.application.use_cases import (
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
+    DetectTransshipmentAnomalies,
     ExportGeospatial,
     GenerateDEM,
     GenerateIntelligenceBrief,
@@ -138,6 +139,7 @@ class ApplicationContainer:
         self.export_geospatial = ExportGeospatial(self.scan_repository, self.geotiff_writer)
         self.brief_generator = MatplotlibIntelligenceBriefGenerator()
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
+        self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)

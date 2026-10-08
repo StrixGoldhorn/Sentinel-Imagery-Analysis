@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases.correlate_ais_detections import (
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
@@ -70,6 +71,7 @@ __all__ = [
     "DeleteAreaOfInterest",
     "DeleteScan",
     "DetectShips",
+    "DetectTransshipmentAnomalies",
     "ExportGeospatial",
     "GenerateDEM",
     "GenerateIntelligenceBrief",
