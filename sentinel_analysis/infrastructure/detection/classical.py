@@ -8,11 +8,21 @@ import numpy as np
 
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
+from sentinel_analysis.infrastructure.detection.cfar import (
+    ca_cfar_2d,
+    fuse_dual_polarization,
+    go_cfar_2d,
+    so_cfar_2d,
+)
 from sentinel_analysis.infrastructure.imagery.preprocessing import preprocess_sar
 
 
 class ClassicalShipDetector:
-    """Detect bright connected regions in grayscale SAR imagery with Oriented Bounding Boxes (OBB)."""
+    """Detect bright connected regions in grayscale SAR imagery with Oriented Bounding Boxes (OBB).
+
+    Supports classical global thresholding as well as adaptive Constant False Alarm Rate
+    (CA-CFAR, GO-CFAR, SO-CFAR) clutter filtering and dual-polarization (VV/VH) channel fusion.
+    """
 
     def __init__(
         self,
@@ -25,6 +35,11 @@ class ClassicalShipDetector:
         pixel_spacing_m: float | None = None,
         coastal_buffer_pixels: int = 81,
         morph_close_kernel: int = 27,
+        detection_method: str = "threshold",
+        cfar_guard_size: int = 5,
+        cfar_train_size: int = 15,
+        cfar_factor: float = 3.5,
+        dual_pol_mode: str = "none",
         settings_repo: Any = None,
     ) -> None:
         if min_area is not None:
@@ -48,6 +63,11 @@ class ClassicalShipDetector:
         self._filter_type = filter_type
         self._coastal_buffer_pixels = coastal_buffer_pixels
         self._morph_close_kernel = morph_close_kernel
+        self._detection_method = detection_method
+        self._cfar_guard_size = cfar_guard_size
+        self._cfar_train_size = cfar_train_size
+        self._cfar_factor = cfar_factor
+        self._dual_pol_mode = dual_pol_mode
         self._settings_repo = settings_repo
 
 
@@ -57,6 +77,8 @@ class ClassicalShipDetector:
         dem_path: Path | None = None,
         threshold: int = 40,
         coastal_buffer: int | None = None,
+        detection_method: str | None = None,
+        vh_path: Path | None = None,
     ) -> DetectionResult:
         if isinstance(threshold, bool) or not isinstance(threshold, int) or not 0 <= threshold <= 255:
             raise ValueError("Detection threshold must be an integer between 0 and 255")
@@ -74,9 +96,32 @@ class ClassicalShipDetector:
         maximum_area = self._settings_repo.get("maximum_area", self._maximum_area) if self._settings_repo else self._maximum_area
         pixel_spacing = self._settings_repo.get("pixel_spacing_meters", self._pixel_spacing_meters) if self._settings_repo else self._pixel_spacing_meters
 
+        method = detection_method or (self._settings_repo.get("detection_method", self._detection_method) if self._settings_repo else self._detection_method)
+        cfar_guard = self._settings_repo.get("cfar_guard_size", self._cfar_guard_size) if self._settings_repo else self._cfar_guard_size
+        cfar_train = self._settings_repo.get("cfar_train_size", self._cfar_train_size) if self._settings_repo else self._cfar_train_size
+        cfar_factor = self._settings_repo.get("cfar_factor", self._cfar_factor) if self._settings_repo else self._cfar_factor
+        dual_pol_mode = self._settings_repo.get("dual_pol_mode", self._dual_pol_mode) if self._settings_repo else self._dual_pol_mode
+
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
             raise FileNotFoundError(f"Unable to read SAR image: {image_path}")
+
+        # Check for dual-polarization pair (e.g. VV + VH)
+        resolved_vh_path = vh_path
+        if resolved_vh_path is None and dual_pol_mode != "none":
+            str_path = str(image_path)
+            candidate = None
+            if "_vv" in str_path:
+                candidate = Path(str_path.replace("_vv", "_vh"))
+            elif "_vh" in str_path:
+                candidate = Path(str_path.replace("_vh", "_vv"))
+            if candidate and candidate.exists():
+                resolved_vh_path = candidate
+
+        if resolved_vh_path is not None and resolved_vh_path.exists() and dual_pol_mode != "none":
+            vh_image = cv2.imread(str(resolved_vh_path), cv2.IMREAD_GRAYSCALE)
+            if vh_image is not None:
+                image = fuse_dual_polarization(image, vh_image, mode=dual_pol_mode)
 
         if dem_path is not None:
             image = self._mask_land(image, dem_path, coastal_buffer_pixels=buffer_px, morph_close_kernel=morph_close_kernel)
@@ -86,7 +131,15 @@ class ClassicalShipDetector:
         else:
             filtered_image = image
 
-        _, binary = cv2.threshold(filtered_image, threshold, 255, cv2.THRESH_BINARY)
+        if method == "cfar_ca":
+            binary, _ = ca_cfar_2d(filtered_image, guard_size=cfar_guard, train_size=cfar_train, factor=cfar_factor, min_threshold=threshold)
+        elif method == "cfar_go":
+            binary, _ = go_cfar_2d(filtered_image, guard_size=cfar_guard, train_size=cfar_train, factor=cfar_factor, min_threshold=threshold)
+        elif method == "cfar_so":
+            binary, _ = so_cfar_2d(filtered_image, guard_size=cfar_guard, train_size=cfar_train, factor=cfar_factor, min_threshold=threshold)
+        else:
+            _, binary = cv2.threshold(filtered_image, threshold, 255, cv2.THRESH_BINARY)
+
         kernel = np.ones((5, 5), np.uint8)
         dilated = cv2.dilate(binary, kernel, iterations=dilation_iterations)
         contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

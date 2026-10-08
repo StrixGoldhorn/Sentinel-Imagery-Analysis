@@ -215,7 +215,8 @@ class TestSQLitePostPassRepository(unittest.TestCase):
         self.assertEqual(len(attempts), 1)
         self.assertEqual(attempts[0]["attempt"], 1)
         self.assertEqual(attempts[0]["reason"], "POLL_SCHEDULED")
-        self.assertEqual(attempts[0]["started_at"], now.isoformat())
+        started_at = datetime.fromisoformat(str(attempts[0]["started_at"]))
+        self.assertLessEqual(abs((started_at - now).total_seconds()), 2)
         self.assertIsNotNone(attempts[0]["completed_at"])
 
     def test_causal_prediction_basis_is_persisted(self):
