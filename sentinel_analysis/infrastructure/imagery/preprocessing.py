@@ -79,6 +79,82 @@ def frost_filter(
     return np.clip(out, 0, 255).astype(image.dtype)
 
 
+def enhance_sar_imagery(
+    image: np.ndarray,
+    p_min: float = 1.0,
+    p_max: float = 99.5,
+    gamma: float = 0.72,
+    window_size: int = 5,
+    noise_variance: float = 0.25,
+    sharpen_amount: float = 0.35,
+) -> np.ndarray:
+    """Enhance raw or synthesized SAR imagery for high-contrast visual analysis and CFAR.
+
+    Applies:
+    1. Lee adaptive speckle filter to smooth multiplicative radar noise while preserving sharp boundaries.
+    2. Dynamic range percentile stretch (p_min to p_max) to remove zero-fill and sensor saturation.
+    3. Non-linear gamma contrast compression to expand dark ocean wave modulation without clipping bright metallic targets.
+    4. Unsharp masking to accentuate vessel hull outlines, superstructure reflections, and wakes.
+
+    Args:
+        image: 2D or 3D numpy array representing SAR intensity or amplitude.
+        p_min: Lower percentile threshold for contrast stretching (default 1.0%).
+        p_max: Upper percentile threshold for contrast stretching (default 99.5%).
+        gamma: Gamma power exponent for midtone expansion (default 0.72).
+        window_size: Window size for Lee filter (positive odd integer, default 5).
+        noise_variance: Noise variance parameter for Lee filter (default 0.25).
+        sharpen_amount: Blend factor for unsharp masking (default 0.35; 0 to disable).
+
+    Returns:
+        np.ndarray: Enhanced image array of type uint8.
+    """
+    if image.ndim == 3:
+        channels = [
+            enhance_sar_imagery(
+                image[:, :, c],
+                p_min=p_min,
+                p_max=p_max,
+                gamma=gamma,
+                window_size=window_size,
+                noise_variance=noise_variance,
+                sharpen_amount=sharpen_amount,
+            )
+            for c in range(image.shape[2])
+        ]
+        return np.stack(channels, axis=-1)
+
+    img_float = np.nan_to_num(image.astype(np.float32), nan=0.0, posinf=255.0, neginf=0.0)
+
+    # 1. Lee despeckle filter
+    filtered = lee_filter(img_float, window_size=window_size, noise_variance=noise_variance).astype(np.float32)
+
+    # 2. Dynamic range percentile stretch
+    valid_pixels = filtered[filtered > 0]
+    if valid_pixels.size > 0:
+        p_low, p_high = np.percentile(valid_pixels, (p_min, p_max))
+        p_high = max(float(p_high), float(p_low) + 1.0)
+    else:
+        p_low, p_high = 0.0, 255.0
+
+    stretched = np.clip((filtered - p_low) / (p_high - p_low), 0.0, 1.0)
+
+    # 3. Non-linear gamma tone mapping
+    gamma_val = max(0.01, float(gamma))
+    gamma_mapped = np.power(stretched, gamma_val) * 255.0
+
+    # 4. Subtle unsharp mask to crisp up vessel edges
+    if sharpen_amount > 0:
+        blurred = cv2.GaussianBlur(gamma_mapped, (0, 0), sigmaX=1.5)
+        crisp = np.clip(
+            cv2.addWeighted(gamma_mapped, 1.0 + sharpen_amount, blurred, -sharpen_amount, 0),
+            0,
+            255,
+        )
+        return crisp.astype(np.uint8)
+
+    return np.clip(gamma_mapped, 0, 255).astype(np.uint8)
+
+
 def preprocess_sar(
     image: np.ndarray,
     filter_type: str = "lee",
@@ -91,9 +167,12 @@ def preprocess_sar(
         return lee_filter(image, window_size=window_size)
     if filter_type == "frost":
         return frost_filter(image, window_size=window_size)
-    raise ValueError(f"Unknown filter type: {filter_type}. Choose from 'lee', 'frost', 'none'.")
+    if filter_type == "enhance":
+        return enhance_sar_imagery(image, window_size=window_size)
+    raise ValueError(f"Unknown filter type: {filter_type}. Choose from 'lee', 'frost', 'enhance', 'none'.")
 
 
 apply_lee_filter = lee_filter
 apply_frost_filter = frost_filter
+
 

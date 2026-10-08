@@ -77,6 +77,13 @@ class TestUmbraOpenDataClient(unittest.TestCase):
         self.assertEqual(scenes[0].target_name, "Singapore Strait")
         self.assertAlmostEqual(scenes[0].resolution_meters, 0.5)
 
+    def test_fetch_site_scenes_has_valid_tiff_url(self):
+        scenes = self.client.fetch_site_scenes("panama_canal")
+        self.assertGreaterEqual(len(scenes), 1)
+        self.assertTrue(scenes[0].tiff_url.endswith(".tif"))
+        self.assertTrue(scenes[0].tiff_url.startswith("https://umbra-open-data-catalog.s3.amazonaws.com"))
+
 
 if __name__ == "__main__":
     unittest.main()
+

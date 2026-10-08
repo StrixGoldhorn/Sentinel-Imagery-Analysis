@@ -100,6 +100,21 @@ class TestUmbraAndASFScanIntegration(unittest.TestCase):
         self.assertTrue(tile_out.is_file())
         self.assertGreater(tile_out.stat().st_size, 100)
 
+    def test_umbra_download_tile_produces_high_contrast_imagery(self):
+        from PIL import Image
+        import numpy as np
+
+        acq = self.umbra_provider.find_latest_acquisition(self.singapore_bbox)
+        tiles = self.umbra_provider.calculate_tiles(self.singapore_bbox)
+        tile_out = self.output_root / "test_tile_enhanced.png"
+        self.umbra_provider.download_tile(tiles[0], acq, tile_out)
+
+        with Image.open(tile_out) as img:
+            arr = np.array(img, dtype=np.float32)
+            self.assertGreater(float(np.std(arr)), 25.0)
+            self.assertGreater(float(np.max(arr) - np.min(arr)), 100.0)
+
+
     def test_create_scan_with_umbra_provider(self):
         scan = self.create_scan.execute(
             bbox=self.singapore_bbox,
