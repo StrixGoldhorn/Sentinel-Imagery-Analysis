@@ -67,6 +67,8 @@ from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
     TriggerAutomaticAISScrape,
     is_historical_prediction,
 )
+from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
+
 
 __all__ = [
     "AddAreaOfInterest",
@@ -111,6 +113,7 @@ __all__ = [
     "ResetScraperCooldown",
     "ResetSettings",
     "ScrapeAreaOfInterestAIS",
+    "TagRouteDetections",
     "ToggleScraper",
     "TriggerAutomaticAISScrape",
     "UpdateScraper",

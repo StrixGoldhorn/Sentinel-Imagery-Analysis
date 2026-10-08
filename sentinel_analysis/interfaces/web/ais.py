@@ -2,6 +2,8 @@ import csv
 import io
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 from flask import Blueprint, Response, jsonify, render_template, request
 
@@ -14,6 +16,7 @@ from sentinel_analysis.interfaces.web.request_data import (
     bounding_box,
     json_object,
     optional_string,
+    safe_folder_name,
 )
 
 
@@ -212,6 +215,67 @@ def get_vessel_history(vessel_id: int):
         count=len(locations),
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+@blueprint.get("/api/ais/vessels/<int:vessel_id>/route_tags")
+def get_vessel_route_tags(vessel_id: int):
+    filters = _parse_ais_filters(max_limit=1000)
+    repo = getattr(container(), "ais_repository", None)
+    if repo is None or not hasattr(repo, "get_vessel_history"):
+        raise RequestValidationError("AIS history repository is not configured")
+
+    vessel = container().get_vessel_details.execute(vessel_id)
+    locations = repo.get_vessel_history(
+        vessel_id=vessel_id,
+        time_range=filters["time_range"],
+        limit=filters["limit"],
+    )
+
+    try:
+        buffer_meters = float(request.args.get("buffer_meters", 500.0))
+    except (ValueError, TypeError):
+        buffer_meters = 500.0
+
+    scan_folder = request.args.get("scan_folder")
+    detections: list[dict[str, Any]] = []
+    if scan_folder:
+        try:
+            scan = container().get_scan.execute(safe_folder_name(scan_folder))
+            det_json_path = Path(scan.image_path).parent / "detection_results.json"
+            if det_json_path.is_file():
+                det_data = json.loads(det_json_path.read_text(encoding="utf-8"))
+                detections = det_data.get("detections", [])
+        except Exception:
+            pass
+
+    tagger = getattr(container(), "tag_route_detections", None)
+    if tagger is None:
+        from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
+        tagger = TagRouteDetections()
+
+    vessel_dict = {
+        "vessel_id": vessel_id,
+        "mmsi": vessel.get("mmsi") if isinstance(vessel, dict) else getattr(vessel, "mmsi", None),
+        "name": vessel.get("name") if isinstance(vessel, dict) else getattr(vessel, "name", None),
+        "ship_type": vessel.get("ship_type") if isinstance(vessel, dict) else getattr(vessel, "ship_type", None),
+        "points": locations,
+    }
+
+    result = tagger.execute(
+        detections=detections,
+        vessels=[vessel_dict],
+        buffer_meters=buffer_meters,
+    )
+
+    tagged_vessel = result["vessels"][0] if result["vessels"] else vessel_dict
+    return jsonify({
+        "status": "success",
+        "vessel_id": vessel_id,
+        "buffer_meters": buffer_meters,
+        "route": tagged_vessel.get("route", []),
+        "tagged_detections": tagged_vessel.get("tagged_detections", []),
+        "tagged_detections_count": len(tagged_vessel.get("tagged_detections", [])),
+    })
 
 
 def _freshness_band(freshness_seconds: int | float | None) -> str:

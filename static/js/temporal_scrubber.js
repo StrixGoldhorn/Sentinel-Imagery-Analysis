@@ -1,8 +1,18 @@
 /**
  * Temporal AIS Time-Scrubber UI and Kinematic Track Interpolator for SAR Passes.
  * Allows interactive scrubbing across time [-60m, +60m] around the satellite overpass,
- * rendering animated vessel positions, covariance ellipses, and SAR detection overlays.
+ * rendering animated vessel positions, covariance ellipses, route corridors, and SAR detection overlays.
  */
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 const temporalScrubberState = {
     folderName: null,
@@ -18,9 +28,25 @@ const temporalScrubberState = {
     trackLayerGroup: null,
     vesselMarkers: new Map(),
     detectionMarkers: [],
+    bufferCorridorLayers: [],
     showTracks: true,
     showUncertainty: true,
+    showRouteBuffer: true,
+    routeBufferMeters: 500,
+    taggedCount: 0,
 };
+
+function updateTaggedBadge(count) {
+    const badge = document.getElementById('scrubberTaggedBadge');
+    if (!badge) return;
+    if (count > 0) {
+        badge.innerText = `${count} Tagged`;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.innerText = '0 Tagged';
+        badge.style.display = 'none';
+    }
+}
 
 /**
  * Initialize and open the Temporal AIS Scrubber for a SAR pass.
@@ -39,7 +65,20 @@ async function openTemporalAisScrubber(folderName) {
     scrubberDock.style.display = 'flex';
     temporalScrubberState.folderName = folderName;
     document.getElementById('scrubberScanName').innerText = folderName;
-    document.getElementById('scrubberStatusMsg').innerText = 'Fetching kinematic AIS tracks...';
+    document.getElementById('scrubberStatusMsg').innerText = 'Fetching kinematic AIS tracks and corridor tagging...';
+
+    // Read user-defined route buffer settings if present
+    const bufferInput = document.getElementById('scrubberRouteBufferMeters');
+    if (bufferInput) {
+        const val = parseFloat(bufferInput.value);
+        if (!isNaN(val) && val > 0) {
+            temporalScrubberState.routeBufferMeters = val;
+        }
+    }
+    const bufferToggle = document.getElementById('scrubberRouteBufferToggle');
+    if (bufferToggle) {
+        temporalScrubberState.showRouteBuffer = bufferToggle.checked;
+    }
 
     // Ensure map instance and layer group
     if (typeof map !== 'undefined' && map) {
@@ -52,7 +91,8 @@ async function openTemporalAisScrubber(folderName) {
     }
 
     try {
-        const res = await fetch(`/api/scan/${encodeURIComponent(folderName)}/ais_tracks?window_hours=2.0`);
+        const url = `/api/scan/${encodeURIComponent(folderName)}/ais_tracks?window_hours=2.0&buffer_meters=${encodeURIComponent(temporalScrubberState.routeBufferMeters)}`;
+        const res = await fetch(url);
         if (!res.ok) {
             throw new Error(`HTTP error ${res.status}`);
         }
@@ -62,10 +102,12 @@ async function openTemporalAisScrubber(folderName) {
         temporalScrubberState.scanTimestampMs = scanDt.getTime();
         temporalScrubberState.vessels = data.vessels || [];
         temporalScrubberState.detections = data.detections || [];
+        temporalScrubberState.taggedCount = data.tagged_detections_count || 0;
         temporalScrubberState.currentDeltaSec = 0; // default to exact SAR pass epoch
 
         document.getElementById('scrubberStatusMsg').innerText = 
-            `${temporalScrubberState.vessels.length} vessel tracks • ${temporalScrubberState.detections.length} SAR detections`;
+            `${temporalScrubberState.vessels.length} vessel tracks • ${temporalScrubberState.detections.length} SAR detections • ${temporalScrubberState.taggedCount} tagged to route`;
+        updateTaggedBadge(temporalScrubberState.taggedCount);
 
         // Reset scrubber slider to center (0 delta)
         const slider = document.getElementById('temporalScrubberSlider');
@@ -76,11 +118,13 @@ async function openTemporalAisScrubber(folderName) {
         }
 
         renderSarDetectionsOnMap();
+        renderRouteCorridors();
         updateTemporalScrubberUI();
         renderInterpolatedVesselsAtCurrentTime();
 
         if (typeof showNotification === 'function') {
-            showNotification(`Loaded ${temporalScrubberState.vessels.length} temporal AIS tracks for SAR pass`, 'info');
+            const tagMsg = temporalScrubberState.taggedCount > 0 ? ` (${temporalScrubberState.taggedCount} detections tagged to route)` : '';
+            showNotification(`Loaded ${temporalScrubberState.vessels.length} temporal AIS tracks${tagMsg}`, 'info');
         }
     } catch (err) {
         console.error('Failed to load temporal AIS tracks:', err);
@@ -113,10 +157,11 @@ function clearTemporalMapLayers() {
     }
     temporalScrubberState.vesselMarkers.clear();
     temporalScrubberState.detectionMarkers = [];
+    temporalScrubberState.bufferCorridorLayers = [];
 }
 
 /**
- * Render fixed SAR detection centroids on the map.
+ * Render fixed SAR detection centroids on the map, with route tagging indicators.
  */
 function renderSarDetectionsOnMap() {
     if (!temporalScrubberState.trackLayerGroup || !temporalScrubberState.detections) return;
@@ -129,29 +174,64 @@ function renderSarDetectionsOnMap() {
     temporalScrubberState.detectionMarkers = [];
 
     temporalScrubberState.detections.forEach((det, idx) => {
-        if (det.lat === undefined || det.lon === undefined) return;
+        const lat = det.lat !== undefined ? det.lat : det.latitude;
+        const lon = det.lon !== undefined ? det.lon : det.longitude;
+        if (lat === undefined || lon === undefined) return;
 
         const isDark = det.is_dark_vessel || det.correlation_status === 'uncorrelated';
-        const color = isDark ? '#ef4444' : '#10b981';
+        const isTagged = Boolean(det.tagged_to_vessel && det.route_tagged_vessel);
+        const tag = det.route_tagged_vessel;
 
-        const marker = L.circleMarker([det.lat, det.lon], {
-            radius: 7,
+        let color = isDark ? '#ef4444' : '#10b981';
+        let fillColor = color;
+        let radius = 7;
+        let weight = 2;
+        let dashArray = '2, 3';
+
+        if (isTagged) {
+            color = '#0284c7';
+            fillColor = '#38bdf8';
+            radius = 8;
+            weight = 3;
+            dashArray = null;
+        }
+
+        const marker = L.circleMarker([lat, lon], {
+            radius: radius,
             color: color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.35,
-            dashArray: '2, 3',
+            weight: weight,
+            fillColor: fillColor,
+            fillOpacity: isTagged ? 0.65 : 0.35,
+            dashArray: dashArray,
         });
 
+        let taggedHtml = '';
+        if (isTagged && tag) {
+            taggedHtml = `
+                <div style="margin-top: 6px; padding: 6px 8px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px; font-size: 0.76rem; color: #166534;">
+                    <div style="font-weight: 700; display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                        🏷️ Tagged to Vessel Route
+                    </div>
+                    <div><strong>Vessel:</strong> ${escapeHtml(tag.vessel_name)} (${escapeHtml(tag.mmsi || 'N/A')})</div>
+                    <div><strong>Type:</strong> ${escapeHtml(tag.vessel_type || 'Vessel')}</div>
+                    <div><strong>Route Offset:</strong> ${tag.distance_to_route_m} m (Buffer: ${tag.buffer_meters} m)</div>
+                    <div style="margin-top: 2px; font-size: 0.72rem; color: #15803d;">
+                        ${tag.is_predicted_segment ? '🔮 On Predicted Trajectory Corridor' : '⏱️ On Traced AIS Track Corridor'}
+                    </div>
+                </div>
+            `;
+        }
+
         const label = `
-            <div style="font-family: sans-serif; font-size: 0.82rem; min-width: 160px;">
+            <div style="font-family: sans-serif; font-size: 0.82rem; min-width: 175px;">
                 <div style="font-weight: 700; color: ${color}; margin-bottom: 4px;">
                     🛰️ SAR Detection #${idx + 1}
                 </div>
                 <div><strong>Status:</strong> ${det.correlation_status || (isDark ? 'Dark Vessel' : 'Correlated')}</div>
                 <div><strong>Length:</strong> ${det.length ? det.length + ' m' : 'N/A'}</div>
-                <div><strong>Confidence:</strong> ${(det.confidence * 100).toFixed(1)}%</div>
-                <div style="margin-top: 6px; font-size: 0.75rem; color: #64748b;">
+                <div><strong>Confidence:</strong> ${(det.confidence ? (det.confidence * 100).toFixed(1) : '90.0')}%</div>
+                ${taggedHtml}
+                <div style="margin-top: 6px; font-size: 0.74rem; color: #64748b;">
                     Fixed at SAR Epoch (T=0)
                 </div>
             </div>
@@ -161,6 +241,7 @@ function renderSarDetectionsOnMap() {
         temporalScrubberState.detectionMarkers.push(marker);
     });
 }
+
 
 /**
  * Interpolate all vessels at current temporal scrubber delta time and update markers.
@@ -546,3 +627,187 @@ function toggleTemporalLayerUncertainty(enable) {
         }
     });
 }
+
+/**
+ * Render traced and predicted vessel route corridors with user-defined buffer zone.
+ */
+function renderRouteCorridors() {
+    if (!temporalScrubberState.trackLayerGroup) return;
+
+    // Clear existing corridor layers
+    temporalScrubberState.bufferCorridorLayers.forEach(l => {
+        if (temporalScrubberState.trackLayerGroup.hasLayer(l)) {
+            temporalScrubberState.trackLayerGroup.removeLayer(l);
+        }
+    });
+    temporalScrubberState.bufferCorridorLayers = [];
+
+    if (!temporalScrubberState.showRouteBuffer) return;
+
+    const bufferMeters = temporalScrubberState.routeBufferMeters;
+
+    temporalScrubberState.vessels.forEach(vessel => {
+        const route = vessel.route || vessel.points || [];
+        if (!route || route.length === 0) return;
+
+        const coords = [];
+        const tracedCoords = [];
+        const predCoords = [];
+
+        route.forEach(p => {
+            const lat = p.latitude !== undefined ? p.latitude : p.lat;
+            const lon = p.longitude !== undefined ? p.longitude : p.lon;
+            if (lat !== undefined && lon !== undefined) {
+                const pt = [parseFloat(lat), parseFloat(lon)];
+                coords.push(pt);
+                if (p.is_predicted) {
+                    predCoords.push(pt);
+                } else {
+                    tracedCoords.push(pt);
+                }
+            }
+        });
+
+        if (coords.length < 2) return;
+
+        // Route corridor buffer band (semi-transparent corridor)
+        const corridor = L.polyline(coords, {
+            color: '#38bdf8',
+            weight: 16,
+            opacity: 0.22,
+            lineCap: 'round',
+            lineJoin: 'round',
+            dashArray: null,
+            interactive: false,
+        });
+        corridor.addTo(temporalScrubberState.trackLayerGroup);
+        temporalScrubberState.bufferCorridorLayers.push(corridor);
+
+        // Circular buffer zones at key waypoints
+        coords.forEach((coord, i) => {
+            if (i === 0 || i === coords.length - 1 || i % 3 === 0) {
+                const bufCircle = L.circle(coord, {
+                    radius: bufferMeters,
+                    color: '#38bdf8',
+                    weight: 1,
+                    opacity: 0.35,
+                    fillColor: '#38bdf8',
+                    fillOpacity: 0.05,
+                    dashArray: '3, 4',
+                    interactive: false,
+                });
+                bufCircle.addTo(temporalScrubberState.trackLayerGroup);
+                temporalScrubberState.bufferCorridorLayers.push(bufCircle);
+            }
+        });
+
+        // Traced route polyline (solid line)
+        if (tracedCoords.length >= 2) {
+            const tracedLine = L.polyline(tracedCoords, {
+                color: '#0284c7',
+                weight: 2.5,
+                opacity: 0.75,
+            });
+            tracedLine.bindTooltip(`Route: ${escapeHtml(vessel.name || vessel.mmsi)} (Traced)`, { sticky: true });
+            tracedLine.addTo(temporalScrubberState.trackLayerGroup);
+            temporalScrubberState.bufferCorridorLayers.push(tracedLine);
+        }
+
+        // Predicted route polyline (dashed line)
+        if (predCoords.length >= 1) {
+            const lastTraced = tracedCoords.length > 0 ? tracedCoords[tracedCoords.length - 1] : null;
+            const predWithAnchor = lastTraced ? [lastTraced, ...predCoords] : predCoords;
+            if (predWithAnchor.length >= 2) {
+                const predLine = L.polyline(predWithAnchor, {
+                    color: '#06b6d4',
+                    weight: 2.5,
+                    opacity: 0.85,
+                    dashArray: '6, 6',
+                });
+                predLine.bindTooltip(`Route: ${escapeHtml(vessel.name || vessel.mmsi)} (Predicted)`, { sticky: true });
+                predLine.addTo(temporalScrubberState.trackLayerGroup);
+                temporalScrubberState.bufferCorridorLayers.push(predLine);
+            }
+        }
+
+        // Dotted tie-lines to tagged detections
+        const taggedDets = vessel.tagged_detections || [];
+        taggedDets.forEach(td => {
+            if (td.closest_point && td.lat !== undefined && td.lon !== undefined) {
+                const tieLine = L.polyline([[td.lat, td.lon], td.closest_point], {
+                    color: '#0284c7',
+                    weight: 1.5,
+                    dashArray: '2, 4',
+                    opacity: 0.85,
+                });
+                tieLine.bindTooltip(`Tagged to ${escapeHtml(vessel.name || vessel.mmsi)}: ${td.distance_to_route_m}m to route`, { sticky: true });
+                tieLine.addTo(temporalScrubberState.trackLayerGroup);
+                temporalScrubberState.bufferCorridorLayers.push(tieLine);
+            }
+        });
+    });
+}
+
+/**
+ * Toggle rendering of route buffer corridors and tie-lines.
+ */
+function toggleTemporalRouteBuffer(enable) {
+    temporalScrubberState.showRouteBuffer = Boolean(enable);
+    renderRouteCorridors();
+    renderSarDetectionsOnMap();
+}
+
+/**
+ * Update the user-defined route buffer distance in meters and re-tag detections.
+ */
+async function updateTemporalRouteBufferDistance(distanceMeters) {
+    const parsed = Math.max(10, Math.min(50000, parseFloat(distanceMeters) || 500));
+    temporalScrubberState.routeBufferMeters = parsed;
+
+    const input = document.getElementById('scrubberRouteBufferMeters');
+    if (input) input.value = parsed;
+
+    if (!temporalScrubberState.folderName) return;
+
+    try {
+        const res = await fetch(`/api/scan/${encodeURIComponent(temporalScrubberState.folderName)}/tag_route`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                buffer_meters: parsed,
+                vessels: temporalScrubberState.vessels,
+                detections: temporalScrubberState.detections,
+            }),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            temporalScrubberState.vessels = data.vessels || temporalScrubberState.vessels;
+            temporalScrubberState.detections = data.detections || temporalScrubberState.detections;
+            temporalScrubberState.taggedCount = data.tagged_detections_count || 0;
+        } else {
+            const fallbackRes = await fetch(`/api/scan/${encodeURIComponent(temporalScrubberState.folderName)}/ais_tracks?window_hours=2.0&buffer_meters=${parsed}`);
+            if (fallbackRes.ok) {
+                const data = await fallbackRes.json();
+                temporalScrubberState.vessels = data.vessels || [];
+                temporalScrubberState.detections = data.detections || [];
+                temporalScrubberState.taggedCount = data.tagged_detections_count || 0;
+            }
+        }
+
+        updateTaggedBadge(temporalScrubberState.taggedCount);
+        renderSarDetectionsOnMap();
+        renderRouteCorridors();
+
+        const msg = `${temporalScrubberState.vessels.length} vessel tracks • ${temporalScrubberState.detections.length} SAR detections • ${temporalScrubberState.taggedCount} tagged to route (Buffer: ${parsed}m)`;
+        const statusEl = document.getElementById('scrubberStatusMsg');
+        if (statusEl) statusEl.innerText = msg;
+
+        if (typeof showNotification === 'function') {
+            showNotification(`Updated corridor buffer to ${parsed}m (${temporalScrubberState.taggedCount} detections tagged)`, 'info');
+        }
+    } catch (err) {
+        console.error('Failed to update route buffer distance:', err);
+    }
+}
+

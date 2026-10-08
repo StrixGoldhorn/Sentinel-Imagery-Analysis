@@ -700,17 +700,104 @@ def get_scan_ais_tracks(folder_name: str):
         except Exception:
             pass
 
+    try:
+        buffer_meters = float(request.args.get("buffer_meters", 500.0))
+    except (ValueError, TypeError):
+        buffer_meters = 500.0
+
+    try:
+        predict_forward_seconds = float(request.args.get("predict_forward_seconds", 3600.0))
+    except (ValueError, TypeError):
+        predict_forward_seconds = 3600.0
+
+    tagger = getattr(container(), "tag_route_detections", None)
+    if tagger is None:
+        from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
+        tagger = TagRouteDetections()
+
+    tagging_result = tagger.execute(
+        detections=detections,
+        vessels=vessels,
+        buffer_meters=buffer_meters,
+        target_time=scan_dt,
+        predict_forward_seconds=predict_forward_seconds,
+    )
+
     return jsonify({
         "scan_folder": folder_name,
         "scan_timestamp": scan_dt.isoformat(),
         "window_start": time_start.isoformat(),
         "window_end": time_end.isoformat(),
         "bbox": bbox.as_list() if bbox else None,
-        "vessels": vessels,
-        "detections": detections,
-        "vessel_count": len(vessels),
-        "detection_count": len(detections),
+        "buffer_meters": tagging_result["buffer_meters"],
+        "vessels": tagging_result["vessels"],
+        "detections": tagging_result["detections"],
+        "vessel_count": len(tagging_result["vessels"]),
+        "detection_count": len(tagging_result["detections"]),
+        "tagged_detections_count": tagging_result["tagged_detections_count"],
+        "vessels_with_tags_count": tagging_result["vessels_with_tags_count"],
     })
+
+
+@blueprint.post("/api/scan/<folder_name>/tag_route")
+def tag_scan_route_detections(folder_name: str):
+    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        buffer_meters = float(payload.get("buffer_meters", 500.0))
+    except (ValueError, TypeError):
+        buffer_meters = 500.0
+
+    try:
+        predict_forward_seconds = float(payload.get("predict_forward_seconds", 3600.0))
+    except (ValueError, TypeError):
+        predict_forward_seconds = 3600.0
+
+    scan_dt: datetime | None = None
+    if getattr(scan, "acquisition", None) and getattr(scan.acquisition, "acquired_at", None):
+        scan_dt = scan.acquisition.acquired_at
+    elif getattr(scan, "timestamp", None):
+        try:
+            scan_dt = datetime.fromisoformat(str(scan.timestamp).replace("Z", "+00:00"))
+        except Exception:
+            pass
+    if scan_dt is None:
+        scan_dt = datetime.now(timezone.utc)
+
+    detections = payload.get("detections")
+    if detections is None:
+        det_json_path = Path(scan.image_path).parent / "detection_results.json"
+        if det_json_path.is_file():
+            try:
+                det_data = json.loads(det_json_path.read_text(encoding="utf-8"))
+                detections = det_data.get("detections", [])
+            except Exception:
+                detections = []
+        else:
+            detections = []
+
+    vessels = payload.get("vessels")
+    if vessels is None:
+        tracks_res = get_scan_ais_tracks(folder_name)
+        tracks_json = tracks_res.get_json() if hasattr(tracks_res, "get_json") else {}
+        vessels = tracks_json.get("vessels", [])
+
+    tagger = getattr(container(), "tag_route_detections", None)
+    if tagger is None:
+        from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
+        tagger = TagRouteDetections()
+
+    result = tagger.execute(
+        detections=detections,
+        vessels=vessels,
+        buffer_meters=buffer_meters,
+        target_time=scan_dt,
+        predict_forward_seconds=predict_forward_seconds,
+    )
+    result["scan_folder"] = folder_name
+    return jsonify(result)
+
 
 
 @blueprint.get("/api/scan/<folder_name>")

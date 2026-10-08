@@ -566,6 +566,14 @@
                 <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     <input type="checkbox" checked onchange="toggleTemporalLayerUncertainty(this.checked)"> Covariance
                 </label>
+                <div style="display: flex; align-items: center; gap: 5px; padding-left: 6px; border-left: 1px solid #475569;">
+                    <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;" title="Tag SAR detections within user-defined buffer corridor of traced and predicted route">
+                        <input type="checkbox" id="scrubberRouteBufferToggle" checked onchange="toggleTemporalRouteBuffer(this.checked)"> Buffer:
+                    </label>
+                    <input type="number" id="scrubberRouteBufferMeters" value="500" min="50" max="10000" step="50" style="width: 58px; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 4px; padding: 1px 4px; font-size: 0.75rem;" title="Corridor buffer distance in meters" onchange="updateTemporalRouteBufferDistance(this.value)">
+                    <span style="font-size: 0.72rem; color: #94a3b8;">m</span>
+                    <span id="scrubberTaggedBadge" class="badge" style="background-color: #0284c7; color: #fff; font-size: 0.68rem; padding: 1px 5px; border-radius: 3px; display: none;" title="Tagged SAR detections">0 Tagged</span>
+                </div>
             </div>
         </div>
     </div>

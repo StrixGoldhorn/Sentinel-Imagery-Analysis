@@ -42,6 +42,7 @@ from sentinel_analysis.application.use_cases import (
     ResetScraperCooldown,
     ResetSettings,
     ScrapeAreaOfInterestAIS,
+    TagRouteDetections,
     ToggleScraper,
     TriggerAutomaticAISScrape,
     UpdateScraper,
@@ -188,6 +189,7 @@ class ApplicationContainer:
         self.get_vessel_details = GetVesselDetails(self.ais_repository)
         self.update_vessel_details = UpdateVesselDetails(self.ais_repository)
         self.scrape_aoi_ais = ScrapeAreaOfInterestAIS(self.aoi_repository, self.ingest_ais)
+        self.tag_route_detections = TagRouteDetections()
         post_pass_max_wait_hours = 24.0
         saved_post_pass_wait = self.settings_repository.get("post_pass_max_wait_hours")
         if saved_post_pass_wait is not None:
