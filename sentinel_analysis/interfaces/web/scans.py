@@ -961,6 +961,30 @@ def get_scan_transshipment(folder_name: str):
     return jsonify(result)
 
 
+@blueprint.route("/api/scan/<folder_name>/change_detection", methods=["GET", "POST"])
+@blueprint.route("/api/scan/<folder_name>/change-detection", methods=["GET", "POST"])
+def scan_sar_change_detection(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    payload = request.get_json(silent=True) or {}
+    ref_folder = (
+        payload.get("reference_scan")
+        or request.args.get("reference_scan")
+        or request.args.get("ref")
+    )
+    if not ref_folder:
+        return jsonify(status="error", message="reference_scan parameter is required"), 400
+
+    threshold_raw = payload.get("threshold_db") or request.args.get("threshold_db")
+    threshold_db = float(threshold_raw) if threshold_raw is not None else 4.5
+
+    result = container().detect_sar_changes.execute(
+        target_folder=safe_name,
+        reference_folder=safe_folder_name(str(ref_folder)),
+        threshold_db=threshold_db,
+    )
+    return jsonify(result)
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

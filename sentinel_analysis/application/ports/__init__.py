@@ -20,7 +20,7 @@ from sentinel_analysis.application.ports.optical import (
     OpticalScene,
     OpticalValidationResult,
 )
-from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
+from sentinel_analysis.application.ports.sar_change_detector import SARChangeDetector
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.application.ports.settings_repository import SettingsRepository
@@ -50,6 +50,7 @@ __all__ = [
     "PassPrediction",
     "PassPredictor",
     "PostPassIngestionRepository",
+    "SARChangeDetector",
     "ScanRepository",
     "SettingsRepository",
     "ShipDetector",

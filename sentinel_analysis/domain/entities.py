@@ -508,3 +508,46 @@ class LoiteringAnomaly:
         object.__setattr__(self, "risk_score", _number(self.risk_score, "Risk score"))
         object.__setattr__(self, "risk_level", _required_text(self.risk_level, "Risk level").upper())
 
+
+@dataclass(frozen=True)
+class TemporalChangePoint:
+    x: float
+    y: float
+    change_type: str  # "ARRIVED", "DEPARTED", "PERSISTENT_STRUCTURE"
+    magnitude_db: float
+    confidence: float
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    narrative: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "x", _number(self.x, "X coordinate"))
+        object.__setattr__(self, "y", _number(self.y, "Y coordinate"))
+        object.__setattr__(self, "change_type", _required_text(self.change_type, "Change type").upper())
+        object.__setattr__(self, "magnitude_db", _number(self.magnitude_db, "Magnitude dB"))
+        object.__setattr__(self, "confidence", _number(self.confidence, "Confidence"))
+        if self.lat is not None:
+            object.__setattr__(self, "lat", _number(self.lat, "Latitude"))
+        if self.lon is not None:
+            object.__setattr__(self, "lon", _number(self.lon, "Longitude"))
+
+
+@dataclass(frozen=True)
+class MultiTemporalChangeReport:
+    reference_scan: str
+    target_scan: str
+    arrived_count: int
+    departed_count: int
+    persistent_structures_count: int
+    change_map_path: Optional[str] = None
+    timestamp_t1: Optional[str] = None
+    timestamp_t2: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reference_scan", _required_text(self.reference_scan, "Reference scan"))
+        object.__setattr__(self, "target_scan", _required_text(self.target_scan, "Target scan"))
+        _non_negative_integer(self.arrived_count, "Arrived count")
+        _non_negative_integer(self.departed_count, "Departed count")
+        _non_negative_integer(self.persistent_structures_count, "Persistent structures count")
+
+

@@ -15,6 +15,7 @@ from sentinel_analysis.application.ports import (
     ImageryProvider,
     LocationResolver,
     PassPredictor,
+    SARChangeDetector,
     ScanRepository,
     SettingsRepository,
     ShipDetector,
@@ -201,6 +202,9 @@ class CompleteAdapter:
     def reset_section(self, section=None):
         return None
 
+    def compute_change_map(self, reference_image_path, target_image_path, output_path, *, threshold_db=4.5):
+        return {}
+
 
 
 def test_ports_support_structural_runtime_checks() -> None:
@@ -217,6 +221,7 @@ def test_ports_support_structural_runtime_checks() -> None:
         ImageryProvider,
         LocationResolver,
         PassPredictor,
+        SARChangeDetector,
         ScanRepository,
         SettingsRepository,
         ShipDetector,

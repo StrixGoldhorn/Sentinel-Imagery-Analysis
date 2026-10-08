@@ -14,6 +14,7 @@ from sentinel_analysis.application.use_cases import (
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
+    ComputeSARChangeDetection,
     DetectTransshipmentAnomalies,
     ExportGeospatial,
     GenerateDEM,
@@ -59,6 +60,7 @@ from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaO
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
 from sentinel_analysis.infrastructure.reporting import MatplotlibIntelligenceBriefGenerator
+from sentinel_analysis.infrastructure.sar_processing import NumpySARChangeDetector
 from sentinel_analysis.infrastructure.satellite.asf_client import ASFSearchClient
 from sentinel_analysis.infrastructure.satellite.asf_provider import ASFImageryProvider
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
@@ -140,6 +142,8 @@ class ApplicationContainer:
         self.brief_generator = MatplotlibIntelligenceBriefGenerator()
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
+        self.sar_change_detector = NumpySARChangeDetector()
+        self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)

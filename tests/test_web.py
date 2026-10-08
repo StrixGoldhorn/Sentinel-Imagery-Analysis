@@ -191,12 +191,23 @@ class StubContainer:
         self.ais_repository = None
         self.pass_scheduler = None
         self.settings_repository = None
-        self.correlate_ais_detections = None
         self.cross_validate_optical = StubUseCase({
             "status": "success",
             "confirmed_count": 1,
             "scenes_found": 1,
             "results": [{"detection_index": 0, "status": "CONFIRMED_VESSEL"}],
+        })
+        self.detect_transshipment = StubUseCase({
+            "status": "success",
+            "rendezvous_count": 0,
+            "loitering_count": 0,
+            "overall_threat_level": "LOW",
+        })
+        self.detect_sar_changes = StubUseCase({
+            "status": "success",
+            "arrived_count": 0,
+            "departed_count": 0,
+            "persistent_structures_count": 0,
         })
 
 
@@ -1054,6 +1065,55 @@ def test_radar_chip_inspector_and_temporal_ais_tracks() -> None:
     assert vessel["ship_type"] == "Cargo"
     assert len(vessel["points"]) == 2
     assert "interpolated_at_pass" in vessel
+
+
+def test_transshipment_endpoints() -> None:
+    client, container, _, _ = make_client()
+
+    container.detect_transshipment = StubUseCase({
+        "status": "success",
+        "rendezvous_count": 1,
+        "loitering_count": 0,
+        "overall_threat_level": "CRITICAL",
+    })
+
+    res = client.get("/api/scan/scan_1/transshipment?max_distance=500")
+    assert res.status_code == 200
+    data = res.json
+    assert data["status"] == "success"
+    assert data["rendezvous_count"] == 1
+    assert data["overall_threat_level"] == "CRITICAL"
+
+
+def test_sar_change_detection_endpoints() -> None:
+    client, container, _, _ = make_client()
+
+    container.detect_sar_changes = StubUseCase({
+        "status": "success",
+        "reference_scan": "scan_ref",
+        "target_scan": "scan_1",
+        "arrived_count": 2,
+        "departed_count": 1,
+        "persistent_structures_count": 3,
+    })
+
+    # Missing ref param -> 400
+    bad_res = client.post("/api/scan/scan_1/change-detection", json={})
+    assert bad_res.status_code == 400
+
+    # Valid POST with reference_scan
+    post_res = client.post(
+        "/api/scan/scan_1/change-detection",
+        json={"reference_scan": "scan_ref", "threshold_db": 5.0},
+    )
+    assert post_res.status_code == 200
+    assert post_res.json["status"] == "success"
+    assert post_res.json["arrived_count"] == 2
+
+    # Valid GET with query param
+    get_res = client.get("/api/scan/scan_1/change_detection?ref=scan_ref")
+    assert get_res.status_code == 200
+    assert get_res.json["status"] == "success"
 
 
 def load_tests(loader, standard_tests, pattern):
