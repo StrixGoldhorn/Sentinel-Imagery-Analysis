@@ -37,6 +37,7 @@ from sentinel_analysis.application.use_cases import (
     ListScans,
     ListScrapers,
     ManageWebhooks,
+    PostAcquisitionPipeline,
     PredictAreaOfInterest,
     RenameScan,
     ResetScraperCooldown,
@@ -153,6 +154,17 @@ class ApplicationContainer:
         self.export_geospatial = ExportGeospatial(self.scan_repository, self.geotiff_writer)
         self.brief_generator = MatplotlibIntelligenceBriefGenerator()
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
+        self.post_acquisition_pipeline = PostAcquisitionPipeline(
+            scan_repository=self.scan_repository,
+            detect_ships=self.detect_ships,
+            correlate_ais=self.correlate_ais_detections,
+            generate_dem=self.generate_dem,
+            generate_briefing=self.generate_briefing,
+            export_geospatial=self.export_geospatial,
+            settings_repository=self.settings_repository,
+            output_root=settings.output_root,
+            detection_saver=save_detection_results,
+        )
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.sar_change_detector = NumpySARChangeDetector()
         self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)

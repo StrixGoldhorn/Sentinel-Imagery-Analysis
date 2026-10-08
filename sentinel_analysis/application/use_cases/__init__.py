@@ -68,6 +68,7 @@ from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
     is_historical_prediction,
 )
 from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
+from sentinel_analysis.application.use_cases.post_acquisition_pipeline import PostAcquisitionPipeline
 
 
 __all__ = [
@@ -107,6 +108,7 @@ __all__ = [
     "ListScans",
     "ListScrapers",
     "ManageWebhooks",
+    "PostAcquisitionPipeline",
     "PredictAreaOfInterest",
     "PredictPasses",
     "RenameScan",

@@ -860,7 +860,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const res = await fetch(`${CONFIG.API_GET_SCAN}/${folder}`);
             const data = await res.json();
             if (!data.error) {
-                addImageryLayer(data.imageUrl, data.bounds, data.datetime, folder, data.custom_name);
+                const layerId = addImageryLayer(data.imageUrl, data.bounds, data.datetime, folder, data.custom_name);
+                if (data.latest_cv_results && (data.latest_cv_results.ship_count !== undefined || data.latest_cv_results.detections_json)) {
+                    try {
+                        const detRes = await fetch(`/api/scan/${folder}/detections`);
+                        if (detRes.ok) {
+                            const detData = await detRes.json();
+                            if (typeof applyDetectionsToLayer === 'function') {
+                                applyDetectionsToLayer(layerId, detData);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Could not autoload detections for", folder, e);
+                    }
+                }
                 if (folder === loadImmediate) {
                     map.fitBounds(data.bounds);
                 }

@@ -75,10 +75,7 @@ async function pollScanTask(taskId, bbox, retryCount = 0) {
             const scanResult = data.result || {};
             handleScanCompletion({
                 status: 'success',
-                imageUrl: scanResult.imageUrl,
-                bounds: scanResult.bounds,
-                datetime: scanResult.datetime,
-                folderName: scanResult.folderName,
+                ...scanResult,
                 customName: scanResult.customName || scanResult.folderName
             });
         } else if (taskStatus === 'FAILED' || taskStatus === 'CANCELLED') {
@@ -108,7 +105,15 @@ function handleScanCompletion(result) {
     const scanBtn = document.getElementById('scanBtn');
 
     if (result.status === 'success') {
-        addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, result.customName || result.folderName);
+        const layerId = addImageryLayer(result.imageUrl, result.bounds, result.datetime, result.folderName, result.customName || result.folderName);
+        
+        // Auto-render vessel detections if present from post-acquisition pipeline
+        if (layerId && (result.detections || result.ship_count !== undefined)) {
+            if (typeof applyDetectionsToLayer === 'function') {
+                applyDetectionsToLayer(layerId, result);
+            }
+        }
+
         statusText.innerText = "Scan complete!";
         
         drawnItems.clearLayers();
@@ -117,7 +122,16 @@ function handleScanCompletion(result) {
         if (saveAoiBtn) saveAoiBtn.disabled = true;
         const aoiStatus = document.getElementById('aoiStatus');
         if (aoiStatus) aoiStatus.innerText = "Draw a rectangle to begin.";
-        showNotification("SAR acquisition successfully loaded!", "success");
+
+        const shipCount = (result.detections && result.detections.length !== undefined)
+            ? result.detections.length
+            : (result.ship_count !== undefined ? result.ship_count : null);
+
+        if (shipCount !== null) {
+            showNotification(`SAR acquisition ready: ${shipCount} vessel${shipCount === 1 ? '' : 's'} detected. Intelligence briefing generated!`, "success");
+        } else {
+            showNotification("SAR acquisition successfully loaded!", "success");
+        }
         scanBtn.disabled = false;
     } else {
         statusText.innerText = "Draw a rectangle to begin.";

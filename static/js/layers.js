@@ -73,11 +73,18 @@ function getSarTabPopupContent(uiId) {
                     🔍 Zoom to Bounds
                 </button>
             </div>
-            <div class="sar-tab-popup-footer">
-                <a href="${layerObj.imageUrl}" target="_blank" rel="noopener noreferrer">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    Download Original PNG
-                </a>
+            <div class="sar-tab-popup-footer" style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #dee2e6; padding-top: 6px; margin-top: 6px; font-size: 0.85em;">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <a href="/api/scan/${layerObj.folder}/briefing/pdf" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">📄 Intel Brief (PDF)</a>
+                    <a href="/api/scan/${layerObj.folder}/geotiff" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">🗺️ GeoTIFF</a>
+                    <a href="/api/scan/${layerObj.folder}/gis_bundle" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">📦 GIS Bundle</a>
+                </div>
+                <div>
+                    <a href="${layerObj.imageUrl}" target="_blank" rel="noopener noreferrer" style="color: #6c757d; text-decoration: none;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download Original PNG
+                    </a>
+                </div>
             </div>
         </div>
     `;
@@ -173,7 +180,12 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
                             <button type="button" style="padding: 2px 8px; font-size: 0.75rem; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;" onclick="openSarShipDetectionsModal('${layerId}')">View List</button>
                         </div>
                     </div>
-                    <div style="margin-top: 5px; text-align: right;"><small><a href="${imageUrl}" target="_blank" rel="noopener noreferrer">View Original Image</a></small></div>
+                    <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; font-size: 0.78rem;">
+                        <a href="${imageUrl}" target="_blank" rel="noopener noreferrer" style="color: #64748b; text-decoration: none;">🖼️ Original</a>
+                        <a href="/api/scan/${folderName}/briefing/pdf" target="_blank" rel="noopener noreferrer" style="color: #ef4444; text-decoration: none; font-weight: 500;">📄 Intel Brief</a>
+                        <a href="/api/scan/${folderName}/geotiff" download style="color: #10b981; text-decoration: none; font-weight: 500;">🗺️ GeoTIFF</a>
+                        <a href="/api/scan/${folderName}/gis_bundle" download style="color: #0ea5e9; text-decoration: none; font-weight: 500;">📦 GIS Bundle</a>
+                    </div>
                 </div>
             </details>
         </div>
@@ -221,6 +233,7 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
     activeLayers.push(layerObj);
     if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
     if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
+    return layerId;
 }
 
 function removeSpecificLayer(folderName, uiId) {
@@ -288,6 +301,245 @@ function toggleCVLayer(uiId) {
     if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
 }
 
+function applyDetectionsToLayer(uiId, data, thresholdVal) {
+    const layerObj = activeLayers.find(l => l.uiId === uiId);
+    if (!layerObj) return;
+
+    const folderName = layerObj.folder;
+    const btn = document.querySelector(`#${uiId} .run-cv-btn`);
+    const thresholdInput = document.querySelector(`#${uiId} .cv-threshold-slider`);
+    if (thresholdVal === undefined && thresholdInput) {
+        thresholdVal = parseInt(thresholdInput.value, 10);
+    }
+    if (thresholdVal === undefined || isNaN(thresholdVal)) {
+        thresholdVal = data.threshold || CONFIG.CV_DEFAULT_THRESHOLD;
+    }
+    const toggleContainer = document.querySelector(`#${uiId} .cv-toggle-container`);
+    const toggleCb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
+    const resultsText = document.querySelector(`#${uiId} .cv-results-text`);
+    const shipsCountLabel = document.querySelector(`#${uiId} .ships-count-label`);
+
+    if (layerObj.detectLayer) map.removeLayer(layerObj.detectLayer);
+    
+    const detectLayer = L.featureGroup();
+    layerObj.detectLayer = detectLayer;
+    layerObj.cvTabs = [];
+
+    const bounds = layerObj.bounds;
+    const minLat = bounds.getSouth();
+    const maxLat = bounds.getNorth();
+    const minLon = bounds.getWest();
+    const maxLon = bounds.getEast();
+
+    layerObj.imgWidth = data.width || 1;
+    layerObj.imgHeight = data.height || 1;
+    const latScale = (maxLat - minLat) / layerObj.imgHeight;
+    const lonScale = (maxLon - minLon) / layerObj.imgWidth;
+
+    const detectionsList = data.detections || (data.boxes ? data.boxes.map(b => ({ x: b[0], y: b[1], width: b[2], height: b[3] })) : []);
+
+    layerObj.detections = detectionsList;
+    layerObj.cvRun = true;
+    layerObj.cvThreshold = thresholdVal;
+
+    detectionsList.forEach((item, idx) => {
+        const cx = item.center_x !== undefined ? item.center_x : (item.x + item.width / 2);
+        const cy = item.center_y !== undefined ? item.center_y : (item.y + item.height / 2);
+        item.lat = Number((maxLat - cy * latScale).toFixed(5));
+        item.lng = Number((minLon + cx * lonScale).toFixed(5));
+        item.id = idx + 1;
+
+        const b_minLon = minLon + item.x * lonScale;
+        const b_maxLon = minLon + (item.x + item.width) * lonScale;
+        const b_maxLat = maxLat - item.y * latScale;
+        const b_minLat = maxLat - (item.y + item.height) * latScale;
+
+        const cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
+
+        // Determine 3-tier bounding box / polygon color based on AIS correlation state
+        let strokeColor;
+        if (item.correlation_status === 'inside_box') {
+            strokeColor = CONFIG.COLOR_INSIDE_BOX_DETECTION || '#10b981';
+        } else if (item.correlation_status === 'outside_box') {
+            strokeColor = CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4';
+        } else {
+            strokeColor = (item.polygon_points && item.polygon_points.length === 4)
+                ? (CONFIG.COLOR_OBB_DETECTION || '#e67e22')
+                : (CONFIG.COLOR_CV_DETECTION || '#ff3333');
+        }
+
+        // If Oriented Bounding Box polygon vertices exist, draw polygon, else rectangle
+        let shapeLayer;
+        if (item.polygon_points && item.polygon_points.length === 4) {
+            const geoPoints = item.polygon_points.map(pt => [
+                maxLat - pt[1] * latScale,
+                minLon + pt[0] * lonScale
+            ]);
+            shapeLayer = L.polygon(geoPoints, {
+                color: strokeColor,
+                weight: 2,
+                fillColor: strokeColor,
+                fillOpacity: 0.15,
+                interactive: true
+            });
+        } else {
+            shapeLayer = L.rectangle(cvBounds, {
+                color: strokeColor,
+                weight: 2,
+                fillColor: strokeColor,
+                fillOpacity: 0.08,
+                fill: true,
+                interactive: true
+            });
+        }
+
+        // Popup with vessel metrology + correlation badge + button to open dossier
+        const confVal = item.confidence !== undefined ? (item.confidence * 100).toFixed(1) : null;
+        const confNum = item.confidence !== undefined ? item.confidence : 1;
+        let confClass = 'high';
+        if (confNum < 0.6) confClass = 'low';
+        else if (confNum < 0.8) confClass = 'medium';
+
+        let aisBadgeHtml = '';
+        let aisDetailHtml = '';
+        if (item.correlation_status === 'inside_box') {
+            const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
+            aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">AIS In-Box (${vesselName})</span>`;
+            aisDetailHtml = `
+                <div class="cv-popup-cell" style="grid-column: span 2;">
+                    <span class="cv-lbl">AIS Match (Inside Box)</span>
+                    <span class="cv-val" style="color: #10b981;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
+                </div>
+            `;
+        } else if (item.correlation_status === 'outside_box') {
+            const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
+            const dist = item.correlated_ais && item.correlated_ais.distance_to_box_meters !== undefined ? `${Math.round(item.correlated_ais.distance_to_box_meters)}m` : 'Buffer';
+            aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid #06b6d4;">AIS Buffer +${dist} (${vesselName})</span>`;
+            aisDetailHtml = `
+                <div class="cv-popup-cell" style="grid-column: span 2;">
+                    <span class="cv-lbl">AIS Match (Buffer +${dist})</span>
+                    <span class="cv-val" style="color: #06b6d4;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
+                </div>
+            `;
+        } else {
+            aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;">No AIS Ping</span>`;
+        }
+
+        const popupContent = `
+            <div class="cv-detection-popup-card">
+                <div class="cv-popup-header">
+                    <div class="cv-popup-title-group">
+                        <span class="cv-popup-icon">🚢</span>
+                        <div>
+                            <div class="cv-popup-title">Vessel Detection #${idx + 1}</div>
+                            <div class="cv-popup-sub">SAR Computer Vision</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                        ${confVal !== null ? `<span class="cv-conf-badge ${confClass}">${confVal}% Conf</span>` : ''}
+                        ${aisBadgeHtml}
+                    </div>
+                </div>
+                <div class="cv-popup-grid">
+                    ${aisDetailHtml}
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Est. Length</span>
+                        <span class="cv-val">${item.length ? `${item.length} m` : 'N/A'}</span>
+                    </div>
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Est. Beam</span>
+                        <span class="cv-val">${item.beam ? `${item.beam} m` : 'N/A'}</span>
+                    </div>
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Heading</span>
+                        <span class="cv-val">${item.angle !== undefined ? `${item.angle}°` : 'N/A'}</span>
+                    </div>
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Pixel Size</span>
+                        <span class="cv-val">${item.width}×${item.height} px</span>
+                    </div>
+                </div>
+                <div class="cv-popup-actions">
+                    <button type="button" class="cv-popup-btn-primary" style="background: #0ea5e9; color: white;" onclick='if (typeof openSarDetectionInShipSidebar === "function") openSarDetectionInShipSidebar("${folderName}", ${JSON.stringify(item)})'>
+                        🚢 Dossier
+                    </button>
+                    <button type="button" class="cv-popup-btn-secondary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
+                        🔍 Crop & Stats
+                    </button>
+                    <button type="button" class="cv-popup-btn-secondary" onclick='if (typeof openTemporalAisScrubber === "function") openTemporalAisScrubber("${folderName}")' title="Scrub AIS tracks across SAR pass">
+                        ⏱️ Scrubber
+                    </button>
+                    <button type="button" class="cv-popup-btn-secondary" onclick='openSarShipDetectionsModal("${uiId}")'>
+                        📋 All Ships
+                    </button>
+                </div>
+            </div>
+        `;
+
+        shapeLayer.bindPopup(popupContent, { className: 'cv-detection-popup', minWidth: 240 });
+
+        shapeLayer.on('click', () => {
+            if (typeof openSarDetectionInShipSidebar === 'function') {
+                openSarDetectionInShipSidebar(folderName, item);
+            }
+        });
+
+        shapeLayer.addTo(detectLayer);
+
+        let tabTooltipText = `<strong>Ship Detected #${idx + 1}</strong>`;
+        if (item.correlation_status === 'inside_box') {
+            tabTooltipText += `<br><span style="color:#10b981;">AIS In-Box: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
+        } else if (item.correlation_status === 'outside_box') {
+            tabTooltipText += `<br><span style="color:#06b6d4;">AIS Buffer: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
+        } else {
+            tabTooltipText += `<br><span style="color:#ef4444;">No AIS Ping</span>`;
+        }
+
+        const tabMarker = L.circleMarker(cvBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
+            .bindTooltip(tabTooltipText, { permanent: true, className: 'folder-tab-tooltip folder-tab-cv', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
+        
+        layerObj.cvTabs.push({ marker: tabMarker, bounds: cvBounds });
+    });
+
+    if (!toggleCb || toggleCb.checked) {
+        detectLayer.addTo(map);
+    }
+
+    const insideCount = typeof data.inside_box_count === 'number' ? data.inside_box_count : detectionsList.filter(d => d.correlation_status === 'inside_box').length;
+    const outsideCount = typeof data.outside_box_count === 'number' ? data.outside_box_count : detectionsList.filter(d => d.correlation_status === 'outside_box').length;
+    const correlatedCount = insideCount + outsideCount;
+
+    if (toggleContainer) {
+        toggleContainer.style.display = 'flex';
+        if (correlatedCount > 0) {
+            resultsText.innerText = `${detectionsList.length} Ships (${insideCount} in-box, ${outsideCount} buffer)`;
+        } else {
+            resultsText.innerText = `${detectionsList.length} Ships Detected`;
+        }
+    }
+    if (shipsCountLabel) {
+        shipsCountLabel.innerText = detectionsList.length;
+    }
+
+    // Update Tab Tooltip badge and Tab Popup with new detection count
+    layerObj.tabMarker.setTooltipContent(getSarTabTooltipContent(layerObj.name || folderName, detectionsList.length, true));
+    layerObj.tabMarker.setPopupContent(getSarTabPopupContent(uiId));
+    layerObj.outlineLayer.setPopupContent(getSarTabPopupContent(uiId));
+
+    if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
+    if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
+    if (btn) {
+        btn.disabled = false;
+        btn.innerText = "Update Detection";
+    }
+
+    // If modal is currently open for this layer, re-render its list
+    if (currentModalLayerId === uiId) {
+        renderSarDetectionsList();
+    }
+}
+window.applyDetectionsToLayer = applyDetectionsToLayer;
+
 async function runCVDetection(folderName, uiId) {
     const layerObj = activeLayers.find(l => l.uiId === uiId);
     if (!layerObj) return;
@@ -295,10 +547,6 @@ async function runCVDetection(folderName, uiId) {
     const btn = document.querySelector(`#${uiId} .run-cv-btn`);
     const thresholdInput = document.querySelector(`#${uiId} .cv-threshold-slider`);
     const thresholdVal = thresholdInput ? parseInt(thresholdInput.value, 10) : CONFIG.CV_DEFAULT_THRESHOLD;
-    const toggleContainer = document.querySelector(`#${uiId} .cv-toggle-container`);
-    const toggleCb = document.querySelector(`#${uiId} .cv-visibility-toggle`);
-    const resultsText = document.querySelector(`#${uiId} .cv-results-text`);
-    const shipsCountLabel = document.querySelector(`#${uiId} .ships-count-label`);
 
     if (btn) {
         btn.disabled = true;
@@ -317,228 +565,17 @@ async function runCVDetection(folderName, uiId) {
         const data = await res.json();
 
         if (data.status === 'success') {
-            if (layerObj.detectLayer) map.removeLayer(layerObj.detectLayer);
-            
-            const detectLayer = L.featureGroup();
-            layerObj.detectLayer = detectLayer;
-            layerObj.cvTabs = [];
+            applyDetectionsToLayer(uiId, data, thresholdVal);
 
-            const bounds = layerObj.bounds;
-            const minLat = bounds.getSouth();
-            const maxLat = bounds.getNorth();
-            const minLon = bounds.getWest();
-            const maxLon = bounds.getEast();
-
-            layerObj.imgWidth = data.width || 1;
-            layerObj.imgHeight = data.height || 1;
-            const latScale = (maxLat - minLat) / layerObj.imgHeight;
-            const lonScale = (maxLon - minLon) / layerObj.imgWidth;
-
-            const detectionsList = data.detections || (data.boxes ? data.boxes.map(b => ({ x: b[0], y: b[1], width: b[2], height: b[3] })) : []);
-
-            layerObj.detections = detectionsList;
-            layerObj.cvRun = true;
-            layerObj.cvThreshold = thresholdVal;
-
-            detectionsList.forEach((item, idx) => {
-                const cx = item.center_x !== undefined ? item.center_x : (item.x + item.width / 2);
-                const cy = item.center_y !== undefined ? item.center_y : (item.y + item.height / 2);
-                item.lat = Number((maxLat - cy * latScale).toFixed(5));
-                item.lng = Number((minLon + cx * lonScale).toFixed(5));
-                item.id = idx + 1;
-
-                const b_minLon = minLon + item.x * lonScale;
-                const b_maxLon = minLon + (item.x + item.width) * lonScale;
-                const b_maxLat = maxLat - item.y * latScale;
-                const b_minLat = maxLat - (item.y + item.height) * latScale;
-
-                const cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
-
-                // Determine 3-tier bounding box / polygon color based on AIS correlation state
-                let strokeColor;
-                if (item.correlation_status === 'inside_box') {
-                    strokeColor = CONFIG.COLOR_INSIDE_BOX_DETECTION || '#10b981';
-                } else if (item.correlation_status === 'outside_box') {
-                    strokeColor = CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4';
-                } else {
-                    strokeColor = (item.polygon_points && item.polygon_points.length === 4)
-                        ? (CONFIG.COLOR_OBB_DETECTION || '#e67e22')
-                        : (CONFIG.COLOR_CV_DETECTION || '#ff3333');
-                }
-
-                // If Oriented Bounding Box polygon vertices exist, draw polygon, else rectangle
-                let shapeLayer;
-                if (item.polygon_points && item.polygon_points.length === 4) {
-                    const geoPoints = item.polygon_points.map(pt => [
-                        maxLat - pt[1] * latScale,
-                        minLon + pt[0] * lonScale
-                    ]);
-                    shapeLayer = L.polygon(geoPoints, {
-                        color: strokeColor,
-                        weight: 2,
-                        fillColor: strokeColor,
-                        fillOpacity: 0.15,
-                        interactive: true
-                    });
-                } else {
-                    shapeLayer = L.rectangle(cvBounds, {
-                        color: strokeColor,
-                        weight: 2,
-                        fillColor: strokeColor,
-                        fillOpacity: 0.08,
-                        fill: true,
-                        interactive: true
-                    });
-                }
-
-                // Popup with vessel metrology + correlation badge + button to open dossier
-                const confVal = item.confidence !== undefined ? (item.confidence * 100).toFixed(1) : null;
-                const confNum = item.confidence !== undefined ? item.confidence : 1;
-                let confClass = 'high';
-                if (confNum < 0.6) confClass = 'low';
-                else if (confNum < 0.8) confClass = 'medium';
-
-                let aisBadgeHtml = '';
-                let aisDetailHtml = '';
-                if (item.correlation_status === 'inside_box') {
-                    const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
-                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;">AIS In-Box (${vesselName})</span>`;
-                    aisDetailHtml = `
-                        <div class="cv-popup-cell" style="grid-column: span 2;">
-                            <span class="cv-lbl">AIS Match (Inside Box)</span>
-                            <span class="cv-val" style="color: #10b981;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
-                        </div>
-                    `;
-                } else if (item.correlation_status === 'outside_box') {
-                    const vesselName = (item.correlated_ais && item.correlated_ais.name) ? item.correlated_ais.name : 'Vessel';
-                    const dist = item.correlated_ais && item.correlated_ais.distance_to_box_meters !== undefined ? `${Math.round(item.correlated_ais.distance_to_box_meters)}m` : 'Buffer';
-                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid #06b6d4;">AIS Buffer +${dist} (${vesselName})</span>`;
-                    aisDetailHtml = `
-                        <div class="cv-popup-cell" style="grid-column: span 2;">
-                            <span class="cv-lbl">AIS Match (Buffer +${dist})</span>
-                            <span class="cv-val" style="color: #06b6d4;">${item.correlated_ais.name || 'Unknown'} (MMSI: ${item.correlated_ais.mmsi || 'N/A'}${item.correlated_ais.speed != null ? ` · ${item.correlated_ais.speed} kn` : ''})</span>
-                        </div>
-                    `;
-                } else {
-                    aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;">No AIS Ping</span>`;
-                }
-
-                const popupContent = `
-                    <div class="cv-detection-popup-card">
-                        <div class="cv-popup-header">
-                            <div class="cv-popup-title-group">
-                                <span class="cv-popup-icon">🚢</span>
-                                <div>
-                                    <div class="cv-popup-title">Vessel Detection #${idx + 1}</div>
-                                    <div class="cv-popup-sub">SAR Computer Vision</div>
-                                </div>
-                            </div>
-                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-                                ${confVal !== null ? `<span class="cv-conf-badge ${confClass}">${confVal}% Conf</span>` : ''}
-                                ${aisBadgeHtml}
-                            </div>
-                        </div>
-                        <div class="cv-popup-grid">
-                            ${aisDetailHtml}
-                            <div class="cv-popup-cell">
-                                <span class="cv-lbl">Est. Length</span>
-                                <span class="cv-val">${item.length ? `${item.length} m` : 'N/A'}</span>
-                            </div>
-                            <div class="cv-popup-cell">
-                                <span class="cv-lbl">Est. Beam</span>
-                                <span class="cv-val">${item.beam ? `${item.beam} m` : 'N/A'}</span>
-                            </div>
-                            <div class="cv-popup-cell">
-                                <span class="cv-lbl">Heading</span>
-                                <span class="cv-val">${item.angle !== undefined ? `${item.angle}°` : 'N/A'}</span>
-                            </div>
-                            <div class="cv-popup-cell">
-                                <span class="cv-lbl">Pixel Size</span>
-                                <span class="cv-val">${item.width}×${item.height} px</span>
-                            </div>
-                        </div>
-                        <div class="cv-popup-actions">
-                            <button type="button" class="cv-popup-btn-primary" style="background: #0ea5e9; color: white;" onclick='if (typeof openSarDetectionInShipSidebar === "function") openSarDetectionInShipSidebar("${folderName}", ${JSON.stringify(item)})'>
-                                🚢 Dossier
-                            </button>
-                            <button type="button" class="cv-popup-btn-secondary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
-                                🔍 Crop & Stats
-                            </button>
-                            <button type="button" class="cv-popup-btn-secondary" onclick='if (typeof openTemporalAisScrubber === "function") openTemporalAisScrubber("${folderName}")' title="Scrub AIS tracks across SAR pass">
-                                ⏱️ Scrubber
-                            </button>
-                            <button type="button" class="cv-popup-btn-secondary" onclick='openSarShipDetectionsModal("${uiId}")'>
-                                📋 All Ships
-                            </button>
-                        </div>
-                    </div>
-                `;
-
-                shapeLayer.bindPopup(popupContent, { className: 'cv-detection-popup', minWidth: 240 });
-
-                shapeLayer.on('click', () => {
-                    if (typeof openSarDetectionInShipSidebar === 'function') {
-                        openSarDetectionInShipSidebar(folderName, item);
-                    }
-                });
-
-                shapeLayer.addTo(detectLayer);
-
-                let tabTooltipText = `<strong>Ship Detected #${idx + 1}</strong>`;
-                if (item.correlation_status === 'inside_box') {
-                    tabTooltipText += `<br><span style="color:#10b981;">AIS In-Box: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
-                } else if (item.correlation_status === 'outside_box') {
-                    tabTooltipText += `<br><span style="color:#06b6d4;">AIS Buffer: ${item.correlated_ais?.name || item.correlated_ais?.mmsi || 'Matched'}</span>`;
-                } else {
-                    tabTooltipText += `<br><span style="color:#ef4444;">No AIS Ping</span>`;
-                }
-
-                const tabMarker = L.circleMarker(cvBounds.getNorthWest(), { radius: 0, opacity: 0, fillOpacity: 0, interactive: false })
-                    .bindTooltip(tabTooltipText, { permanent: true, className: 'folder-tab-tooltip folder-tab-cv', direction: 'right', offset: CONFIG.TOOLTIP_OFFSET });
-                
-                layerObj.cvTabs.push({ marker: tabMarker, bounds: cvBounds });
-            });
-
-            if (!toggleCb || toggleCb.checked) {
-                detectLayer.addTo(map);
-            }
-
+            const detectionsList = data.detections || [];
             const insideCount = typeof data.inside_box_count === 'number' ? data.inside_box_count : detectionsList.filter(d => d.correlation_status === 'inside_box').length;
             const outsideCount = typeof data.outside_box_count === 'number' ? data.outside_box_count : detectionsList.filter(d => d.correlation_status === 'outside_box').length;
             const correlatedCount = insideCount + outsideCount;
 
-            if (toggleContainer) {
-                toggleContainer.style.display = 'flex';
-                if (correlatedCount > 0) {
-                    resultsText.innerText = `${detectionsList.length} Ships (${insideCount} in-box, ${outsideCount} buffer)`;
-                } else {
-                    resultsText.innerText = `${detectionsList.length} Ships Detected`;
-                }
-            }
-            if (shipsCountLabel) {
-                shipsCountLabel.innerText = detectionsList.length;
-            }
-
-            // Update Tab Tooltip badge and Tab Popup with new detection count
-            layerObj.tabMarker.setTooltipContent(getSarTabTooltipContent(layerObj.name || folderName, detectionsList.length, true));
-            layerObj.tabMarker.setPopupContent(getSarTabPopupContent(uiId));
-            layerObj.outlineLayer.setPopupContent(getSarTabPopupContent(uiId));
-
-            if (typeof updateTabsVisibility === 'function') updateTabsVisibility();
-            if (typeof updateSarDetectionsInSidebar === 'function') updateSarDetectionsInSidebar();
-            if (btn) {
-                btn.disabled = false;
-                btn.innerText = "Update Detection";
-            }
             if (correlatedCount > 0) {
                 showNotification(`CV Detection: ${detectionsList.length} vessels found (${insideCount} inside box, ${outsideCount} buffer match).`, "success");
             } else {
                 showNotification(`CV Detection completed: ${detectionsList.length} vessels found.`, "success");
-            }
-
-            // If modal is currently open for this layer, re-render its list
-            if (currentModalLayerId === uiId) {
-                renderSarDetectionsList();
             }
         } else {
             if (btn) {

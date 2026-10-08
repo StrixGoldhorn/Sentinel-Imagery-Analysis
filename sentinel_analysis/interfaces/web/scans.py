@@ -70,9 +70,10 @@ def create_scan():
             days_ago = int(days_ago)
         except (TypeError, ValueError):
             days_ago = 30
-    provider = optional_string(payload, "provider") or "copernicus"
     aoi_name = optional_string(payload, "aoi_name")
-    scan = container().create_scan.execute(
+    provider = optional_string(payload, "provider") or "copernicus"
+    cnt = container()
+    scan = cnt.create_scan.execute(
         bbox,
         days_ago=days_ago,
         aoi_name=aoi_name,
@@ -80,11 +81,16 @@ def create_scan():
         end_date=end_date,
         provider=provider,
     )
+    post_pipe = getattr(cnt, "post_acquisition_pipeline", None)
+    if post_pipe is not None:
+        result = post_pipe.execute(scan)
+        return jsonify(result), 201
+
     return jsonify(
         status="success",
         folderName=scan.folder_name,
         customName=scan.metadata.get("custom_name") or scan.folder_name,
-        imageUrl=scan_image_url(scan, container().settings.output_root),
+        imageUrl=scan_image_url(scan, cnt.settings.output_root),
         bounds=[[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
         datetime=scan.acquisition.acquired_at.isoformat(),
         provider=scan.metadata.get("provider", provider),
@@ -228,7 +234,23 @@ def run_cv(folder_name: str):
     else:
         dem_enabled = bool(dem_enabled)
 
-    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    cnt = container()
+    post_pipe = getattr(cnt, "post_acquisition_pipeline", None)
+    if post_pipe is not None:
+        raw_kinematics = payload.get("enable_kinematics")
+        enable_kinematics = bool(raw_kinematics) if raw_kinematics is not None else None
+        scan = cnt.get_scan.execute(safe_folder_name(folder_name))
+        result = post_pipe.execute(
+            scan,
+            threshold=threshold,
+            coastal_buffer=coastal_buffer,
+            ais_distance=ais_distance,
+            dem_enabled=dem_enabled,
+            enable_kinematics=enable_kinematics,
+        )
+        return jsonify(result)
+
+    scan = cnt.get_scan.execute(safe_folder_name(folder_name))
     image_path = Path(scan.image_path)
     dem_candidates = list(image_path.parent.glob("*_stitched_dem.png")) or list(image_path.parent.glob("*_dem.png"))
 
@@ -961,12 +983,13 @@ def get_scan_briefing(folder_name: str):
 
 
 @blueprint.get("/api/scan/<folder_name>/gis_bundle")
+@blueprint.get("/api/scan/<folder_name>/gis-bundle")
 def get_scan_gis_bundle(folder_name: str):
     scan = container().get_scan.execute(safe_folder_name(folder_name))
     image_path = Path(scan.image_path)
     folder_dir = image_path.parent
 
-    extensions = [".pgw", ".prj", ".geojson", ".json"]
+    extensions = [".pgw", ".prj", ".geojson", ".json", ".tif", ".pdf"]
     files_to_pack: list[Path] = []
 
     for img_cand in [folder_dir / f"{image_path.stem}_detected.png", folder_dir / "detected_ships.png", image_path]:

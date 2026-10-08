@@ -297,19 +297,32 @@ def scan_aoi(aoi_id: int):
                 aoi_name=aoi_name,
                 start_date=start_date,
                 end_date=end_date,
-                progress_callback=lambda progress, message: queue.update_progress(task_id, progress, message),
+                progress_callback=lambda progress, message: queue.update_progress(
+                    task_id, min(75.0, progress * 0.75), message
+                ),
             )
-            return {
-                "folderName": scan.folder_name,
-                "customName": scan.metadata.get("custom_name") or scan.folder_name,
-                "imageUrl": scan_image_url(scan, cnt.settings.output_root),
-                "bounds": [[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
-                "datetime": scan.acquisition.acquired_at.isoformat(),
-                "aoi_id": aoi_id,
-                "aoi_name": aoi_name,
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-            }
+            post_pipe = getattr(cnt, "post_acquisition_pipeline", None)
+            if post_pipe is not None:
+                res = post_pipe.execute(
+                    scan,
+                    progress_callback=lambda progress, message: queue.update_progress(
+                        task_id, 75.0 + (progress * 0.25), message
+                    ),
+                )
+            else:
+                res = {
+                    "status": "success",
+                    "folderName": scan.folder_name,
+                    "customName": scan.metadata.get("custom_name") or scan.folder_name,
+                    "imageUrl": scan_image_url(scan, cnt.settings.output_root),
+                    "bounds": [[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
+                    "datetime": scan.acquisition.acquired_at.isoformat(),
+                }
+            res["aoi_id"] = aoi_id
+            res["aoi_name"] = aoi_name
+            res["start_date"] = start_date.isoformat()
+            res["end_date"] = end_date.isoformat()
+            return res
 
         task = queue.submit("scan", task_id, _run_scan)
         return jsonify({
@@ -328,15 +341,20 @@ def scan_aoi(aoi_id: int):
         start_date=start_date,
         end_date=end_date,
     )
-    return jsonify(
-        status="success",
-        aoi_id=aoi.id,
-        aoi_name=aoi.name,
-        folderName=scan.folder_name,
-        customName=scan.metadata.get("custom_name") or scan.folder_name,
-        imageUrl=scan_image_url(scan, cnt.settings.output_root),
-        bounds=[[aoi.bbox.min_latitude, aoi.bbox.min_longitude], [aoi.bbox.max_latitude, aoi.bbox.max_longitude]],
-        datetime=scan.acquisition.acquired_at.isoformat(),
-        start_date=start_date.isoformat(),
-        end_date=end_date.isoformat(),
-    ), 201
+    post_pipe = getattr(cnt, "post_acquisition_pipeline", None)
+    if post_pipe is not None:
+        res = post_pipe.execute(scan)
+    else:
+        res = {
+            "status": "success",
+            "folderName": scan.folder_name,
+            "customName": scan.metadata.get("custom_name") or scan.folder_name,
+            "imageUrl": scan_image_url(scan, cnt.settings.output_root),
+            "bounds": [[aoi.bbox.min_latitude, aoi.bbox.min_longitude], [aoi.bbox.max_latitude, aoi.bbox.max_longitude]],
+            "datetime": scan.acquisition.acquired_at.isoformat(),
+        }
+    res["aoi_id"] = aoi.id
+    res["aoi_name"] = aoi.name
+    res["start_date"] = start_date.isoformat()
+    res["end_date"] = end_date.isoformat()
+    return jsonify(res), 201

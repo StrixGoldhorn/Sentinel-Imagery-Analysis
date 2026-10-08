@@ -48,8 +48,19 @@ def create_async_scan():
             start_date=start_date,
             end_date=end_date,
             provider=provider,
-            progress_callback=lambda progress, message: queue.update_progress(task_id, progress, message),
+            progress_callback=lambda progress, message: queue.update_progress(
+                task_id, min(75.0, progress * 0.75), message
+            ),
         )
+        if hasattr(cnt, "post_acquisition_pipeline") and cnt.post_acquisition_pipeline is not None:
+            pipeline_result = cnt.post_acquisition_pipeline.execute(
+                scan,
+                progress_callback=lambda progress, message: queue.update_progress(
+                    task_id, 75.0 + (progress * 0.25), message
+                ),
+            )
+            return pipeline_result
+
         return {
             "folderName": scan.folder_name,
             "customName": scan.metadata.get("custom_name") or scan.folder_name,
