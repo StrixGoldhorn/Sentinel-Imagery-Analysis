@@ -1,0 +1,39 @@
+services:
+  sentinel-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sentinel-analysis
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      - FLASK_ENV=production
+      - PORT=5000
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+      - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
+      - SENTINEL_DATABASE_PATH=/app/data/sentinel.db
+      - SENTINEL_OUTPUT_ROOT=/app/scans
+      - SENTINEL_CACHE_ROOT=/app/cache
+      - COPERNICUS_USERNAME=${COPERNICUS_USERNAME:-}
+      - COPERNICUS_PASSWORD=${COPERNICUS_PASSWORD:-}
+      - N2YO_API_KEY=${N2YO_API_KEY:-}
+      - SENTINEL_RUN_SCHEDULER=${SENTINEL_RUN_SCHEDULER:-true}
+    volumes:
+      - sentinel_data:/app/data
+      - sentinel_scans:/app/scans
+      - sentinel_cache:/app/cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  sentinel_data:
+    driver: local
+  sentinel_scans:
+    driver: local
+  sentinel_cache:
+    driver: local
