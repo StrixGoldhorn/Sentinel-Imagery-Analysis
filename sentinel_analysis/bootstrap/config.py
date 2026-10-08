@@ -54,41 +54,53 @@ class Settings:
         if load_dotenv is not None:
             load_dotenv(root / ".env")
 
-        def environment_path(name: str, default: Path) -> Path:
-            configured = os.getenv(name)
+        def first_env(*names: str, default: str | None = None) -> str | None:
+            for name in names:
+                val = os.getenv(name)
+                if val is not None and val != "":
+                    return val
+            return default
+
+        def environment_path(*names: str, default: Path) -> Path:
+            configured = None
+            for name in names:
+                val = os.getenv(name)
+                if val:
+                    configured = val
+                    break
             path = Path(configured) if configured else default
             return path if path.is_absolute() else root / path
 
         try:
-            port = int(os.getenv("PORT", "5050"))
+            port = int(first_env("SENTINEL_PORT", "PORT", default="5050") or "5050")
         except ValueError as exc:
             raise ValueError("PORT must be an integer") from exc
-        debug_value = os.getenv("FLASK_DEBUG", "false").strip().lower()
+        debug_value = (first_env("SENTINEL_DEBUG", "FLASK_DEBUG", default="false") or "false").strip().lower()
         if debug_value not in {"0", "1", "false", "true", "no", "yes"}:
             raise ValueError("FLASK_DEBUG must be one of: 0, 1, false, true, no, yes")
 
-        rate_limit_raw = os.getenv("SENTINEL_RATE_LIMIT", "120")
+        rate_limit_raw = first_env("SENTINEL_RATE_LIMIT", "RATE_LIMIT_PER_MINUTE", default="120") or "120"
         try:
             rate_limit_per_minute = max(1, int(rate_limit_raw))
         except ValueError:
             rate_limit_per_minute = 120
 
-        rate_limit_enabled_raw = os.getenv("SENTINEL_RATE_LIMITING_ENABLED", "true").strip().lower()
+        rate_limit_enabled_raw = (first_env("SENTINEL_RATE_LIMITING_ENABLED", "RATE_LIMITING_ENABLED", default="true") or "true").strip().lower()
         rate_limiting_enabled = rate_limit_enabled_raw not in {"0", "false", "no", "off"}
 
-        storage_quota_raw = os.getenv("SENTINEL_STORAGE_QUOTA_BYTES", str(10 * 1024 * 1024 * 1024))
+        storage_quota_raw = first_env("SENTINEL_STORAGE_QUOTA_BYTES", "STORAGE_QUOTA_BYTES", default=str(10 * 1024 * 1024 * 1024)) or str(10 * 1024 * 1024 * 1024)
         try:
             storage_quota_bytes = max(1024 * 1024, int(storage_quota_raw))
         except ValueError:
             storage_quota_bytes = 10 * 1024 * 1024 * 1024
 
-        scan_retention_raw = os.getenv("SENTINEL_SCAN_RETENTION_DAYS", "30")
+        scan_retention_raw = first_env("SENTINEL_SCAN_RETENTION_DAYS", "SCAN_RETENTION_DAYS", default="30") or "30"
         try:
             scan_retention_days = max(1, int(scan_retention_raw))
         except ValueError:
             scan_retention_days = 30
 
-        cache_retention_raw = os.getenv("SENTINEL_CACHE_RETENTION_DAYS", "7")
+        cache_retention_raw = first_env("SENTINEL_CACHE_RETENTION_DAYS", "CACHE_RETENTION_DAYS", default="7") or "7"
         try:
             cache_retention_days = max(1, int(cache_retention_raw))
         except ValueError:
@@ -96,15 +108,15 @@ class Settings:
 
         return cls(
             project_root=root,
-            database_path=environment_path("DATABASE_PATH", root / "data.db"),
-            output_root=environment_path("OUTPUT_ROOT", root / "static" / "output"),
-            copernicus_username=os.getenv("COP_USERNAME"),
-            copernicus_password=os.getenv("COP_PASSWORD"),
-            n2yo_api_key=os.getenv("N2YO_API_KEY"),
+            database_path=environment_path("SENTINEL_DATABASE_PATH", "DATABASE_PATH", default=root / "data.db"),
+            output_root=environment_path("SENTINEL_OUTPUT_ROOT", "OUTPUT_ROOT", default=root / "static" / "output"),
+            copernicus_username=first_env("SENTINEL_COPERNICUS_USERNAME", "COPERNICUS_USERNAME", "COP_USERNAME"),
+            copernicus_password=first_env("SENTINEL_COPERNICUS_PASSWORD", "COPERNICUS_PASSWORD", "COP_PASSWORD"),
+            n2yo_api_key=first_env("SENTINEL_N2YO_API_KEY", "N2YO_API_KEY"),
             debug=debug_value in {"1", "true", "yes"},
             port=port,
-            cache_root=environment_path("CACHE_ROOT", root / ".cache"),
-            api_key=os.getenv("SENTINEL_API_KEY"),
+            cache_root=environment_path("SENTINEL_CACHE_ROOT", "CACHE_ROOT", default=root / ".cache"),
+            api_key=first_env("SENTINEL_API_KEY", "API_KEY"),
             rate_limit_per_minute=rate_limit_per_minute,
             rate_limiting_enabled=rate_limiting_enabled,
             storage_quota_bytes=storage_quota_bytes,
