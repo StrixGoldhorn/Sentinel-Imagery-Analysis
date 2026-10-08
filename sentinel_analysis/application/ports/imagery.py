@@ -49,3 +49,17 @@ class ImageStitcher(Protocol):
 
     def stitch(self, tiles: Sequence[TileImage], output_path: Path, allow_empty: bool = False) -> None:
         ...
+
+
+@runtime_checkable
+class GeoTIFFWriter(Protocol):
+    """Write georeferenced TIFF files with spatial transformation tags."""
+
+    def write_geotiff(
+        self,
+        image_path: Path,
+        output_path: Path,
+        bbox: BoundingBox,
+    ) -> Path:
+        ...
+

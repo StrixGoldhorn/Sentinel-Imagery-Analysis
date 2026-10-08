@@ -14,6 +14,7 @@ from sentinel_analysis.application.use_cases import (
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
+    ExportGeospatial,
     GenerateDEM,
     GetScan,
     GetScraperDetail,
@@ -48,6 +49,7 @@ from sentinel_analysis.infrastructure.detection.detection_saver import save_dete
 from sentinel_analysis.infrastructure.geocoding import NominatimLocationResolver
 from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
+from sentinel_analysis.infrastructure.imagery.geotiff import PillowGeoTIFFWriter
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
@@ -130,6 +132,8 @@ class ApplicationContainer:
             self.sentinel2_client,
         )
         self.get_scan = GetScan(self.scan_repository)
+        self.geotiff_writer = PillowGeoTIFFWriter()
+        self.export_geospatial = ExportGeospatial(self.scan_repository, self.geotiff_writer)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)

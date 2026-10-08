@@ -780,8 +780,11 @@ def get_scan_detections(folder_name: str):
 
 
 @blueprint.get("/api/scan/<folder_name>/geojson")
+@blueprint.get("/api/scan/<folder_name>/export/geojson")
 def get_scan_geojson(folder_name: str):
-    scan = container().get_scan.execute(safe_folder_name(folder_name))
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    scan = cnt.get_scan.execute(safe_name)
     image_path = Path(scan.image_path)
     candidates = [
         image_path.parent / f"{image_path.stem}_detections.geojson",
@@ -791,7 +794,51 @@ def get_scan_geojson(folder_name: str):
         if c.is_file():
             as_att = request.args.get("download") in ("1", "true")
             return send_file(c, mimetype="application/geo+json", as_attachment=as_att, download_name=c.name)
-    return jsonify(error="GeoJSON detections not found"), 404
+
+    try:
+        fc = cnt.export_geospatial.export_geojson(safe_name)
+        as_att = request.args.get("download") in ("1", "true")
+        if as_att:
+            buf = io.BytesIO(json.dumps(fc, indent=2).encode("utf-8"))
+            return send_file(
+                buf,
+                mimetype="application/geo+json",
+                as_attachment=True,
+                download_name=f"{scan.folder_name}_detections.geojson",
+            )
+        return jsonify(fc)
+    except Exception as exc:
+        return jsonify(error=f"GeoJSON export failed: {exc}"), 500
+
+
+@blueprint.get("/api/scan/<folder_name>/export/geotiff")
+@blueprint.get("/api/scan/<folder_name>/geotiff")
+def export_scan_geotiff(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    try:
+        tif_path = cnt.export_geospatial.export_geotiff(safe_name)
+        as_att = request.args.get("download", "true").lower() in ("1", "true")
+        return send_file(
+            tif_path,
+            mimetype="image/tiff",
+            as_attachment=as_att,
+            download_name=tif_path.name,
+        )
+    except Exception as exc:
+        return jsonify(error=f"GeoTIFF export failed: {exc}"), 500
+
+
+@blueprint.get("/api/scan/<folder_name>/export/stac")
+@blueprint.get("/api/scan/<folder_name>/stac")
+def export_scan_stac(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    try:
+        stac_item = cnt.export_geospatial.export_stac_item(safe_name, base_url=request.host_url.rstrip("/"))
+        return jsonify(stac_item)
+    except Exception as exc:
+        return jsonify(error=f"STAC export failed: {exc}"), 500
 
 
 @blueprint.get("/api/scan/<folder_name>/gis_bundle")

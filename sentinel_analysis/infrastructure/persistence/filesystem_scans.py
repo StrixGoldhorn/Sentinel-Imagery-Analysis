@@ -51,6 +51,12 @@ class FilesystemScanRepository:
         settings.setdefault("datasource", scan.acquisition.product_type)
         if scan.acquisition.product_id is not None:
             metadata.setdefault("product_id", scan.acquisition.product_id)
+        if scan.acquisition.orbit_direction is not None:
+            metadata.setdefault("orbit_direction", scan.acquisition.orbit_direction)
+        if scan.acquisition.relative_orbit is not None:
+            metadata.setdefault("relative_orbit", scan.acquisition.relative_orbit)
+        if scan.acquisition.polarizations:
+            metadata.setdefault("polarizations", list(scan.acquisition.polarizations))
         image_path = Path(scan.image_path).resolve()
         image_directory = (directory / "images").resolve()
         if image_path.parent != image_directory:
@@ -69,11 +75,13 @@ class FilesystemScanRepository:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             bbox = BoundingBox.from_sequence(metadata["settings"]["bbox"])
             acquired = datetime.fromisoformat(str(metadata["acquisition_datetime"]).replace("Z", "+00:00"))
+            pols = tuple(metadata["polarizations"]) if "polarizations" in metadata and metadata["polarizations"] else ("VH",)
             acquisition = Acquisition(
                 acquired,
                 str(metadata.get("satellite", "Sentinel-1")),
                 str(metadata.get("settings", {}).get("datasource", "sentinel-1-grd")),
                 metadata.get("product_id"),
+                polarizations=pols,
                 orbit_direction=metadata.get("orbit_direction"),
                 relative_orbit=metadata.get("relative_orbit"),
             )

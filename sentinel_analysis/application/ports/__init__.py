@@ -13,7 +13,7 @@ from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRep
 from sentinel_analysis.application.ports.cache import TileCache
 from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
 from sentinel_analysis.application.ports.geocoding import LocationResolver
-from sentinel_analysis.application.ports.imagery import ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.imagery import GeoTIFFWriter, ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.optical import (
     OpticalCrossValidator,
     OpticalScene,
@@ -38,6 +38,7 @@ __all__ = [
     "AnnotationTileSource",
     "AreaOfInterestRepository",
     "DetectionResult",
+    "GeoTIFFWriter",
     "ImageStitcher",
     "ImageryProvider",
     "LocationResolver",

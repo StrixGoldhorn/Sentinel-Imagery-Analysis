@@ -99,6 +99,8 @@
                     <a href="/api/scan/{{ scan.folder }}/detection_image" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Detected Ships</a>
                     <a href="/api/scan/{{ scan.folder }}/geojson?download=1" class="btn btn-outline" download>GeoJSON</a>
                     <a href="/api/scan/{{ scan.folder }}/gis_bundle" class="btn btn-outline" download>GIS Bundle (.zip)</a>
+                    <a href="/api/scan/{{ scan.folder }}/export/geotiff?download=1" class="btn btn-outline" download title="Download Georeferenced GeoTIFF (EPSG:4326)">GeoTIFF (.tif)</a>
+                    <a href="/api/scan/{{ scan.folder }}/export/stac" target="_blank" rel="noopener noreferrer" class="btn btn-outline" title="View STAC Item v1.0.0 Metadata">STAC Item</a>
                     {% endif %}
                     <button class="btn btn-delete" onclick='openDeleteModal({{ scan.folder|tojson }}, {{ (scan.metadata.custom_name or scan.folder)|tojson }})'>Delete</button>
                 </div>
