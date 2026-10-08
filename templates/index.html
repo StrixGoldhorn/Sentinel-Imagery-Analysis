@@ -119,6 +119,42 @@
                 </div>
             </div>
 
+            <div class="c2-card" id="sarProviderCard">
+                <div class="c2-card-header">
+                    <span>SAR Satellite Provider</span>
+                </div>
+                <div class="c2-card-body" style="font-size: 0.85em;">
+                    <div style="margin-bottom: 8px;">
+                        <label for="sarProviderSelect" style="display: block; font-weight: 600; margin-bottom: 4px; color: #475569;">Constellation / Catalog:</label>
+                        <select id="sarProviderSelect" class="form-control form-control-sm" style="width: 100%; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.85em;" onchange="onSarProviderChange(this.value)">
+                            <option value="copernicus" selected>ESA Copernicus (Sentinel-1 C-Band ~10m)</option>
+                            <option value="umbra">Umbra Open Data (Sub-Meter X-Band &lt;1.0m)</option>
+                            <option value="asf">NASA ASF DAAC (Sentinel-1 / ALOS Archive)</option>
+                        </select>
+                    </div>
+
+                    <!-- Umbra Controls (shown when Umbra is selected) -->
+                    <div id="umbraControls" style="display: none; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+                        <label for="umbraSiteSelect" style="display: block; font-weight: 600; margin-bottom: 4px; color: #475569;">Maritime Choke Point / Port:</label>
+                        <select id="umbraSiteSelect" class="form-control form-control-sm" style="width: 100%; padding: 4px 8px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.85em;" onchange="onUmbraSiteChange(this.value)">
+                            <option value="">Auto-detect from Drawn Bounding Box</option>
+                            <option value="singapore_strait">Singapore Strait (Malacca Choke Point)</option>
+                            <option value="suez_canal">Suez Canal (Port Said / Bitter Lakes)</option>
+                            <option value="panama_canal">Panama Canal (Miraflores Locks)</option>
+                            <option value="port_of_rotterdam">Port of Rotterdam (Maasvlakte)</option>
+                            <option value="strait_of_gibraltar">Strait of Gibraltar</option>
+                            <option value="strait_of_malacca">Strait of Malacca</option>
+                        </select>
+                        <div style="margin-top: 6px; display: flex; gap: 6px;">
+                            <button type="button" class="btn btn-sm btn-outline-primary" style="flex: 1; font-size: 0.78em; padding: 3px 6px;" onclick="loadUmbraScenes()">
+                                🔍 Preview Umbra Scenes
+                            </button>
+                        </div>
+                        <div id="umbraScenesList" style="margin-top: 6px; max-height: 120px; overflow-y: auto; font-size: 0.75em; display: none; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px;"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="c2-action-group">
                 <button id="scanBtn" class="btn btn-primary btn-block" disabled>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>

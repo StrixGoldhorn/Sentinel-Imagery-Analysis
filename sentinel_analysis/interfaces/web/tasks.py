@@ -36,6 +36,7 @@ def create_async_scan():
         raise RequestValidationError("Start date/time cannot be after end date/time")
 
     aoi_name = optional_string(payload, "aoi_name")
+    provider = optional_string(payload, "provider") or "copernicus"
     queue = container().task_queue
     cnt = container()
     task_id = str(uuid.uuid4())
@@ -46,6 +47,7 @@ def create_async_scan():
             aoi_name=aoi_name,
             start_date=start_date,
             end_date=end_date,
+            provider=provider,
             progress_callback=lambda progress, message: queue.update_progress(task_id, progress, message),
         )
         return {
@@ -54,6 +56,7 @@ def create_async_scan():
             "imageUrl": scan_image_url(scan, cnt.settings.output_root),
             "bounds": [[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
             "datetime": scan.acquisition.acquired_at.isoformat(),
+            "provider": scan.metadata.get("provider", provider),
         }
 
     task = queue.submit("scan", task_id, _run_scan)

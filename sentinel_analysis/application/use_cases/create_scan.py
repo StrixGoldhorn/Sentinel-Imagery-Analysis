@@ -19,11 +19,16 @@ class CreateScan:
         stitcher: ImageStitcher,
         scans: ScanRepository,
         locations: LocationResolver,
+        providers: dict[str, ImageryProvider] | None = None,
     ) -> None:
         self._imagery = imagery
         self._stitcher = stitcher
         self._scans = scans
         self._locations = locations
+        self._providers = {
+            "copernicus": imagery,
+            **({k.lower(): v for k, v in providers.items()} if providers else {}),
+        }
 
     def execute(
         self,
@@ -35,10 +40,13 @@ class CreateScan:
         acquisition: Acquisition | None = None,
         include_dem: bool = False,
         progress_callback: Callable[[float, str], None] | None = None,
+        provider: str = "copernicus",
     ) -> Scan:
         def report(progress: float, message: str) -> None:
             if progress_callback is not None:
                 progress_callback(progress, message)
+
+        active_imagery = self._providers.get(str(provider or "copernicus").lower(), self._imagery)
 
         if days_ago is not None:
             if isinstance(days_ago, bool) or not isinstance(days_ago, int) or days_ago <= 0:
@@ -58,7 +66,7 @@ class CreateScan:
 
         if acquisition is None:
             report(5, "Searching the imagery catalog")
-            acquisition = self._imagery.find_latest_acquisition(
+            acquisition = active_imagery.find_latest_acquisition(
                 bbox,
                 days_ago=days_ago,
                 start_date=start_date,
@@ -90,7 +98,7 @@ class CreateScan:
             scan_dir = self._scans.prepare(folder_name)
             workspace_prepared = True
             image_dir = scan_dir / "images"
-            tiles = list(self._imagery.calculate_tiles(bbox))
+            tiles = list(active_imagery.calculate_tiles(bbox))
             if not tiles:
                 raise NoImageryFoundError("The imagery provider returned no downloadable tiles")
 
@@ -98,7 +106,7 @@ class CreateScan:
             report(20, f"Downloading {len(tiles)} imagery tile(s)")
             for index, tile in enumerate(tiles, start=1):
                 tile_path = image_dir / f"tile_{tile.x}_{tile.y}.png"
-                self._imagery.download_tile(tile, acquisition, tile_path)
+                active_imagery.download_tile(tile, acquisition, tile_path)
                 downloaded.append((tile, tile_path))
                 report(20 + (50 * index / len(tiles)), f"Downloaded tile {index} of {len(tiles)}")
 
@@ -113,13 +121,13 @@ class CreateScan:
             # DEM tiles are only needed for land-masked ship detection. Keep them
             # out of ordinary imagery scans; the explicit GenerateDEM/use-CV path
             # can create them on demand and the provider cache will reuse them.
-            if include_dem and hasattr(self._imagery, "download_dem_tile"):
+            if include_dem and hasattr(active_imagery, "download_dem_tile"):
                 downloaded_dem: list[TileImage] = []
                 try:
                     report(82, "Generating DEM land mask")
                     for tile in tiles:
                         dem_tile_path = image_dir / f"dem_tile_{tile.x}_{tile.y}.png"
-                        self._imagery.download_dem_tile(tile, dem_tile_path)
+                        active_imagery.download_dem_tile(tile, dem_tile_path)
                         downloaded_dem.append((tile, dem_tile_path))
 
                     try:
@@ -139,6 +147,7 @@ class CreateScan:
                 "bbox": bbox.as_list(),
                 "evalscript": "EVALSCRIPT_SAR",
                 "datasource": acquisition.product_type,
+                "provider": str(provider or "copernicus").lower(),
             }
             if start_date is not None:
                 settings_dict["start_date"] = start_date.isoformat()
@@ -148,6 +157,7 @@ class CreateScan:
             metadata: dict[str, object] = {
                 "acquisition_datetime": acquisition.acquired_at.isoformat(),
                 "satellite": acquisition.satellite,
+                "provider": str(provider or "copernicus").lower(),
                 "settings": settings_dict,
                 "scraped_datetime": now.isoformat(),
                 "location": self._locations.resolve(latitude, longitude),

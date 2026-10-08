@@ -52,9 +52,13 @@ from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRep
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
+from sentinel_analysis.infrastructure.satellite.asf_client import ASFSearchClient
+from sentinel_analysis.infrastructure.satellite.asf_provider import ASFImageryProvider
 from sentinel_analysis.infrastructure.satellite.hybrid_predictor import HybridPassPredictor
 from sentinel_analysis.infrastructure.satellite.n2yo import N2YOPassPredictor
 from sentinel_analysis.infrastructure.satellite.s1_analyzer import Sentinel1MissionAnalyzer
+from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDataClient
+from sentinel_analysis.infrastructure.satellite.umbra_provider import UmbraImageryProvider
 from sentinel_analysis.infrastructure.scheduler.pass_monitor import BackgroundPassMonitor
 from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedulerWorker
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
@@ -90,12 +94,22 @@ class ApplicationContainer:
             settings_repo=self.settings_repository,
         )
 
+        self.asf_client = ASFSearchClient()
+        self.asf_provider = ASFImageryProvider(self.asf_client)
+        self.umbra_client = UmbraOpenDataClient()
+        self.umbra_provider = UmbraImageryProvider(self.umbra_client)
+
         self.generate_dem = GenerateDEM(self.imagery, self.stitcher)
         self.create_scan = CreateScan(
             self.imagery,
             self.stitcher,
             self.scan_repository,
             NominatimLocationResolver(),
+            providers={
+                "copernicus": self.imagery,
+                "umbra": self.umbra_provider,
+                "asf": self.asf_provider,
+            },
         )
         self.detect_ships = DetectShips(ClassicalShipDetector(settings_repo=self.settings_repository))
         self.correlate_ais_detections = CorrelateDetectionsWithAIS(

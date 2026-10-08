@@ -14,18 +14,20 @@ async function triggerScan(bbox) {
     scanBtn.disabled = true;
     statusText.innerText = "Dispatching SAR acquisition task...";
 
+    const provider = document.getElementById('sarProviderSelect')?.value || 'copernicus';
+
     try {
         // Try asynchronous task submission first
         const asyncRes = await fetch(CONFIG.API_ASYNC_SCAN, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bbox: bbox })
+            body: JSON.stringify({ bbox: bbox, provider: provider })
         });
 
         if (asyncRes.ok) {
             const taskData = await asyncRes.json();
             const taskId = taskData.task_id;
-            statusText.innerText = "Processing SAR imagery in background...";
+            statusText.innerText = `Processing ${provider.toUpperCase()} SAR imagery in background...`;
             pollScanTask(taskId, bbox);
             return;
         }
@@ -44,7 +46,7 @@ async function triggerScan(bbox) {
         const response = await fetch(CONFIG.API_SCAN, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ bbox: bbox })
+            body: JSON.stringify({ bbox: bbox, provider: provider })
         });
         
         const result = await response.json().catch(() => ({}));
@@ -160,3 +162,77 @@ function initScannerHandlers() {
         };
     }
 }
+
+const UMBRA_SITE_BOUNDS = {
+    'singapore_strait': [1.1, 103.6, 1.4, 104.1],
+    'suez_canal': [29.8, 32.4, 30.1, 32.7],
+    'panama_canal': [8.8, -79.7, 9.1, -79.4],
+    'port_of_rotterdam': [51.8, 4.0, 52.1, 4.3],
+    'strait_of_gibraltar': [36.0, -5.5, 36.3, -5.2],
+    'strait_of_malacca': [2.0, 102.0, 2.4, 102.5]
+};
+
+function onSarProviderChange(provider) {
+    const umbraControls = document.getElementById('umbraControls');
+    if (umbraControls) {
+        umbraControls.style.display = (provider === 'umbra') ? 'block' : 'none';
+    }
+}
+
+function onUmbraSiteChange(siteKey) {
+    if (!siteKey || !UMBRA_SITE_BOUNDS[siteKey]) return;
+    const b = UMBRA_SITE_BOUNDS[siteKey]; // [min_lat, min_lon, max_lat, max_lon]
+    const southWest = L.latLng(b[0], b[1]);
+    const northEast = L.latLng(b[2], b[3]);
+    const bounds = L.latLngBounds(southWest, northEast);
+
+    if (window.map) {
+        window.map.fitBounds(bounds);
+    }
+    if (window.drawnItems) {
+        window.drawnItems.clearLayers();
+        const rect = L.rectangle(bounds, { color: '#0ea5e9', weight: 2 });
+        window.drawnItems.addLayer(rect);
+    }
+
+    currentBbox = [b[1], b[0], b[3], b[2]]; // [min_lon, min_lat, max_lon, max_lat]
+    const bboxReadout = document.getElementById('selectedBboxCoords');
+    const bboxDisplay = document.getElementById('selectedBboxDisplay');
+    const statusText = document.getElementById('status');
+    const scanBtn = document.getElementById('scanBtn');
+
+    if (bboxReadout) bboxReadout.innerText = currentBbox.map(c => Number(c).toFixed(4)).join(', ');
+    if (bboxDisplay) bboxDisplay.style.display = 'block';
+    if (statusText) statusText.innerText = `Umbra site selected: ${siteKey.replace('_', ' ').toUpperCase()}`;
+    if (scanBtn) scanBtn.disabled = false;
+}
+
+async function loadUmbraScenes() {
+    const listEl = document.getElementById('umbraScenesList');
+    const siteSelect = document.getElementById('umbraSiteSelect');
+    const siteKey = siteSelect ? siteSelect.value : '';
+    if (!listEl) return;
+
+    listEl.style.display = 'block';
+    listEl.innerHTML = '<span style="color: #64748b;">Loading Umbra Open Data scenes...</span>';
+
+    try {
+        const url = siteKey ? `/api/umbra/scenes?site=${encodeURIComponent(siteKey)}` : '/api/umbra/scenes';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.status === 'success' && data.scenes && data.scenes.length > 0) {
+            listEl.innerHTML = data.scenes.map(s => `
+                <div style="padding: 4px; border-bottom: 1px solid #e2e8f0;">
+                    <strong>${escapeHtml(s.target_name || s.scene_id)}</strong><br>
+                    <span>Res: ${s.resolution_meters}m | Pol: ${s.polarization}</span><br>
+                    <small style="color: #64748b;">${s.timestamp.replace('T', ' ').slice(0, 19)} UTC</small>
+                </div>
+            `).join('');
+        } else {
+            listEl.innerHTML = '<span style="color: #94a3b8;">No open scenes indexed for this location.</span>';
+        }
+    } catch (err) {
+        listEl.innerHTML = `<span style="color: #ef4444;">Failed to query Umbra catalog: ${escapeHtml(err.message)}</span>`;
+    }
+}
+

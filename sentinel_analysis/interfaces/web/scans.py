@@ -12,7 +12,7 @@ import numpy as np
 from flask import Blueprint, Response, jsonify, render_template, request, send_file, send_from_directory
 from PIL import Image
 
-from sentinel_analysis.domain.entities import Scan
+from sentinel_analysis.domain.entities import BoundingBox, Scan
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
@@ -67,6 +67,7 @@ def create_scan():
             days_ago = int(days_ago)
         except (TypeError, ValueError):
             days_ago = 30
+    provider = optional_string(payload, "provider") or "copernicus"
     aoi_name = optional_string(payload, "aoi_name")
     scan = container().create_scan.execute(
         bbox,
@@ -74,6 +75,7 @@ def create_scan():
         aoi_name=aoi_name,
         start_date=start_date,
         end_date=end_date,
+        provider=provider,
     )
     return jsonify(
         status="success",
@@ -82,7 +84,99 @@ def create_scan():
         imageUrl=scan_image_url(scan, container().settings.output_root),
         bounds=[[bbox.min_latitude, bbox.min_longitude], [bbox.max_latitude, bbox.max_longitude]],
         datetime=scan.acquisition.acquired_at.isoformat(),
+        provider=scan.metadata.get("provider", provider),
     ), 201
+
+
+@blueprint.route("/api/umbra/scenes", methods=["GET", "POST"])
+def list_umbra_scenes():
+    cnt = container()
+    client = getattr(cnt, "umbra_client", None)
+    if client is None:
+        from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDataClient
+        client = UmbraOpenDataClient()
+
+    site_key = None
+    bbox = None
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        site_key = payload.get("site_key") or payload.get("site")
+        if "bbox" in payload:
+            try:
+                bbox = bounding_box(payload)
+            except Exception:
+                pass
+    else:
+        site_key = request.args.get("site") or request.args.get("site_key")
+        min_lon = request.args.get("min_lon")
+        if min_lon is not None:
+            try:
+                bbox = BoundingBox(
+                    float(request.args.get("min_lon")),
+                    float(request.args.get("min_lat")),
+                    float(request.args.get("max_lon")),
+                    float(request.args.get("max_lat")),
+                )
+            except Exception:
+                pass
+
+    if bbox and not site_key:
+        site_key = client.search_nearby_site(bbox)
+
+    scenes = client.fetch_site_scenes(site_key) if site_key else []
+    return jsonify({
+        "status": "success",
+        "sites": client.get_maritime_sites(),
+        "matched_site": site_key,
+        "scenes": [s.to_dict() for s in scenes],
+    })
+
+
+@blueprint.route("/api/asf/search", methods=["GET", "POST"])
+def search_asf():
+    cnt = container()
+    client = getattr(cnt, "asf_client", None)
+    if client is None:
+        from sentinel_analysis.infrastructure.satellite.asf_client import ASFSearchClient
+        client = ASFSearchClient()
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        bbox = bounding_box(payload)
+        platform = str(payload.get("platform") or "SENTINEL-1")
+        beam_mode = str(payload.get("beam_mode") or "IW")
+        max_results = int(payload.get("max_results") or 20)
+        start_date = optional_datetime(payload, "start_date")
+        end_date = optional_datetime(payload, "end_date")
+    else:
+        min_lon = float(request.args.get("min_lon", 103.5))
+        min_lat = float(request.args.get("min_lat", 1.0))
+        max_lon = float(request.args.get("max_lon", 104.5))
+        max_lat = float(request.args.get("max_lat", 2.0))
+        bbox = BoundingBox(min_lon, min_lat, max_lon, max_lat)
+        platform = request.args.get("platform", "SENTINEL-1")
+        beam_mode = request.args.get("beam_mode", "IW")
+        max_results = int(request.args.get("max_results", 20))
+        start_date = None
+        end_date = None
+
+    try:
+        products = client.search(
+            bbox=bbox,
+            platform=platform,
+            beam_mode=beam_mode,
+            max_results=max_results,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as exc:
+        products = []
+
+    return jsonify({
+        "status": "success",
+        "count": len(products),
+        "products": [p.to_dict() for p in products],
+    })
 
 
 @blueprint.post("/api/update_metadata/<folder_name>")
