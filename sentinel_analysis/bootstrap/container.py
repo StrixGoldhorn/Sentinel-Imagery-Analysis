@@ -11,17 +11,20 @@ from sentinel_analysis.application.use_cases import (
     CorrelateDetectionsWithAIS,
     CreateScan,
     CrossValidateOptical,
+    ArchiveScan,
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
     ComputeSARChangeDetection,
     DetectTransshipmentAnomalies,
     DispatchMaritimeAlert,
+    ExecuteStorageRetention,
     ExportGeospatial,
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
     GetScan,
+    GetStorageQuota,
     GetScraperDetail,
     GetScraperLogsUseCase,
     GetSettings,
@@ -76,6 +79,7 @@ from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDat
 from sentinel_analysis.infrastructure.satellite.umbra_provider import UmbraImageryProvider
 from sentinel_analysis.infrastructure.scheduler.pass_monitor import BackgroundPassMonitor
 from sentinel_analysis.infrastructure.scheduler.pass_scheduler import PassSchedulerWorker
+from sentinel_analysis.infrastructure.storage import LocalStorageManager
 from sentinel_analysis.infrastructure.tasks.queue import ThreadedTaskQueue
 
 
@@ -250,6 +254,22 @@ class ApplicationContainer:
         self.get_settings = GetSettings(self.settings_repository)
         self.update_settings = UpdateSettings(self.settings_repository)
         self.reset_settings = ResetSettings(self.settings_repository)
+
+        self.storage_manager = LocalStorageManager(
+            output_root=settings.output_root,
+            cache_root=settings.cache_root,
+            database_path=settings.database_path,
+        )
+        self.get_storage_quota = GetStorageQuota(
+            self.storage_manager,
+            default_quota_bytes=settings.storage_quota_bytes,
+        )
+        self.archive_scan = ArchiveScan(self.storage_manager)
+        self.execute_storage_retention = ExecuteStorageRetention(
+            self.storage_manager,
+            default_scan_retention_days=settings.scan_retention_days,
+            default_cache_retention_days=settings.cache_retention_days,
+        )
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """Gracefully shut down all background workers, schedulers, and active threads."""

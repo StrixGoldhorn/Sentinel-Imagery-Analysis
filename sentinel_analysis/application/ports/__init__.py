@@ -25,6 +25,7 @@ from sentinel_analysis.application.ports.sar_change_detector import SARChangeDet
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.application.ports.settings_repository import SettingsRepository
+from sentinel_analysis.application.ports.storage import StorageManager
 from sentinel_analysis.application.ports.task_queue import TaskQueue
 
 __all__ = [
@@ -55,6 +56,7 @@ __all__ = [
     "ScanRepository",
     "SettingsRepository",
     "ShipDetector",
+    "StorageManager",
     "TaskQueue",
     "TileCache",
     "TileImage",

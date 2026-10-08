@@ -52,6 +52,11 @@ from sentinel_analysis.application.use_cases.manage_settings import (
     ResetSettings,
     UpdateSettings,
 )
+from sentinel_analysis.application.use_cases.manage_storage import (
+    ArchiveScan,
+    ExecuteStorageRetention,
+    GetStorageQuota,
+)
 from sentinel_analysis.application.use_cases.predict_passes import PredictPasses
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 from sentinel_analysis.application.use_cases.scrape_aoi_ais import (
@@ -67,6 +72,7 @@ __all__ = [
     "AddAreaOfInterest",
     "AnalyzeMissionPasses",
     "AnnotationSummary",
+    "ArchiveScan",
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",
     "CorrelateDetectionsWithAIS",
@@ -80,6 +86,7 @@ __all__ = [
     "DetectTransshipmentAnomalies",
     "ComputeSARChangeDetection",
     "DispatchMaritimeAlert",
+    "ExecuteStorageRetention",
     "ExportGeospatial",
     "GenerateDEM",
     "GenerateHistoricalTrafficHeatmap",
@@ -88,6 +95,7 @@ __all__ = [
     "GetScraperDetail",
     "GetScraperLogsUseCase",
     "GetSettings",
+    "GetStorageQuota",
     "GetUpcomingScrapes",
     "GetVesselDetails",
     "GetVesselPositions",

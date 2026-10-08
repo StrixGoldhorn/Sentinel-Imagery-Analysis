@@ -12,6 +12,9 @@ notes.md
 *.txt
 progress.json
 *.db
+*.db-wal
+*.db-shm
+*.tar.gz
 .cache/
 tests/runtime/
 

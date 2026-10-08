@@ -24,6 +24,9 @@ class Settings:
     api_key: str | None = None
     rate_limit_per_minute: int = 120
     rate_limiting_enabled: bool = True
+    storage_quota_bytes: int = 10 * 1024 * 1024 * 1024
+    scan_retention_days: int = 30
+    cache_retention_days: int = 7
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "project_root", Path(self.project_root).resolve())
@@ -38,6 +41,12 @@ class Settings:
             raise ValueError("Application port must be between 1 and 65535")
         if isinstance(self.rate_limit_per_minute, bool) or not isinstance(self.rate_limit_per_minute, int) or self.rate_limit_per_minute <= 0:
             raise ValueError("rate_limit_per_minute must be a positive integer")
+        if isinstance(self.storage_quota_bytes, bool) or not isinstance(self.storage_quota_bytes, int) or self.storage_quota_bytes <= 0:
+            raise ValueError("storage_quota_bytes must be a positive integer")
+        if isinstance(self.scan_retention_days, bool) or not isinstance(self.scan_retention_days, int) or self.scan_retention_days <= 0:
+            raise ValueError("scan_retention_days must be a positive integer")
+        if isinstance(self.cache_retention_days, bool) or not isinstance(self.cache_retention_days, int) or self.cache_retention_days <= 0:
+            raise ValueError("cache_retention_days must be a positive integer")
 
     @classmethod
     def from_environment(cls, project_root: Path | None = None) -> "Settings":
@@ -67,6 +76,24 @@ class Settings:
         rate_limit_enabled_raw = os.getenv("SENTINEL_RATE_LIMITING_ENABLED", "true").strip().lower()
         rate_limiting_enabled = rate_limit_enabled_raw not in {"0", "false", "no", "off"}
 
+        storage_quota_raw = os.getenv("SENTINEL_STORAGE_QUOTA_BYTES", str(10 * 1024 * 1024 * 1024))
+        try:
+            storage_quota_bytes = max(1024 * 1024, int(storage_quota_raw))
+        except ValueError:
+            storage_quota_bytes = 10 * 1024 * 1024 * 1024
+
+        scan_retention_raw = os.getenv("SENTINEL_SCAN_RETENTION_DAYS", "30")
+        try:
+            scan_retention_days = max(1, int(scan_retention_raw))
+        except ValueError:
+            scan_retention_days = 30
+
+        cache_retention_raw = os.getenv("SENTINEL_CACHE_RETENTION_DAYS", "7")
+        try:
+            cache_retention_days = max(1, int(cache_retention_raw))
+        except ValueError:
+            cache_retention_days = 7
+
         return cls(
             project_root=root,
             database_path=environment_path("DATABASE_PATH", root / "data.db"),
@@ -80,4 +107,7 @@ class Settings:
             api_key=os.getenv("SENTINEL_API_KEY"),
             rate_limit_per_minute=rate_limit_per_minute,
             rate_limiting_enabled=rate_limiting_enabled,
+            storage_quota_bytes=storage_quota_bytes,
+            scan_retention_days=scan_retention_days,
+            cache_retention_days=cache_retention_days,
         )

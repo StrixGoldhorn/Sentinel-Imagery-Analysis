@@ -633,5 +633,50 @@ class TrafficHeatmapReport:
             object.__setattr__(self, "generated_at", _utc_datetime(self.generated_at, "Generated at"))
 
 
+@dataclass(frozen=True)
+class StorageQuotaReport:
+    total_bytes_used: int
+    quota_bytes: int
+    usage_percent: float
+    scans_bytes: int
+    cache_bytes: int
+    database_bytes: int
+    scan_count: int
+    oldest_scan_date: Optional[datetime] = None
+    quota_exceeded: bool = False
+
+    def __post_init__(self) -> None:
+        _non_negative_integer(self.total_bytes_used, "Total bytes used")
+        _positive_integer(self.quota_bytes, "Quota bytes")
+        object.__setattr__(self, "usage_percent", round(_number(self.usage_percent, "Usage percent"), 2))
+        _non_negative_integer(self.scans_bytes, "Scans bytes")
+        _non_negative_integer(self.cache_bytes, "Cache bytes")
+        _non_negative_integer(self.database_bytes, "Database bytes")
+        _non_negative_integer(self.scan_count, "Scan count")
+        if self.oldest_scan_date is not None:
+            object.__setattr__(self, "oldest_scan_date", _utc_datetime(self.oldest_scan_date, "Oldest scan date"))
+        object.__setattr__(self, "quota_exceeded", bool(self.quota_exceeded))
+
+
+@dataclass(frozen=True)
+class ArchivalOutcome:
+    archived_scans: tuple[str, ...] = field(default_factory=tuple)
+    pruned_cache_files: int = 0
+    bytes_freed: int = 0
+    archive_paths: tuple[str, ...] = field(default_factory=tuple)
+    timestamp: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.archived_scans, (list, tuple)):
+            object.__setattr__(self, "archived_scans", tuple(str(s) for s in self.archived_scans))
+        if isinstance(self.archive_paths, (list, tuple)):
+            object.__setattr__(self, "archive_paths", tuple(str(p) for p in self.archive_paths))
+        _non_negative_integer(self.pruned_cache_files, "Pruned cache files")
+        _non_negative_integer(self.bytes_freed, "Bytes freed")
+        if self.timestamp is not None:
+            object.__setattr__(self, "timestamp", _utc_datetime(self.timestamp, "Archival timestamp"))
+
+
+
 
 
