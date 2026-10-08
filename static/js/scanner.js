@@ -164,12 +164,18 @@ function initScannerHandlers() {
 }
 
 const UMBRA_SITE_BOUNDS = {
-    'singapore_strait': [1.1, 103.6, 1.4, 104.1],
-    'suez_canal': [29.8, 32.4, 30.1, 32.7],
-    'panama_canal': [8.8, -79.7, 9.1, -79.4],
-    'port_of_rotterdam': [51.8, 4.0, 52.1, 4.3],
-    'strait_of_gibraltar': [36.0, -5.5, 36.3, -5.2],
-    'strait_of_malacca': [2.0, 102.0, 2.4, 102.5]
+    'singapore_strait': [1.234, 103.808, 1.294, 103.868],
+    'panama_canal': [8.950, -79.605, 8.997, -79.558],
+    'port_of_rotterdam': [51.861, 4.248, 51.909, 4.325],
+    'port_of_antwerp': [51.236, 4.312, 51.286, 4.391],
+    'port_of_hong_kong': [22.312, 114.095, 22.360, 114.147],
+    'port_of_busan': [35.077, 129.048, 35.133, 129.117],
+    'port_of_jebel_ali': [24.971, 55.021, 25.034, 55.090],
+    'port_of_long_beach': [33.714, -118.274, 33.778, -118.198],
+    'port_of_hamburg': [53.482, 9.895, 53.535, 9.983],
+    'suez_canal': [29.93, 32.53, 30.01, 32.61],
+    'strait_of_gibraltar': [36.12, -5.38, 36.18, -5.32],
+    'strait_of_malacca': [2.18, 102.23, 2.24, 102.29]
 };
 
 function onSarProviderChange(provider) {

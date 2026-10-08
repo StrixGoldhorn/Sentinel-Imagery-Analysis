@@ -18,12 +18,17 @@ from sentinel_analysis.application.ports.imagery import ImageryProvider
 from sentinel_analysis.domain.entities import Acquisition, BoundingBox, ImageTile
 from sentinel_analysis.infrastructure.imagery.preprocessing import enhance_sar_imagery
 from sentinel_analysis.infrastructure.imagery.tiling import TileGridCalculator
-from sentinel_analysis.infrastructure.satellite.umbra_client import UmbraOpenDataClient, UmbraSARScene
+from sentinel_analysis.infrastructure.satellite.umbra_client import (
+    MARITIME_MONITORING_SITES,
+    UmbraOpenDataClient,
+    UmbraSARScene,
+)
 
 logger = logging.getLogger(__name__)
 
 try:
     import rasterio
+    import rasterio.vrt
     import rasterio.windows
 
     HAS_RASTERIO = True
@@ -54,8 +59,7 @@ class UmbraImageryProvider(ImageryProvider):
         """Find the most relevant Umbra sub-meter SAR scene for the given AOI."""
         site_key = self.client.search_nearby_site(bbox)
         if not site_key:
-            # Check if any maritime site is nearby or pick the first available
-            site_key = "singapore_strait"
+            return None
 
         scenes = self.client.fetch_site_scenes(site_key, limit=5)
         if not scenes:
@@ -99,6 +103,7 @@ class UmbraImageryProvider(ImageryProvider):
         acquisition: Acquisition,
         h: int,
         w: int,
+        render_vessels: bool = True,
     ) -> np.ndarray:
         """Generate high-fidelity, spatially continuous physical SAR backscatter.
 
@@ -106,7 +111,7 @@ class UmbraImageryProvider(ImageryProvider):
         - Continuous physical ocean wave swell in geographic coordinates (seamless across tiles).
         - Spatially correlated multi-look speckle (avoiding uncorrelated TV static noise).
         - Maritime vessel returns with metallic hull reflections, superstructure corner reflectors,
-          radar shadows, and trailing Kelvin wakes.
+          radar shadows, and trailing Kelvin wakes anchored to absolute geographic coordinates.
         """
         min_lon = tile.bbox.min_longitude
         max_lon = tile.bbox.max_longitude
@@ -139,13 +144,30 @@ class UmbraImageryProvider(ImageryProvider):
 
         scene = sea_base * smooth_speckle
 
+        if not render_vessels:
+            return scene
+
         # 3. Deterministic maritime vessel signatures anchored to geographic coordinates
+        scene_obj = self._scenes.get(acquisition.product_id)
+        if scene_obj and scene_obj.bbox:
+            s_bbox = scene_obj.bbox
+        else:
+            site_key = self.client.search_nearby_site(tile.bbox)
+            if site_key and site_key in MARITIME_MONITORING_SITES:
+                raw_b = MARITIME_MONITORING_SITES[site_key]["bbox"]
+                s_bbox = BoundingBox(raw_b[0], raw_b[1], raw_b[2], raw_b[3])
+            else:
+                s_bbox = tile.bbox
+
         acq_seed = abs(hash(acquisition.product_id or "umbra_scene")) % (2**31)
         rng_scene = np.random.default_rng(seed=acq_seed)
 
-        for _ in range(4):
-            v_lon = min_lon + (max_lon - min_lon) * rng_scene.uniform(0.15, 0.85)
-            v_lat = min_lat + (max_lat - min_lat) * rng_scene.uniform(0.15, 0.85)
+        s_min_lon, s_min_lat = s_bbox.min_longitude, s_bbox.min_latitude
+        s_max_lon, s_max_lat = s_bbox.max_longitude, s_bbox.max_latitude
+
+        for _ in range(8):
+            v_lon = s_min_lon + (s_max_lon - s_min_lon) * rng_scene.uniform(0.1, 0.9)
+            v_lat = s_min_lat + (s_max_lat - s_min_lat) * rng_scene.uniform(0.1, 0.9)
             heading = rng_scene.uniform(10.0, 350.0)
             length_m = rng_scene.uniform(85.0, 160.0)
             beam_m = rng_scene.uniform(14.0, 26.0)
@@ -153,6 +175,7 @@ class UmbraImageryProvider(ImageryProvider):
             dx_m = (lon_grid - v_lon) * m_per_deg_lon
             dy_m = (lat_grid - v_lat) * m_per_deg_lat
 
+            # Only compute ship signature if vessel is within or near this tile
             if np.min(dx_m**2 + dy_m**2) < (length_m * 4.0) ** 2:
                 cos_h, sin_h = np.cos(np.radians(heading)), np.sin(np.radians(heading))
                 u_m = dx_m * cos_h + dy_m * sin_h
@@ -231,27 +254,50 @@ class UmbraImageryProvider(ImageryProvider):
 
                 with rasterio.Env(**env_kwargs):
                     with rasterio.open(scene.tiff_url) as src:
-                        tb = tile.bbox
-                        w_bounds = (tb.min_longitude, tb.min_latitude, tb.max_longitude, tb.max_latitude)
-                        sb = src.bounds
-                        if (
-                            w_bounds[0] <= sb.right
-                            and w_bounds[2] >= sb.left
-                            and w_bounds[1] <= sb.top
-                            and w_bounds[3] >= sb.bottom
-                        ):
-                            window = rasterio.windows.from_bounds(*w_bounds, transform=src.transform)
-                            src_win = rasterio.windows.Window(0, 0, src.width, src.height)
-                            intersection = window.intersection(src_win)
-                            if intersection.width > 0 and intersection.height > 0:
-                                raw = src.read(
-                                    1,
-                                    window=intersection,
-                                    out_shape=(h, w),
-                                    resampling=rasterio.enums.Resampling.bilinear,
-                                ).astype(np.float32)
-                                sar_intensity = enhance_sar_imagery(raw)
-                                streamed = True
+                        with rasterio.vrt.WarpedVRT(src, crs="EPSG:4326") as vrt:
+                            tb = tile.bbox
+                            vb = vrt.bounds
+                            inter_min_lon = max(tb.min_longitude, vb.left)
+                            inter_max_lon = min(tb.max_longitude, vb.right)
+                            inter_min_lat = max(tb.min_latitude, vb.bottom)
+                            inter_max_lat = min(tb.max_latitude, vb.top)
+
+                            if inter_min_lon < inter_max_lon and inter_min_lat < inter_max_lat:
+                                px_per_deg_lon = w / (tb.max_longitude - tb.min_longitude)
+                                px_per_deg_lat = h / (tb.max_latitude - tb.min_latitude)
+
+                                dst_x0 = max(0, min(w, int(round((inter_min_lon - tb.min_longitude) * px_per_deg_lon))))
+                                dst_x1 = max(0, min(w, int(round((inter_max_lon - tb.min_longitude) * px_per_deg_lon))))
+                                dst_y0 = max(0, min(h, int(round((tb.max_latitude - inter_max_lat) * px_per_deg_lat))))
+                                dst_y1 = max(0, min(h, int(round((tb.max_latitude - inter_min_lat) * px_per_deg_lat))))
+
+                                dst_w = dst_x1 - dst_x0
+                                dst_h = dst_y1 - dst_y0
+
+                                if dst_w > 0 and dst_h > 0:
+                                    window = rasterio.windows.from_bounds(
+                                        inter_min_lon,
+                                        inter_min_lat,
+                                        inter_max_lon,
+                                        inter_max_lat,
+                                        transform=vrt.transform,
+                                    )
+                                    raw_patch = vrt.read(
+                                        1,
+                                        window=window,
+                                        out_shape=(dst_h, dst_w),
+                                        resampling=rasterio.enums.Resampling.bilinear,
+                                    ).astype(np.float32)
+
+                                    if np.any(raw_patch > 0.0):
+                                        base_scene = self._synthesize_coherent_sar_tile(
+                                            tile, acquisition, h, w, render_vessels=False
+                                        )
+                                        valid_mask = raw_patch > 0.0
+                                        sub_view = base_scene[dst_y0:dst_y1, dst_x0:dst_x1]
+                                        sub_view[valid_mask] = raw_patch[valid_mask]
+                                        sar_intensity = enhance_sar_imagery(base_scene)
+                                        streamed = True
             except Exception as exc:
                 logger.debug(
                     "Umbra COG streaming from %s failed; using coherent synthesis: %s",
@@ -260,7 +306,7 @@ class UmbraImageryProvider(ImageryProvider):
                 )
 
         if not streamed:
-            raw_scene = self._synthesize_coherent_sar_tile(tile, acquisition, h, w)
+            raw_scene = self._synthesize_coherent_sar_tile(tile, acquisition, h, w, render_vessels=True)
             sar_intensity = enhance_sar_imagery(raw_scene)
 
         img = Image.fromarray(sar_intensity, mode="L").convert("RGBA")

@@ -52,65 +52,97 @@ class UmbraOpenDataClient:
         "singapore_strait": {
             "name": "Singapore Strait",
             "task_name": "Port of Singapore, Singapore",
-            "lat": 1.25,
-            "lon": 103.85,
-            "bbox": [103.6, 1.1, 104.1, 1.4],
+            "lat": 1.264,
+            "lon": 103.838,
+            "bbox": [103.808, 1.234, 103.868, 1.294],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Singapore%2C%20Singapore/004da100-a5fa-4050-9fce-080bdb0b53ac/2025-10-17-15-45-35_UMBRA-09/2025-10-17-15-45-35_UMBRA-09_GEC.tif",
-        },
-        "suez_canal": {
-            "name": "Suez Canal",
-            "task_name": None,
-            "lat": 29.95,
-            "lon": 32.55,
-            "bbox": [32.4, 29.8, 32.7, 30.1],
-            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/open-data/suez_canal/latest.tif",
         },
         "panama_canal": {
             "name": "Panama Canal",
             "task_name": "Panama Canal, Panama",
-            "lat": 8.95,
-            "lon": -79.55,
-            "bbox": [-79.7, 8.8, -79.4, 9.1],
+            "lat": 8.974,
+            "lon": -79.581,
+            "bbox": [-79.605, 8.950, -79.558, 8.997],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Panama%20Canal%2C%20Panama/020c56f0-f1a1-42e0-b11b-3049cf5e11e8/2025-06-25-03-43-16_UMBRA-09/2025-06-25-03-43-16_UMBRA-09_GEC.tif",
         },
         "port_of_rotterdam": {
             "name": "Port of Rotterdam",
             "task_name": "Port of Rotterdam, Netherlands",
-            "lat": 51.95,
-            "lon": 4.15,
-            "bbox": [4.0, 51.8, 4.3, 52.1],
+            "lat": 51.885,
+            "lon": 4.286,
+            "bbox": [4.248, 51.861, 4.325, 51.909],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Rotterdam%2C%20Netherlands/00864c2c-0b0f-49ef-b283-997735b27878/2025-07-29-11-17-12_UMBRA-08/2025-07-29-11-17-12_UMBRA-08_GEC.tif",
         },
         "port_of_antwerp": {
             "name": "Port of Antwerp",
             "task_name": "Port of Antwerp, Belgium",
-            "lat": 51.28,
-            "lon": 4.32,
-            "bbox": [4.2, 51.2, 4.5, 51.4],
+            "lat": 51.261,
+            "lon": 4.351,
+            "bbox": [4.312, 51.236, 4.391, 51.286],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Antwerp%2C%20Belgium/05a3cf53-5995-475a-aa31-c801030d7ade/2025-05-15-21-57-55_UMBRA-08/2025-05-15-21-57-55_UMBRA-08_GEC.tif",
         },
         "port_of_hong_kong": {
             "name": "Port of Hong Kong",
             "task_name": "Port of Hong Kong, Hong Kong",
-            "lat": 22.30,
-            "lon": 114.12,
-            "bbox": [114.0, 22.2, 114.3, 22.4],
+            "lat": 22.336,
+            "lon": 114.121,
+            "bbox": [114.095, 22.312, 114.147, 22.360],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Hong%20Kong%2C%20Hong%20Kong/02195613-46e0-4e95-ab35-9abf83c273f6/2025-11-21-02-17-17_UMBRA-07/2025-11-21-02-17-17_UMBRA-07_GEC.tif",
+        },
+        "port_of_busan": {
+            "name": "Port of Busan",
+            "task_name": "Port of Busan, South Korea",
+            "lat": 35.105,
+            "lon": 129.082,
+            "bbox": [129.048, 35.077, 129.117, 35.133],
+            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Busan%2C%20South%20Korea/59e40c71-60d9-4cee-8951-da6f30be905f/2025-03-05-01-59-59_UMBRA-08/2025-03-05-01-59-59_UMBRA-08_GEC.tif",
+        },
+        "port_of_jebel_ali": {
+            "name": "Port of Jebel Ali",
+            "task_name": "Port of Jebel Ali, United Arab Emirates",
+            "lat": 25.002,
+            "lon": 55.056,
+            "bbox": [55.021, 24.971, 55.090, 25.034],
+            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Jebel%20Ali%2C%20United%20Arab%20Emirates/4044f1d2-78e5-49ad-908f-6c440ef84407/2025-09-05-18-44-34_UMBRA-09/2025-09-05-18-44-34_UMBRA-09_GEC.tif",
+        },
+        "port_of_long_beach": {
+            "name": "Port of Long Beach",
+            "task_name": "Port of Long Beach, California, United States",
+            "lat": 33.746,
+            "lon": -118.236,
+            "bbox": [-118.274, 33.714, -118.198, 33.778],
+            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Long%20Beach%2C%20California%2C%20United%20States/2f03424b-9943-4350-80ef-7f6e0d2eae8f/2025-11-19-06-43-23_UMBRA-09/2025-11-19-06-43-23_UMBRA-09_GEC.tif",
+        },
+        "port_of_hamburg": {
+            "name": "Port of Hamburg",
+            "task_name": "Port of Hamburg, Germany",
+            "lat": 53.508,
+            "lon": 9.939,
+            "bbox": [9.895, 53.482, 9.983, 53.535],
+            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/sar-data/tasks/Port%20of%20Hamburg%2C%20Germany/41c7822a-3747-4ef8-8e68-aa460d0e03ad/2025-05-09-10-19-30_UMBRA-10/2025-05-09-10-19-30_UMBRA-10_GEC.tif",
+        },
+        "suez_canal": {
+            "name": "Suez Canal",
+            "task_name": None,
+            "lat": 29.97,
+            "lon": 32.57,
+            "bbox": [32.53, 29.93, 32.61, 30.01],
+            "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/open-data/suez_canal/latest.tif",
         },
         "strait_of_gibraltar": {
             "name": "Strait of Gibraltar",
             "task_name": None,
-            "lat": 36.14,
+            "lat": 36.15,
             "lon": -5.35,
-            "bbox": [-5.5, 36.0, -5.2, 36.3],
+            "bbox": [-5.38, 36.12, -5.32, 36.18],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/open-data/strait_of_gibraltar/latest.tif",
         },
         "strait_of_malacca": {
             "name": "Strait of Malacca",
             "task_name": None,
-            "lat": 2.20,
-            "lon": 102.25,
-            "bbox": [102.0, 2.0, 102.5, 2.4],
+            "lat": 2.21,
+            "lon": 102.26,
+            "bbox": [102.23, 2.18, 102.29, 2.24],
             "sample_cog_url": "https://umbra-open-data-catalog.s3.amazonaws.com/open-data/strait_of_malacca/latest.tif",
         },
     }
@@ -129,18 +161,41 @@ class UmbraOpenDataClient:
         return dict(cls.MARITIME_MONITORING_SITES)
 
     def search_nearby_site(self, bbox: BoundingBox) -> str | None:
-        """Find matching known Umbra maritime monitoring site if the bbox overlaps."""
-        for site_key, site_info in self.MARITIME_MONITORING_sites_items():
+        """Find matching known Umbra maritime monitoring site if the bbox overlaps or is nearby."""
+        b_c_lon = (bbox.min_longitude + bbox.max_longitude) / 2.0
+        b_c_lat = (bbox.min_latitude + bbox.max_latitude) / 2.0
+
+        best_site: str | None = None
+        best_score = float("inf")
+
+        for site_key, site_info in self.MARITIME_MONITORING_SITES.items():
             s_bbox = site_info["bbox"]
-            # Check overlap
-            if (
+            s_c_lon = (s_bbox[0] + s_bbox[2]) / 2.0
+            s_c_lat = (s_bbox[1] + s_bbox[3]) / 2.0
+
+            # Direct overlap check
+            overlaps = (
                 bbox.min_longitude <= s_bbox[2]
                 and bbox.max_longitude >= s_bbox[0]
                 and bbox.min_latitude <= s_bbox[3]
                 and bbox.max_latitude >= s_bbox[1]
-            ):
-                return site_key
-        return None
+            )
+
+            dist_deg = ((b_c_lon - s_c_lon) ** 2 + (b_c_lat - s_c_lat) ** 2) ** 0.5
+
+            if overlaps:
+                # Rank directly overlapping sites by proximity of centers
+                if dist_deg < best_score:
+                    best_score = dist_deg
+                    best_site = site_key
+            elif dist_deg <= 0.35:  # within ~40 km of port center
+                # Rank nearby non-overlapping sites lower than overlapping ones
+                score = 100.0 + dist_deg
+                if score < best_score:
+                    best_score = score
+                    best_site = site_key
+
+        return best_site
 
     @classmethod
     def MARITIME_MONITORING_sites_items(cls):
@@ -184,9 +239,9 @@ class UmbraOpenDataClient:
                     max_latitude=float(item_bbox[3]),
                 )
             except Exception:
-                scene_bbox = BoundingBox(103.0, 1.0, 104.0, 2.0)
+                scene_bbox = BoundingBox(103.808, 1.234, 103.868, 1.294)
         else:
-            scene_bbox = BoundingBox(103.0, 1.0, 104.0, 2.0)
+            scene_bbox = BoundingBox(103.808, 1.234, 103.868, 1.294)
 
         # Assets
         assets = item.get("assets") or {}
@@ -249,7 +304,7 @@ class UmbraOpenDataClient:
 
                             encoded_key = "/".join(urllib.parse.quote(p) for p in parts)
                             tiff_url = f"{self.CATALOG_BASE_URL}/{encoded_key}"
-                            stac_url = tiff_url.replace("_GEC.tif", "_METADATA.json")
+                            stac_url = tiff_url.replace("_GEC.tif", ".stac.v2.json")
 
                             results.append(
                                 UmbraSARScene(
@@ -264,6 +319,25 @@ class UmbraOpenDataClient:
                                 )
                             )
                         if results:
+                            try:
+                                top_resp = self._session.get(results[0].stac_url, timeout=min(2.0, self._timeout))
+                                if top_resp.status_code == 200:
+                                    stac_json = top_resp.json()
+                                    parsed = self.parse_stac_item(stac_json)
+                                    if parsed and parsed.bbox:
+                                        first = results[0]
+                                        results[0] = UmbraSARScene(
+                                            scene_id=first.scene_id,
+                                            target_name=first.target_name,
+                                            timestamp=first.timestamp,
+                                            resolution_meters=first.resolution_meters,
+                                            polarization=first.polarization,
+                                            bbox=parsed.bbox,
+                                            tiff_url=first.tiff_url,
+                                            stac_url=first.stac_url,
+                                        )
+                            except Exception:
+                                pass
                             return results
             except Exception as exc:
                 logger.debug("Umbra S3 prefix query for %s failed: %s", site_key, exc)
@@ -299,3 +373,7 @@ class UmbraOpenDataClient:
                 stac_url=f"{self.CATALOG_BASE_URL}/stac/{site_key}.json",
             )
         ]
+
+
+MARITIME_MONITORING_SITES = UmbraOpenDataClient.MARITIME_MONITORING_SITES
+
