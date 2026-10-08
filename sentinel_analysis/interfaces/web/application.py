@@ -7,6 +7,7 @@ from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.bootstrap.container import ApplicationContainer
 from sentinel_analysis.interfaces.web import ais, alerts, aois, probes, scans, schedule, scrapers, tasks
 from sentinel_analysis.interfaces.web.errors import register_error_handlers
+from sentinel_analysis.interfaces.web.security import setup_security
 from sentinel_analysis.interfaces.web.settings import blueprint as settings_blueprint
 
 
@@ -33,6 +34,7 @@ def create_app(
     app.json.sort_keys = False
     app.extensions["sentinel_container"] = container
     register_error_handlers(app)
+    setup_security(app, settings)
     app.register_blueprint(probes.blueprint)
     app.register_blueprint(scans.blueprint)
     app.register_blueprint(aois.blueprint)
