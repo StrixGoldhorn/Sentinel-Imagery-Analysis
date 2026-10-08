@@ -49,6 +49,12 @@ def _non_negative_integer(value: object, field_name: str) -> int:
     return value
 
 
+def _positive_integer(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise DomainValidationError(f"{field_name} must be a positive integer")
+    return value
+
+
 @dataclass(frozen=True)
 class BoundingBox:
     min_longitude: float
@@ -592,6 +598,40 @@ class MaritimeAlert:
         object.__setattr__(self, "details", dict(self.details))
         if self.timestamp is not None:
             object.__setattr__(self, "timestamp", _utc_datetime(self.timestamp, "Timestamp"))
+
+
+@dataclass(frozen=True)
+class TrafficHeatmapPoint:
+    latitude: float
+    longitude: float
+    intensity: float
+    category: str = "ais"
+    count: int = 1
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "latitude", round(float(self.latitude), 6))
+        object.__setattr__(self, "longitude", round(float(self.longitude), 6))
+        object.__setattr__(self, "intensity", max(0.0, min(1.0, round(float(self.intensity), 4))))
+        object.__setattr__(self, "category", _required_text(self.category, "Category").lower())
+        _positive_integer(self.count, "Point count")
+
+
+@dataclass(frozen=True)
+class TrafficHeatmapReport:
+    total_ais_points: int
+    total_dark_vessels: int
+    total_cells: int
+    points: list[TrafficHeatmapPoint] = field(default_factory=list)
+    bbox: Optional[BoundingBox] = None
+    generated_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        _non_negative_integer(self.total_ais_points, "Total AIS points")
+        _non_negative_integer(self.total_dark_vessels, "Total dark vessels")
+        _non_negative_integer(self.total_cells, "Total cells")
+        if self.generated_at is not None:
+            object.__setattr__(self, "generated_at", _utc_datetime(self.generated_at, "Generated at"))
+
 
 
 

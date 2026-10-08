@@ -366,3 +366,60 @@ def update_vessel(vessel_id: int):
         imo=imo,
     )
     return jsonify(status="success", vessel=updated)
+
+
+@blueprint.route("/api/ais/heatmap", methods=["GET", "POST"])
+def get_ais_heatmap():
+    is_json = request.method == "POST" or (request.is_json and request.get_json(silent=True) is not None)
+    payload = request.get_json(silent=True) or {} if is_json else request.args
+
+    bbox = _parse_bbox_value(payload.get("bbox"))
+    start_raw = payload.get("start")
+    end_raw = payload.get("end")
+    within_hours_raw = payload.get("within_hours", payload.get("hours"))
+    all_time = _parse_bool(payload.get("all_time"), False)
+
+    time_range = None
+    if start_raw or end_raw:
+        time_range = (
+            _parse_datetime(start_raw, "start") if start_raw else None,
+            _parse_datetime(end_raw, "end") if end_raw else None,
+        )
+    elif within_hours_raw is not None and str(within_hours_raw).strip():
+        try:
+            within_hours = float(within_hours_raw)
+        except (TypeError, ValueError) as exc:
+            raise RequestValidationError("within_hours must be a number") from exc
+        if within_hours < 0:
+            raise RequestValidationError("within_hours must not be negative")
+        time_range = (datetime.now(timezone.utc) - timedelta(hours=within_hours), None)
+    elif not all_time:
+        time_range = (datetime.now(timezone.utc) - timedelta(hours=48), None)
+
+    include_ais = _parse_bool(payload.get("include_ais", True), True)
+    include_dark_vessels = _parse_bool(payload.get("include_dark_vessels", True), True)
+
+    cell_size = 0.02
+    if payload.get("cell_size") or payload.get("cell_size_degrees"):
+        try:
+            cell_size = float(payload.get("cell_size") or payload.get("cell_size_degrees"))
+        except (TypeError, ValueError):
+            cell_size = 0.02
+
+    ais_limit = 50000
+    if payload.get("limit") or payload.get("ais_limit"):
+        try:
+            ais_limit = int(payload.get("limit") or payload.get("ais_limit"))
+        except (TypeError, ValueError):
+            ais_limit = 50000
+
+    result = container().generate_traffic_heatmap.execute(
+        bbox=bbox,
+        time_range=time_range,
+        include_ais=include_ais,
+        include_dark_vessels=include_dark_vessels,
+        cell_size_degrees=cell_size,
+        ais_limit=ais_limit,
+    )
+    return jsonify(result)
+

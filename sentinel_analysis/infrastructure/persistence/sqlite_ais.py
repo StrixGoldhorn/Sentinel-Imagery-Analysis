@@ -233,6 +233,38 @@ class SQLiteAISRepository:
             params.append(source_plugin.strip())
         return (f"WHERE {' AND '.join(conditions)}" if conditions else "", params)
 
+    def get_density_coordinates(
+        self,
+        bbox: BoundingBox | None = None,
+        time_range: tuple[datetime | None, datetime | None] | None = None,
+        limit: int = 50000,
+    ) -> list[tuple[float, float]]:
+        """Fetch raw latitude/longitude coordinates for density heatmaps."""
+        where_clause, params = self._build_vessel_location_filters(
+            bbox=bbox,
+            time_range=time_range,
+        )
+        safe_limit = max(1, min(int(limit), 200000))
+        query = f"""
+            SELECT vl.latitude, vl.longitude
+            FROM vessel_locations vl
+            JOIN vessels v ON vl.vessel_id = v.id
+            {where_clause}
+            ORDER BY vl.timestamp DESC
+            LIMIT ?
+        """
+        params.append(safe_limit)
+        with self._database.connection() as conn:
+            rows = conn.execute(query, params).fetchall()
+            coords = []
+            for r in rows:
+                if r[0] is not None and r[1] is not None:
+                    try:
+                        coords.append((float(r[0]), float(r[1])))
+                    except (TypeError, ValueError):
+                        continue
+            return coords
+
     def get_vessel_positions(
         self,
         bbox: BoundingBox | None = None,

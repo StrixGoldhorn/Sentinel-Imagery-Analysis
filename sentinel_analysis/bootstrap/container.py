@@ -19,6 +19,7 @@ from sentinel_analysis.application.use_cases import (
     DispatchMaritimeAlert,
     ExportGeospatial,
     GenerateDEM,
+    GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
     GetScan,
     GetScraperDetail,
@@ -152,6 +153,7 @@ class ApplicationContainer:
         self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
+        self.generate_traffic_heatmap = GenerateHistoricalTrafficHeatmap(self.ais_repository, self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)
