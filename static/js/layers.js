@@ -163,6 +163,7 @@ function addImageryLayer(imageUrl, bounds, datetime, folderName, serverCustomNam
                             <button class="btn run-cv-btn" style="flex: 1; font-size: 0.8rem; padding: 6px;" onclick="runCVDetection('${folderName}', '${layerId}')">Run CV Detection</button>
                             <button class="btn view-ships-btn" style="flex: 1; font-size: 0.8rem; padding: 6px; background: #17a2b8; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="openSarShipDetectionsModal('${layerId}')">📋 View Ships (<span class="ships-count-label">0</span>)</button>
                         </div>
+                        <button type="button" class="btn" style="width: 100%; margin-top: 6px; font-size: 0.8rem; padding: 6px; background: #0284c7; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick='if (typeof openTemporalAisScrubber === "function") openTemporalAisScrubber("${folderName}")'>⏱️ AIS Pass Scrubber</button>
                         
                         <div class="cv-toggle-container" style="display: none; margin-top: 10px; align-items: center; justify-content: space-between; background: #f8f9fa; padding: 6px 10px; border-radius: 4px; border: 1px solid #ddd;">
                             <label style="display: flex; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
@@ -462,6 +463,9 @@ async function runCVDetection(folderName, uiId) {
                             </button>
                             <button type="button" class="cv-popup-btn-secondary" onclick='inspectDetection("${folderName}", ${JSON.stringify(item)})'>
                                 🔍 Crop & Stats
+                            </button>
+                            <button type="button" class="cv-popup-btn-secondary" onclick='if (typeof openTemporalAisScrubber === "function") openTemporalAisScrubber("${folderName}")' title="Scrub AIS tracks across SAR pass">
+                                ⏱️ Scrubber
                             </button>
                             <button type="button" class="cv-popup-btn-secondary" onclick='openSarShipDetectionsModal("${uiId}")'>
                                 📋 All Ships

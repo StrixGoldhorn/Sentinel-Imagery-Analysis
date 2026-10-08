@@ -249,8 +249,8 @@ class ShipWakeDetector:
 
         if lines is not None and len(lines) > 0:
             candidate_segments = []
-            for seg in lines:
-                lx1, ly1, lx2, ly2 = seg[0]
+            for seg in np.asarray(lines).reshape(-1, 4):
+                lx1, ly1, lx2, ly2 = int(seg[0]), int(seg[1]), int(seg[2]), int(seg[3])
                 seg_len = math.hypot(lx2 - lx1, ly2 - ly1)
                 mid_x = (lx1 + lx2) / 2.0
                 mid_y = (ly1 + ly2) / 2.0

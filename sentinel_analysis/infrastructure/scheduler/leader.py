@@ -132,7 +132,7 @@ class LeaderElection:
                 try:
                     self._repo.release_scheduler_lease(self.name, self.owner_id)
                 except Exception as exc:
-                    logger.warning("Failed to release DB lease for '%s': %s", self.name, exc)
+                    logger.debug("Failed to release DB lease for '%s': %s", self.name, exc)
             else:
                 self._file_release()
 

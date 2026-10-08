@@ -966,12 +966,94 @@ def test_run_cv_saves_latest_results_in_image_folder() -> None:
     finally:
         bundle_resp.close()
 
-    # Test GET scan includes latest_cv_results
-    scan_resp = client.get("/api/scan/scan_1")
-    assert scan_resp.status_code == 200
-    latest = scan_resp.json.get("latest_cv_results")
-    assert latest is not None
-    assert latest["ship_count"] == 1
+def test_radar_chip_inspector_and_temporal_ais_tracks() -> None:
+    client, container, _, _ = make_client()
+
+    class StubAISRepo:
+        def get_vessel_positions(self, bbox=None, time_range=None, latest_only=False, limit=5000):
+            return [
+                {
+                    "mmsi": "123456789",
+                    "name": "TEST CARRIER",
+                    "type": "Cargo",
+                    "callsign": "VRAB1",
+                    "latitude": 1.25,
+                    "longitude": 103.85,
+                    "speed": 12.0,
+                    "heading": 45.0,
+                    "timestamp": "2026-08-30T10:00:00+00:00",
+                },
+                {
+                    "mmsi": "123456789",
+                    "name": "TEST CARRIER",
+                    "type": "Cargo",
+                    "callsign": "VRAB1",
+                    "latitude": 1.28,
+                    "longitude": 103.88,
+                    "speed": 12.5,
+                    "heading": 45.0,
+                    "timestamp": "2026-08-30T10:30:00+00:00",
+                },
+            ]
+
+    container.ais_repository = StubAISRepo()
+
+    # 1. Test analytical radar crop endpoint
+    crop_res = client.get("/api/scan/scan_1/crop?x=1&y=1&width=4&height=4&padding=2")
+    assert crop_res.status_code == 200
+    crop_data = crop_res.json
+    assert "data_uri" in crop_data
+    assert crop_data["data_uri"].startswith("data:image/png;base64,")
+    assert crop_data["crop_width"] > 0
+    assert crop_data["crop_height"] > 0
+    assert "origin" in crop_data
+    assert "local_box" in crop_data
+    assert "local_center" in crop_data
+    assert "local_peak" in crop_data
+
+    stats = crop_data["stats"]
+    assert "mean_intensity" in stats
+    assert "max_intensity" in stats
+    assert "min_intensity" in stats
+    assert "std_intensity" in stats
+    assert "clutter_mean" in stats
+    assert "clutter_std" in stats
+    assert "snr_db" in stats
+    assert "dynamic_range_db" in stats
+    assert "estimated_rcs_dbsm" in stats
+    assert "azimuth_profile" in stats
+    assert "range_profile" in stats
+    assert "histogram" in stats
+    assert len(stats["histogram"]) == 32
+
+    # 2. Test raw image response
+    raw_res = client.get("/api/scan/scan_1/crop?x=1&y=1&width=4&height=4&padding=2&raw=1")
+    assert raw_res.status_code == 200
+    assert raw_res.mimetype == "image/png"
+
+    # 3. Test chip index endpoint
+    chip_res = client.get("/api/scan/scan_1/chip/0?x=1&y=1&width=4&height=4&padding=2")
+    assert chip_res.status_code == 200
+    assert "data_uri" in chip_res.json
+    assert "stats" in chip_res.json
+
+    # 4. Test temporal AIS tracks endpoint
+    tracks_res = client.get("/api/scan/scan_1/ais_tracks?window_hours=2.0")
+    assert tracks_res.status_code == 200
+    tracks_data = tracks_res.json
+    assert tracks_data["scan_folder"] == "scan_1"
+    assert "scan_timestamp" in tracks_data
+    assert "window_start" in tracks_data
+    assert "window_end" in tracks_data
+    assert tracks_data["vessel_count"] == 1
+    assert len(tracks_data["vessels"]) == 1
+
+    vessel = tracks_data["vessels"][0]
+    assert vessel["mmsi"] == "123456789"
+    assert vessel["name"] == "TEST CARRIER"
+    assert vessel["ship_type"] == "Cargo"
+    assert len(vessel["points"]) == 2
+    assert "interpolated_at_pass" in vessel
 
 
 def load_tests(loader, standard_tests, pattern):

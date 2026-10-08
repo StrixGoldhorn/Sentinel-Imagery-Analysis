@@ -525,48 +525,160 @@
     </div>
 </div>
 
+<!-- SAR Pass Temporal AIS Scrubber Dock -->
+<div id="temporalScrubberDock" class="temporal-scrubber-dock" style="display: none;">
+    <div class="scrubber-dock-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="timeline-radar-dot"></span>
+            <span style="font-weight: 700; font-size: 0.84rem; letter-spacing: 0.5px; color: #38bdf8;">⏱️ SAR PASS TEMPORAL AIS SCRUBBER</span>
+            <span id="scrubberScanName" class="badge badge-primary" style="font-size: 0.7rem; padding: 2px 6px;">Scan</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="scrubberUtcDisplay" style="font-family: monospace; font-size: 0.8rem; color: #cbd5e1;">--:--:-- UTC</span>
+            <button type="button" class="timeline-btn-mini" onclick="syncScrubberToSarPass()" title="Sync to Exact SAR Overpass (T=0)">🎯 T = 0</button>
+            <button type="button" class="timeline-btn-mini" onclick="closeTemporalAisScrubber()" title="Close Scrubber">&times;</button>
+        </div>
+    </div>
+    <div class="scrubber-dock-body">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+            <button type="button" id="scrubberPlayBtn" class="timeline-ctrl-btn" onclick="toggleTemporalPlayback()" title="Play / Pause Timeline">▶</button>
+            <button type="button" class="timeline-ctrl-btn" onclick="stepTemporalScrubber(-60)" title="Step Back 1 Min">⏮ -1m</button>
+            <input type="range" id="temporalScrubberSlider" min="-3600" max="3600" value="0" step="10" class="floating-slider" style="flex: 1;" oninput="onTemporalScrubberInput(this.value)">
+            <button type="button" class="timeline-ctrl-btn" onclick="stepTemporalScrubber(60)" title="Step Forward 1 Min">+1m ⏭</button>
+            <select id="temporalPlaybackSpeed" class="timeline-speed-select" onchange="setTemporalPlaybackSpeed(this.value)">
+                <option value="1">1x</option>
+                <option value="5" selected>5x</option>
+                <option value="15">15x</option>
+                <option value="60">60x</option>
+            </select>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: #94a3b8;">
+            <div id="scrubberDeltaDisplay" style="font-family: monospace; font-size: 0.84rem; color: #f8fafc; font-weight: 600;">
+                T = 00:00 [SAR PASS EPOCH]
+            </div>
+            <div id="scrubberStatusMsg" style="color: #64748b;">
+                Ready
+            </div>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" checked onchange="toggleTemporalLayerTracks(this.checked)"> Tracks
+                </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                    <input type="checkbox" checked onchange="toggleTemporalLayerUncertainty(this.checked)"> Covariance
+                </label>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="notification-container" class="notification-container"></div>
 
 <!-- Crop & Detection Inspector Modal -->
 <div id="cropInspectorModal" class="inspector-modal" onclick="if(event.target === this) closeInspectorModal()">
-    <div class="inspector-card">
+    <div class="inspector-card" style="width: 550px; max-width: 95vw;">
         <button class="inspector-close-btn" onclick="closeInspectorModal()">&times;</button>
-        <h3 style="margin-top: 0; margin-bottom: 8px;">Vessel Detection Inspector</h3>
-        <p style="font-size: 0.82em; color: #6c757d; margin-top: 0;">Oriented Bounding Box (OBB) analysis & SAR radar intensity</p>
-
-        <div class="crop-preview-container">
-            <div id="inspectorLoading" style="color: #bbb; font-size: 0.9em;">Loading radar crop...</div>
-            <img id="inspectorCropImg" alt="Vessel Radar Crop" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-right: 30px;">
+            <div>
+                <h3 style="margin-top: 0; margin-bottom: 4px; font-size: 1.15rem; color: #0f172a;">🛰️ Radar Chip & Signature Inspector</h3>
+                <p style="font-size: 0.8rem; color: #64748b; margin-top: 0; margin-bottom: 10px;">Oriented Bounding Box (OBB), Wake dynamics & RF backscatter</p>
+            </div>
+            <button type="button" class="btn-sm" style="background: #0284c7; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.76rem; cursor: pointer; white-space: nowrap;" onclick="openScrubberFromInspector()" title="Open Kinematic AIS Timeline for this SAR Pass">⏱️ Time-Scrubber</button>
         </div>
 
+        <!-- Inspector Toolbar -->
+        <div class="inspector-toolbar">
+            <div class="toolbar-group">
+                <span class="toolbar-label">Palette:</span>
+                <select id="inspectorColormapSelect" class="inspector-select" onchange="setInspectorColorMap(this.value)">
+                    <option value="grayscale">Grayscale (SAR)</option>
+                    <option value="amber">Amber Radar</option>
+                    <option value="green">Phosphor Green</option>
+                    <option value="inferno">Inferno / Thermal</option>
+                </select>
+            </div>
+            <div class="toolbar-group">
+                <span class="toolbar-label">Layers:</span>
+                <label class="inspector-check-lbl"><input type="checkbox" id="chkShowObb" checked onchange="toggleInspectorOverlay('obb', this.checked)"> OBB</label>
+                <label class="inspector-check-lbl"><input type="checkbox" id="chkShowWake" checked onchange="toggleInspectorOverlay('wake', this.checked)"> Wake</label>
+                <label class="inspector-check-lbl"><input type="checkbox" id="chkShowPeak" checked onchange="toggleInspectorOverlay('peak', this.checked)"> Peak</label>
+                <label class="inspector-check-lbl"><input type="checkbox" id="chkShowAis" checked onchange="toggleInspectorOverlay('ais', this.checked)"> AIS</label>
+            </div>
+            <div class="toolbar-group" style="margin-left: auto;">
+                <button type="button" class="zoom-btn" onclick="adjustInspectorZoom(0.8)" title="Zoom Out">-</button>
+                <span id="inspectorZoomVal" style="font-family: monospace; font-size: 0.78rem; min-width: 36px; text-align: center;">200%</span>
+                <button type="button" class="zoom-btn" onclick="adjustInspectorZoom(1.25)" title="Zoom In">+</button>
+                <button type="button" class="zoom-btn" onclick="setInspectorZoom('fit')" title="Fit to Container">Fit</button>
+            </div>
+        </div>
+
+        <!-- Radar Chip Canvas Container -->
+        <div class="crop-preview-container" style="position: relative; overflow: hidden; background: #0b0f19; border: 1px solid #1e293b; min-height: 220px; max-height: 280px; display: flex; justify-content: center; align-items: center;">
+            <div id="inspectorLoading" style="color: #94a3b8; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
+                <span class="timeline-radar-dot"></span> Loading radar chip...
+            </div>
+            <canvas id="inspectorChipCanvas" style="display: none; cursor: crosshair; image-rendering: pixelated;" onmousemove="onInspectorCanvasMouseMove(event)"></canvas>
+            <div id="inspectorHoverInfo" class="inspector-hover-info">
+                Hover over radar chip for pixel backscatter
+            </div>
+        </div>
+
+        <!-- Primary Physical Dimensions & Kinematics -->
         <div class="metrics-grid">
             <div>
-                <span class="label">Est. Length</span>
-                <span id="inspectorLength" class="value">-</span>
-            </div>
-            <div>
-                <span class="label">Est. Beam</span>
-                <span id="inspectorBeam" class="value">-</span>
+                <span class="label">Est. Dimensions</span>
+                <span class="value"><span id="inspectorLength">-</span> × <span id="inspectorBeam">-</span></span>
             </div>
             <div>
                 <span class="label">Heading Angle</span>
                 <span id="inspectorHeading" class="value">-</span>
             </div>
             <div>
-                <span class="label">Confidence</span>
-                <span id="inspectorConfidence" class="value">-</span>
+                <span class="label">Peak SNR</span>
+                <span id="inspectorSnrBadge" class="value">-</span>
+            </div>
+            <div>
+                <span class="label">Est. RCS</span>
+                <span id="inspectorRcsBadge" class="value">-</span>
             </div>
         </div>
 
-        <div style="margin-bottom: 12px; font-size: 0.85em;">
-            <strong>Radar Pixel Extents:</strong>
-            <span id="inspectorCoords" style="color: #555;">-</span>
+        <!-- Secondary Analytical Signatures -->
+        <div class="signatures-grid">
+            <div class="sig-row">
+                <span class="sig-lbl">Classification:</span>
+                <span id="inspectorClassBadge" class="sig-val">-</span>
+            </div>
+            <div class="sig-row">
+                <span class="sig-lbl">Wake Dynamics:</span>
+                <span id="inspectorWakeBadge" class="sig-val">-</span>
+            </div>
+            <div class="sig-row">
+                <span class="sig-lbl">Clutter Floor:</span>
+                <span id="inspectorClutterFloor" class="sig-val" style="font-family: monospace;">-</span>
+                <span class="sig-lbl" style="margin-left: 12px;">Dynamic Range:</span>
+                <span id="inspectorDynamicRange" class="sig-val" style="font-family: monospace;">-</span>
+            </div>
+            <div class="sig-row">
+                <span class="sig-lbl">Radar Pixel Extents:</span>
+                <span id="inspectorCoords" class="sig-val" style="color: #64748b; font-family: monospace;">-</span>
+            </div>
         </div>
 
-        <div>
-            <strong style="font-size: 0.85em;">Radar Intensity Profile:</strong>
-            <div id="inspectorStats" style="display: flex; gap: 15px; font-size: 0.8em; margin: 6px 0; color: #444;"></div>
-            <canvas id="inspectorHistCanvas" width="430" height="60" style="width: 100%; height: 60px; background: #f1f3f5; border-radius: 4px;"></canvas>
+        <!-- 1D Transect Profiles & Histogram -->
+        <div style="margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="font-size: 0.82rem; color: #334155;">1D Cross-Sectional Transect Profiles (Range & Azimuth):</strong>
+                <span style="font-size: 0.72rem; color: #64748b;">Peak Cut</span>
+            </div>
+            <canvas id="inspectorTransectCanvas" width="490" height="85" style="width: 100%; height: 85px; border-radius: 6px; display: block;"></canvas>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="font-size: 0.82rem; color: #334155;">Radar Intensity Histogram (32 Bins):</strong>
+                <span style="font-size: 0.72rem; color: #64748b;">0 – 255 DN</span>
+            </div>
+            <canvas id="inspectorHistCanvas" width="490" height="50" style="width: 100%; height: 50px; border-radius: 6px; display: block;"></canvas>
         </div>
     </div>
 </div>
@@ -697,6 +809,7 @@
 <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
 <script src="{{ url_for('static', filename='js/inspector.js') }}"></script>
+<script src="{{ url_for('static', filename='js/temporal_scrubber.js') }}"></script>
 <script src="{{ url_for('static', filename='js/nautical.js') }}"></script>
 <script src="{{ url_for('static', filename='js/layers.js') }}"></script>
 <script src="{{ url_for('static', filename='js/aoi.js') }}"></script>
