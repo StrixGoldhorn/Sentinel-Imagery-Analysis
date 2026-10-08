@@ -191,7 +191,326 @@ def dead_reckon_position(
     return new_lat, new_lon, abs(distance_meters)
 
 
+def compute_uncertainty_ellipse(
+    delta_seconds: float,
+    speed_knots: float | None = None,
+    heading_deg: float | None = None,
+    is_interpolated: bool = False,
+    interpolation_ratio: float = 0.5,
+) -> dict[str, float]:
+    """Calculate 95% confidence positional uncertainty ellipse (semi_major_m, semi_minor_m, orientation_deg).
+
+    Models error propagation for kinematic AIS tracks:
+    - Base GNSS positioning error (sigma_pos ~ 7.5m)
+    - Speed Over Ground uncertainty (sigma_spd ~ 0.5 kn = 0.257 m/s)
+    - Course Over Ground uncertainty (sigma_course ~ 3.0 deg = 0.052 rad)
+    - Maneuver dynamic acceleration noise (sigma_acc ~ 0.015 m/s^2)
+    """
+    sigma_pos = 7.5
+    sigma_spd = 0.257
+    sigma_course = 0.052
+    sigma_acc = 0.015
+
+    speed = max(0.1, float(speed_knots)) if speed_knots is not None else 8.0
+    speed_mps = speed * (1852.0 / 3600.0)
+    orientation = float(heading_deg) % 360.0 if heading_deg is not None else 0.0
+
+    abs_dt = abs(float(delta_seconds))
+
+    if is_interpolated:
+        # Hermite bridge interpolation uncertainty: variance is reduced because both ends are fixed.
+        # Max standard deviation is at midpoint u=0.5 (sqrt(u*(1-u)) = 0.5), collapsing to GNSS base at endpoints u=0, 1.
+        u = max(0.0, min(1.0, float(interpolation_ratio)))
+        eff_dt = abs_dt * math.sqrt(u * (1.0 - u))
+    else:
+        eff_dt = abs_dt
+
+    sigma_along = math.sqrt(
+        sigma_pos**2
+        + (sigma_spd * eff_dt) ** 2
+        + 0.25 * (sigma_acc * (eff_dt**2)) ** 2
+    )
+    sigma_cross = math.sqrt(
+        sigma_pos**2
+        + (speed_mps * sigma_course * eff_dt) ** 2
+        + 0.25 * (sigma_acc * (eff_dt**2)) ** 2
+    )
+
+    # 95% Confidence interval (chi-squared 2-DOF scale factor ~ 2.447)
+    semi_major = max(10.0, 2.447 * max(sigma_along, sigma_cross))
+    semi_minor = max(5.0, 2.447 * min(sigma_along, sigma_cross))
+
+    return {
+        "semi_major_m": round(semi_major, 1),
+        "semi_minor_m": round(semi_minor, 1),
+        "orientation_deg": round(orientation, 1),
+        "sigma_along": round(sigma_along, 2),
+        "sigma_cross": round(sigma_cross, 2),
+    }
+
+
+def is_point_in_ellipse(
+    lat: float,
+    lon: float,
+    center_lat: float,
+    center_lon: float,
+    semi_major_m: float,
+    semi_minor_m: float,
+    orientation_deg: float,
+) -> tuple[bool, float]:
+    """Test if a geographic point falls inside an uncertainty ellipse oriented along orientation_deg.
+
+    Returns:
+        tuple[bool, float]: (is_inside, normalized_mahalanobis_distance)
+    """
+    # Metric offsets (dx = East, dy = North)
+    mean_lat_rad = math.radians((lat + center_lat) / 2.0)
+    cos_lat = max(0.01, math.cos(mean_lat_rad))
+    dy = (lat - center_lat) * 111320.0
+    dx = (lon - center_lon) * 111320.0 * cos_lat
+
+    # Ellipse orientation theta is clockwise from True North (dy-axis)
+    theta = math.radians(orientation_deg % 360.0)
+    # Along-track (parallel to heading) and cross-track (perpendicular)
+    along_track = dy * math.cos(theta) + dx * math.sin(theta)
+    cross_track = -dy * math.sin(theta) + dx * math.cos(theta)
+
+    a = max(1.0, float(semi_major_m))
+    b = max(1.0, float(semi_minor_m))
+
+    d2 = (along_track / a) ** 2 + (cross_track / b) ** 2
+    dist = math.sqrt(d2)
+    return dist <= 1.0, dist
+
+
+def interpolate_kinematic_track(
+    records: list[dict[str, Any]],
+    target_time: datetime,
+    max_gap_seconds: float = 7200.0,
+) -> dict[str, Any]:
+    """Perform non-linear kinematic track interpolation (Cubic Hermite Spline) to target timestamp.
+
+    If target_time falls between two chronological reports, applies a Cubic Hermite Spline using
+    instantaneous velocity vectors (SOG, COG), guaranteeing C1 continuity.
+    If target_time falls outside the bracket, applies non-linear kinematic extrapolation with
+    acceleration and turn rate estimation.
+    Computes 95% covariance uncertainty ellipse for the interpolated state.
+    """
+    if not records:
+        raise ValueError("Cannot interpolate empty AIS track")
+
+    # Filter and parse valid positions
+    valid_points: list[tuple[datetime, dict[str, Any]]] = []
+    for r in records:
+        lat = r.get("latitude")
+        lon = r.get("longitude")
+        ts = _parse_timestamp(r.get("timestamp"))
+        if lat is not None and lon is not None and ts is not None:
+            try:
+                valid_points.append((ts, r))
+            except Exception:
+                continue
+
+    if not valid_points:
+        first = records[0]
+        return {
+            "latitude": float(first.get("latitude", 0.0)),
+            "longitude": float(first.get("longitude", 0.0)),
+            "speed": first.get("speed"),
+            "heading": first.get("heading"),
+            "raw_latitude": float(first.get("latitude", 0.0)),
+            "raw_longitude": float(first.get("longitude", 0.0)),
+            "dead_reckoned": False,
+            "delta_seconds": 0.0,
+            "propagated_distance_meters": 0.0,
+            "uncertainty_ellipse": compute_uncertainty_ellipse(0.0),
+            "method": "static",
+            "track_points_count": 1,
+            "representative_record": first,
+        }
+
+    # Sort chronologically
+    valid_points.sort(key=lambda item: item[0])
+
+    # If target time is within 1s of a point, return it directly
+    for ts, r in valid_points:
+        if abs((target_time - ts).total_seconds()) < 1.0:
+            spd = r.get("speed") if r.get("speed") is not None else r.get("sog")
+            hdg = r.get("heading") if r.get("heading") is not None else r.get("course")
+            return {
+                "latitude": float(r["latitude"]),
+                "longitude": float(r["longitude"]),
+                "speed": float(spd) if spd is not None else None,
+                "heading": float(hdg) if hdg is not None else None,
+                "raw_latitude": float(r["latitude"]),
+                "raw_longitude": float(r["longitude"]),
+                "dead_reckoned": False,
+                "delta_seconds": 0.0,
+                "propagated_distance_meters": 0.0,
+                "uncertainty_ellipse": compute_uncertainty_ellipse(0.0, spd, hdg),
+                "method": "exact_match",
+                "track_points_count": len(valid_points),
+                "representative_record": r,
+            }
+
+    # Case 1: Interpolation between two points (t0 <= target_time <= t1)
+    for i in range(len(valid_points) - 1):
+        t0, r0 = valid_points[i]
+        t1, r1 = valid_points[i + 1]
+        if t0 <= target_time <= t1:
+            total_dt = (t1 - t0).total_seconds()
+            if total_dt > max_gap_seconds or total_dt <= 1.0:
+                break
+
+            u = (target_time - t0).total_seconds() / total_dt
+
+            # Hermite cubic basis
+            h00 = 2 * (u**3) - 3 * (u**2) + 1
+            h10 = (u**3) - 2 * (u**2) + u
+            h01 = -2 * (u**3) + 3 * (u**2)
+            h11 = (u**3) - (u**2)
+
+            lat0, lon0 = float(r0["latitude"]), float(r0["longitude"])
+            lat1, lon1 = float(r1["latitude"]), float(r1["longitude"])
+
+            mean_lat = math.radians((lat0 + lat1) / 2.0)
+            cos_lat = max(0.01, math.cos(mean_lat))
+            m_lat = 111320.0
+            m_lon = 111320.0 * cos_lat
+
+            # Metric displacement from P0 to P1
+            dx = (lon1 - lon0) * m_lon
+            dy = (lat1 - lat0) * m_lat
+
+            # SOG & COG at ends
+            s0 = float(r0.get("speed") if r0.get("speed") is not None else r0.get("sog") or 0.0)
+            s1 = float(r1.get("speed") if r1.get("speed") is not None else r1.get("sog") or 0.0)
+            c0 = float(r0.get("heading") if r0.get("heading") is not None else r0.get("course") or 0.0)
+            c1 = float(r1.get("heading") if r1.get("heading") is not None else r1.get("course") or 0.0)
+
+            # Velocities in m/s (East, North)
+            v0_mps = s0 * (1852.0 / 3600.0)
+            v1_mps = s1 * (1852.0 / 3600.0)
+
+            v0x = v0_mps * math.sin(math.radians(c0)) if s0 > 0.1 else dx / total_dt
+            v0y = v0_mps * math.cos(math.radians(c0)) if s0 > 0.1 else dy / total_dt
+            v1x = v1_mps * math.sin(math.radians(c1)) if s1 > 0.1 else dx / total_dt
+            v1y = v1_mps * math.cos(math.radians(c1)) if s1 > 0.1 else dy / total_dt
+
+            # Hermite metric positions
+            interp_x = h10 * (total_dt * v0x) + h01 * dx + h11 * (total_dt * v1x)
+            interp_y = h10 * (total_dt * v0y) + h01 * dy + h11 * (total_dt * v1y)
+
+            interp_lat = lat0 + interp_y / m_lat
+            interp_lon = lon0 + interp_x / m_lon
+
+            # Derivative velocities for instantaneous speed and heading
+            dh10 = 3 * (u**2) - 4 * u + 1
+            dh01 = -6 * (u**2) + 6 * u
+            dh11 = 3 * (u**2) - 2 * u
+
+            inst_vx = (dh10 * (total_dt * v0x) + dh01 * dx + dh11 * (total_dt * v1x)) / total_dt
+            inst_vy = (dh10 * (total_dt * v0y) + dh01 * dy + dh11 * (total_dt * v1y)) / total_dt
+
+            inst_spd_mps = math.hypot(inst_vx, inst_vy)
+            inst_spd_knots = inst_spd_mps * (3600.0 / 1852.0)
+            inst_course = (math.degrees(math.atan2(inst_vx, inst_vy)) + 360.0) % 360.0
+
+            prop_dist = math.hypot(interp_x, interp_y)
+            dt_from_t0 = (target_time - t0).total_seconds()
+
+            ellipse = compute_uncertainty_ellipse(
+                delta_seconds=total_dt,
+                speed_knots=inst_spd_knots,
+                heading_deg=inst_course,
+                is_interpolated=True,
+                interpolation_ratio=u,
+            )
+
+            return {
+                "latitude": round(interp_lat, 7),
+                "longitude": round(interp_lon, 7),
+                "speed": round(inst_spd_knots, 1),
+                "heading": round(inst_course, 1),
+                "raw_latitude": lat0,
+                "raw_longitude": lon0,
+                "dead_reckoned": True,
+                "delta_seconds": round(dt_from_t0, 1),
+                "propagated_distance_meters": round(prop_dist, 1),
+                "uncertainty_ellipse": ellipse,
+                "method": "cubic_hermite_spline",
+                "track_points_count": len(valid_points),
+                "representative_record": r1 if u >= 0.5 else r0,
+            }
+
+    # Case 2: Extrapolation from anchor point (before first point or after last point)
+    if target_time > valid_points[-1][0]:
+        anchor_ts, anchor_r = valid_points[-1]
+        prior_point = valid_points[-2] if len(valid_points) >= 2 else None
+    else:
+        anchor_ts, anchor_r = valid_points[0]
+        prior_point = valid_points[1] if len(valid_points) >= 2 else None
+
+    dt = (target_time - anchor_ts).total_seconds()
+    spd = anchor_r.get("speed") if anchor_r.get("speed") is not None else anchor_r.get("sog")
+    hdg = anchor_r.get("heading") if anchor_r.get("heading") is not None else anchor_r.get("course")
+
+    method = "dead_reckoning"
+    eff_spd = float(spd) if spd is not None else None
+    eff_hdg = float(hdg) if hdg is not None else None
+
+    if prior_point is not None and eff_spd is not None and eff_hdg is not None:
+        p_ts, p_r = prior_point
+        prior_spd = float(p_r.get("speed") if p_r.get("speed") is not None else p_r.get("sog") or eff_spd)
+        prior_hdg = float(p_r.get("heading") if p_r.get("heading") is not None else p_r.get("course") or eff_hdg)
+        p_dt = (anchor_ts - p_ts).total_seconds()
+        if abs(p_dt) > 5.0:
+            acc = (eff_spd - prior_spd) / p_dt
+            turn = (((eff_hdg - prior_hdg + 180.0) % 360.0) - 180.0) / p_dt
+            acc = max(-0.05, min(0.05, acc))
+            turn = max(-3.0, min(3.0, turn))
+            eff_spd = max(0.0, min(60.0, eff_spd + 0.5 * acc * dt))
+            eff_hdg = (eff_hdg + 0.5 * turn * dt) % 360.0
+            method = "kinematic_extrapolation"
+
+    base_lat = float(anchor_r["latitude"])
+    base_lon = float(anchor_r["longitude"])
+
+    proj_lat, proj_lon, prop_dist = dead_reckon_position(
+        base_lat,
+        base_lon,
+        eff_spd,
+        eff_hdg,
+        dt,
+        max_propagation_seconds=max_gap_seconds,
+    )
+
+    ellipse = compute_uncertainty_ellipse(
+        delta_seconds=dt,
+        speed_knots=eff_spd,
+        heading_deg=eff_hdg,
+        is_interpolated=False,
+    )
+
+    return {
+        "latitude": round(proj_lat, 7),
+        "longitude": round(proj_lon, 7),
+        "speed": round(eff_spd, 1) if eff_spd is not None else None,
+        "heading": round(eff_hdg, 1) if eff_hdg is not None else None,
+        "raw_latitude": base_lat,
+        "raw_longitude": base_lon,
+        "dead_reckoned": bool(prop_dist > 0.0),
+        "delta_seconds": round(dt, 1),
+        "propagated_distance_meters": round(prop_dist, 1),
+        "uncertainty_ellipse": ellipse,
+        "method": method,
+        "track_points_count": len(valid_points),
+        "representative_record": anchor_r,
+    }
+
+
 def assess_dark_vessel(
+
     is_correlated: Any = False,
     length: float | None = None,
     beam: float | None = None,
@@ -528,59 +847,73 @@ class CorrelateDetectionsWithAIS:
                 "correlated_ais": None,
             })
 
-        # 2. Pre-process candidates with kinematic dead-reckoning (if enabled)
-        prepared_candidates: list[dict[str, Any]] = []
+        # 2. Pre-process candidates with kinematic trajectory interpolation / dead-reckoning
+        vessel_groups: dict[str, list[dict[str, Any]]] = {}
         for vessel in candidate_vessels:
             v_lat = vessel.get("latitude")
             v_lon = vessel.get("longitude")
             if v_lat is None or v_lon is None:
                 continue
+            v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
+            vessel_groups.setdefault(v_key, []).append(vessel)
 
-            try:
-                base_lat = float(v_lat)
-                base_lon = float(v_lon)
-            except (TypeError, ValueError):
-                continue
-
-            eff_lat = base_lat
-            eff_lon = base_lon
-            delta_seconds = 0.0
-            prop_dist = 0.0
-            dead_reckoned = False
-
+        prepared_candidates: list[dict[str, Any]] = []
+        for v_key, records in vessel_groups.items():
             if enable_kinematics and target_time is not None:
-                v_time = _parse_timestamp(vessel.get("timestamp"))
-                if v_time is not None:
-                    dt = (target_time - v_time).total_seconds()
-                    spd = vessel.get("speed") if vessel.get("speed") is not None else vessel.get("sog")
-                    hdg = vessel.get("course") if vessel.get("course") is not None else vessel.get("cog")
-                    if hdg is None:
-                        hdg = vessel.get("heading")
-
-                    proj_lat, proj_lon, p_dist = dead_reckon_position(
-                        base_lat,
-                        base_lon,
-                        spd,
-                        hdg,
-                        dt,
-                        max_propagation_seconds=max_propagation_seconds,
+                try:
+                    interp_res = interpolate_kinematic_track(
+                        records,
+                        target_time,
+                        max_gap_seconds=max_propagation_seconds,
                     )
-                    if p_dist > 0.0:
-                        eff_lat = proj_lat
-                        eff_lon = proj_lon
-                        delta_seconds = dt
-                        prop_dist = p_dist
-                        dead_reckoned = True
+                    eff_lat = interp_res["latitude"]
+                    eff_lon = interp_res["longitude"]
+                    raw_lat = interp_res["raw_latitude"]
+                    raw_lon = interp_res["raw_longitude"]
+                    dead_reckoned = interp_res["dead_reckoned"]
+                    delta_seconds = interp_res["delta_seconds"]
+                    prop_dist = interp_res["propagated_distance_meters"]
+                    ellipse = interp_res.get("uncertainty_ellipse")
+                    method = interp_res.get("method", "dead_reckoning")
+                    rep_record = interp_res.get("representative_record") or records[-1]
+                except Exception:
+                    rep_record = records[-1]
+                    eff_lat = float(rep_record.get("latitude", 0.0))
+                    eff_lon = float(rep_record.get("longitude", 0.0))
+                    raw_lat = eff_lat
+                    raw_lon = eff_lon
+                    dead_reckoned = False
+                    delta_seconds = 0.0
+                    prop_dist = 0.0
+                    ellipse = compute_uncertainty_ellipse(0.0)
+                    method = "fallback"
+            else:
+                rep_record = records[-1]
+                try:
+                    eff_lat = float(rep_record.get("latitude", 0.0))
+                    eff_lon = float(rep_record.get("longitude", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                raw_lat = eff_lat
+                raw_lon = eff_lon
+                dead_reckoned = False
+                delta_seconds = 0.0
+                prop_dist = 0.0
+                ellipse = compute_uncertainty_ellipse(0.0)
+                method = "static"
 
             prepared_candidates.append({
-                "vessel": vessel,
+                "vessel": rep_record,
+                "all_records": records,
                 "eff_lat": eff_lat,
                 "eff_lon": eff_lon,
-                "raw_lat": base_lat,
-                "raw_lon": base_lon,
+                "raw_lat": raw_lat,
+                "raw_lon": raw_lon,
                 "dead_reckoned": dead_reckoned,
                 "delta_seconds": delta_seconds,
                 "prop_dist": prop_dist,
+                "uncertainty_ellipse": ellipse,
+                "interpolation_method": method,
             })
 
         # 3. Build candidate match pairs: (detection_index, cand_dict, dist_to_box, dist_to_center)
@@ -610,7 +943,20 @@ class CorrelateDetectionsWithAIS:
                         g_box["max_lon"],
                     )
 
-                if dist_to_box <= tolerance_meters:
+                ellipse = cand.get("uncertainty_ellipse")
+                inside_ellipse = False
+                if ellipse:
+                    inside_ellipse, _ = is_point_in_ellipse(
+                        c_lat,
+                        c_lon,
+                        cand["eff_lat"],
+                        cand["eff_lon"],
+                        ellipse["semi_major_m"],
+                        ellipse["semi_minor_m"],
+                        ellipse["orientation_deg"],
+                    )
+
+                if dist_to_box <= tolerance_meters or inside_ellipse:
                     dist_to_center = haversine_distance_meters(cand["eff_lat"], cand["eff_lon"], c_lat, c_lon)
                     candidate_matches.append((det_idx, cand, dist_to_box, dist_to_center))
 
@@ -653,6 +999,8 @@ class CorrelateDetectionsWithAIS:
                 "propagated_distance_meters": round(cand["prop_dist"], 1),
                 "distance_to_box_meters": round(dist_to_box, 1),
                 "distance_to_center_meters": round(dist_to_center, 1),
+                "uncertainty_ellipse": cand.get("uncertainty_ellipse"),
+                "interpolation_method": cand.get("interpolation_method"),
                 "match_type": match_status,
                 "timestamp": (
                     vessel["timestamp"].isoformat()
