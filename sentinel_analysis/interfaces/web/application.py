@@ -53,7 +53,13 @@ def create_app(
         return response
 
     reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    should_start_workers = start_background_workers and (not settings.debug or reloader_child)
+    run_scheduler_env = os.environ.get("SENTINEL_RUN_SCHEDULER", "").strip().lower()
+    scheduler_enabled = run_scheduler_env not in {"0", "false", "no", "off"}
+    should_start_workers = (
+        start_background_workers
+        and scheduler_enabled
+        and (not settings.debug or reloader_child)
+    )
     if should_start_workers and getattr(container, "pass_scheduler", None) is not None:
         container.pass_scheduler.start()
 

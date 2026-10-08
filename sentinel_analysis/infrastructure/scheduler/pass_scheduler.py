@@ -21,6 +21,7 @@ except ImportError:
 from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.use_cases.schedule_aois import CheckAndScheduleAOIs
 from sentinel_analysis.application.shutdown import shutdown_coordinator
+from sentinel_analysis.infrastructure.scheduler.leader import LeaderElection
 
 logger = logging.getLogger(__name__)
 
@@ -73,18 +74,24 @@ class PassSchedulerWorker:
         self._last_error: Optional[str] = None
         self._last_aoi_error: Optional[str] = None
         self._last_sar_error: Optional[str] = None
-        self._owner_id = str(uuid.uuid4())
+        self.leader_election = LeaderElection(
+            name="pass_scheduler",
+            post_pass_repo=self._post_pass_repo,
+            ttl_seconds=90.0,
+            heartbeat_interval=30.0,
+        )
+        self._owner_id = self.leader_election.owner_id
         self._is_leader = False
 
     def _acquire_leadership(self) -> bool:
-        if self._post_pass_repo is None or not hasattr(self._post_pass_repo, "try_acquire_scheduler_lease"):
-            self._is_leader = True
-            return True
-        self._is_leader = self._post_pass_repo.try_acquire_scheduler_lease(
-            "pass_scheduler", self._owner_id, datetime.now(timezone.utc),
-            ttl_seconds=90.0,
-        )
+        if self._post_pass_repo is not None and self.leader_election._repo is None:
+            self.leader_election._repo = self._post_pass_repo
+        self._is_leader = self.leader_election.acquire()
         return self._is_leader
+
+    @property
+    def is_leader(self) -> bool:
+        return self.leader_election.is_leader
 
     @property
     def backend_type(self) -> str:
@@ -418,11 +425,7 @@ class PassSchedulerWorker:
     def stop(self, timeout: float = 2.0) -> None:
         self._running = False
         self._stop_event.set()
-        if self._post_pass_repo is not None and hasattr(self._post_pass_repo, "release_scheduler_lease"):
-            try:
-                self._post_pass_repo.release_scheduler_lease("pass_scheduler", self._owner_id)
-            except Exception:
-                pass
+        self.leader_election.release()
         self._is_leader = False
         if self._pass_monitor is not None and hasattr(self._pass_monitor, "stop_all"):
             try:
