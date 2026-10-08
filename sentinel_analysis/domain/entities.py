@@ -220,6 +220,11 @@ class ShipDetection:
     center_x: Optional[float] = None
     center_y: Optional[float] = None
     polygon_points: Optional[tuple[tuple[float, float], ...]] = None
+    wake_detected: Optional[bool] = None
+    wake_heading: Optional[float] = None
+    wake_speed_knots: Optional[float] = None
+    wake_confidence: Optional[float] = None
+    is_speed_spoofed: Optional[bool] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -254,6 +259,16 @@ class ShipDetection:
                 raise DomainValidationError("Polygon points must contain at least 3 vertices")
             pts = tuple((float(pt[0]), float(pt[1])) for pt in self.polygon_points)
             object.__setattr__(self, "polygon_points", pts)
+        if self.wake_detected is not None:
+            object.__setattr__(self, "wake_detected", bool(self.wake_detected))
+        if self.wake_heading is not None:
+            object.__setattr__(self, "wake_heading", _number(self.wake_heading, "Wake heading"))
+        if self.wake_speed_knots is not None:
+            object.__setattr__(self, "wake_speed_knots", _number(self.wake_speed_knots, "Wake speed knots"))
+        if self.wake_confidence is not None:
+            object.__setattr__(self, "wake_confidence", _number(self.wake_confidence, "Wake confidence"))
+        if self.is_speed_spoofed is not None:
+            object.__setattr__(self, "is_speed_spoofed", bool(self.is_speed_spoofed))
 
 
 @dataclass(frozen=True)

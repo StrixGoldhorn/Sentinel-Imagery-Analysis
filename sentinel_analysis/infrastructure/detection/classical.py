@@ -14,6 +14,7 @@ from sentinel_analysis.infrastructure.detection.cfar import (
     go_cfar_2d,
     so_cfar_2d,
 )
+from sentinel_analysis.infrastructure.detection.wake import ShipWakeDetector
 from sentinel_analysis.infrastructure.imagery.preprocessing import preprocess_sar
 
 
@@ -40,6 +41,8 @@ class ClassicalShipDetector:
         cfar_train_size: int = 15,
         cfar_factor: float = 3.5,
         dual_pol_mode: str = "none",
+        enable_wake_detection: bool = False,
+        wake_detector: Any = None,
         settings_repo: Any = None,
     ) -> None:
         if min_area is not None:
@@ -68,6 +71,8 @@ class ClassicalShipDetector:
         self._cfar_train_size = cfar_train_size
         self._cfar_factor = cfar_factor
         self._dual_pol_mode = dual_pol_mode
+        self._enable_wake_detection = enable_wake_detection
+        self._wake_detector = wake_detector or ShipWakeDetector(pixel_spacing_meters=pixel_spacing_meters)
         self._settings_repo = settings_repo
 
 
@@ -79,6 +84,7 @@ class ClassicalShipDetector:
         coastal_buffer: int | None = None,
         detection_method: str | None = None,
         vh_path: Path | None = None,
+        enable_wake_detection: bool | None = None,
     ) -> DetectionResult:
         if isinstance(threshold, bool) or not isinstance(threshold, int) or not 0 <= threshold <= 255:
             raise ValueError("Detection threshold must be an integer between 0 and 255")
@@ -101,6 +107,11 @@ class ClassicalShipDetector:
         cfar_train = self._settings_repo.get("cfar_train_size", self._cfar_train_size) if self._settings_repo else self._cfar_train_size
         cfar_factor = self._settings_repo.get("cfar_factor", self._cfar_factor) if self._settings_repo else self._cfar_factor
         dual_pol_mode = self._settings_repo.get("dual_pol_mode", self._dual_pol_mode) if self._settings_repo else self._dual_pol_mode
+        do_wake = (
+            enable_wake_detection
+            if enable_wake_detection is not None
+            else (self._settings_repo.get("enable_wake_detection", self._enable_wake_detection) if self._settings_repo else self._enable_wake_detection)
+        )
 
         image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
         if image is None:
@@ -178,6 +189,34 @@ class ClassicalShipDetector:
                 mean_val = cv2.mean(image, mask=mask)[0]
                 confidence = float(np.clip((mean_val - threshold) / max(1.0, 255.0 - threshold), 0.1, 1.0))
 
+                wake_detected = None
+                wake_heading = None
+                wake_speed = None
+                wake_confidence = None
+
+                if do_wake and self._wake_detector is not None:
+                    try:
+                        wake_res = self._wake_detector.analyze_detection(
+                            image,
+                            {
+                                "center_x": cx,
+                                "center_y": cy,
+                                "length": length_m,
+                                "beam": beam_m,
+                                "angle": angle,
+                                "width": width,
+                                "height": height,
+                            },
+                            pixel_spacing_m=pixel_spacing,
+                        )
+                        if wake_res.wake_detected:
+                            wake_detected = True
+                            wake_heading = wake_res.true_heading_deg
+                            wake_speed = wake_res.estimated_speed_knots
+                            wake_confidence = wake_res.wake_confidence
+                    except Exception:
+                        pass
+
                 detections.append(
                     ShipDetection(
                         x=x,
@@ -191,6 +230,10 @@ class ClassicalShipDetector:
                         center_x=round(float(cx), 1),
                         center_y=round(float(cy), 1),
                         polygon_points=polygon_pts,
+                        wake_detected=wake_detected,
+                        wake_heading=wake_heading,
+                        wake_speed_knots=wake_speed,
+                        wake_confidence=wake_confidence,
                     )
                 )
 
