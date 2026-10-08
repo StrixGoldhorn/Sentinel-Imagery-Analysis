@@ -42,6 +42,7 @@ from sentinel_analysis.application.use_cases import (
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
+from sentinel_analysis.infrastructure.detection.onnx_detector import DeepLearningShipDetector
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.infrastructure.geocoding import NominatimLocationResolver
 from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
@@ -111,7 +112,12 @@ class ApplicationContainer:
                 "asf": self.asf_provider,
             },
         )
-        self.detect_ships = DetectShips(ClassicalShipDetector(settings_repo=self.settings_repository))
+        engine = self.settings_repository.get("detector_engine", "classical")
+        if engine in ("deep_learning", "onnx"):
+            active_detector = DeepLearningShipDetector(settings_repo=self.settings_repository)
+        else:
+            active_detector = ClassicalShipDetector(settings_repo=self.settings_repository)
+        self.detect_ships = DetectShips(active_detector)
         self.correlate_ais_detections = CorrelateDetectionsWithAIS(
             self.ais_repository,
             self.settings_repository,

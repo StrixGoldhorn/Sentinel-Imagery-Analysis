@@ -40,6 +40,8 @@ def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> di
         "wake_speed_knots": getattr(item, "wake_speed_knots", None),
         "wake_confidence": getattr(item, "wake_confidence", None),
         "is_speed_spoofed": getattr(item, "is_speed_spoofed", None),
+        "vessel_class": getattr(item, "vessel_class", None),
+        "classification_confidence": getattr(item, "classification_confidence", None),
         "correlation_status": "uncorrelated",
         "is_correlated": False,
         "correlated_ais": None,
@@ -132,7 +134,9 @@ def _build_geojson_feature_collection(
             "is_dark_vessel": bool(d.get("is_dark_vessel", False)),
             "dark_vessel_risk": d.get("dark_vessel_risk", "NOMINAL"),
             "dark_vessel_score": d.get("dark_vessel_score", 0.0),
-            "estimated_class": d.get("estimated_class"),
+            "estimated_class": d.get("vessel_class") or d.get("estimated_class"),
+            "vessel_class": d.get("vessel_class"),
+            "classification_confidence": d.get("classification_confidence"),
             "dark_vessel_reasons": d.get("dark_vessel_reasons", []),
             "vessel_name": ais.get("vessel_name") or ais.get("name"),
             "mmsi": ais.get("mmsi"),
@@ -272,6 +276,11 @@ def save_detection_results(
                 len_val = det.get("length")
                 len_str = f" [{risk} DARK {int(len_val)}m]" if len_val else f" [{risk} DARK]"
                 label_text += len_str
+
+            v_class = det.get("vessel_class")
+            if v_class and not (ais and isinstance(ais, dict) and (ais.get("vessel_name") or ais.get("name"))):
+                if not is_dark:
+                    label_text += f" ({v_class})"
 
             x_text = int(det.get("x", 0))
             y_text = max(15, int(det.get("y", 0)) - 5)

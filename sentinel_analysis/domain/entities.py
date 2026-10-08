@@ -225,6 +225,8 @@ class ShipDetection:
     wake_speed_knots: Optional[float] = None
     wake_confidence: Optional[float] = None
     is_speed_spoofed: Optional[bool] = None
+    vessel_class: Optional[str] = None
+    classification_confidence: Optional[float] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -269,6 +271,13 @@ class ShipDetection:
             object.__setattr__(self, "wake_confidence", _number(self.wake_confidence, "Wake confidence"))
         if self.is_speed_spoofed is not None:
             object.__setattr__(self, "is_speed_spoofed", bool(self.is_speed_spoofed))
+        if self.vessel_class is not None:
+            object.__setattr__(self, "vessel_class", _required_text(self.vessel_class, "Vessel class"))
+        if self.classification_confidence is not None:
+            class_conf = _number(self.classification_confidence, "Classification confidence")
+            if not 0 <= class_conf <= 1:
+                raise DomainValidationError("Classification confidence must be between 0 and 1")
+            object.__setattr__(self, "classification_confidence", class_conf)
 
 
 @dataclass(frozen=True)

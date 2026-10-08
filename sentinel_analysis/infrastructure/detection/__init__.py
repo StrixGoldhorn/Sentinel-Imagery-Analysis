@@ -7,7 +7,15 @@ from sentinel_analysis.infrastructure.detection.cfar import (
     so_cfar_2d,
 )
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
-from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
+from sentinel_analysis.infrastructure.detection.onnx_detector import (
+    DeepLearningShipDetector,
+    InferenceBackend,
+    MockONNXBackend,
+    ONNXRuntimeBackend,
+    OpenCVDNNBackend,
+    SARCNNClassifier,
+    VESSEL_CLASSES,
+)
 from sentinel_analysis.infrastructure.detection.wake import (
     ShipWakeDetector,
     WakeAnalysisResult,
@@ -16,6 +24,13 @@ from sentinel_analysis.infrastructure.detection.wake import (
 
 __all__ = [
     "ClassicalShipDetector",
+    "DeepLearningShipDetector",
+    "SARCNNClassifier",
+    "InferenceBackend",
+    "OpenCVDNNBackend",
+    "ONNXRuntimeBackend",
+    "MockONNXBackend",
+    "VESSEL_CLASSES",
     "save_detection_results",
     "ca_cfar_2d",
     "go_cfar_2d",
