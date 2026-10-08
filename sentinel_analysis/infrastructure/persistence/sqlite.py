@@ -27,6 +27,7 @@ class SQLiteDatabase:
         connection.execute(f"PRAGMA busy_timeout = {busy_ms}")
         if self.path != ":memory:":
             connection.execute("PRAGMA journal_mode = WAL")
+            connection.execute("PRAGMA synchronous = NORMAL")
         if rows:
             connection.row_factory = sqlite3.Row
         try:

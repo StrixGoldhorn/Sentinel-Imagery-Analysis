@@ -67,27 +67,77 @@ def create_async_scan():
     }), 202
 
 
+def serialize_task(task) -> dict[str, object]:
+    terminal_statuses = {"COMPLETED", "FAILED", "CANCELLED"}
+    active_statuses = {"PENDING", "QUEUED", "RUNNING"}
+    is_terminal = task.status in terminal_statuses
+    return {
+        "task_id": task.task_id,
+        "task_type": task.task_type,
+        "status": task.status,
+        "status_group": "ACTIVE" if task.status in active_statuses else "TERMINAL",
+        "terminal": is_terminal,
+        "progress": task.progress,
+        "message": task.message,
+        "scan_id": task.scan_id,
+        "result": task.result,
+        "error": task.error,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+    }
+
+
+@blueprint.get("/api/tasks")
+def list_tasks():
+    status = request.args.get("status")
+    task_type = request.args.get("task_type")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+    queue = container().task_queue
+    tasks = queue.list_tasks(status=status, task_type=task_type, limit=limit, offset=offset)
+    return jsonify({
+        "status": "success",
+        "count": len(tasks),
+        "tasks": [serialize_task(t) for t in tasks],
+    })
+
+
 @blueprint.get("/api/tasks/<task_id>")
 def get_task_status(task_id: str):
     task = container().task_queue.get_task(task_id)
     if task is None:
         raise TaskNotFoundError(f"Task not found: {task_id}")
+    return jsonify(serialize_task(task))
 
-    terminal_statuses = {"COMPLETED", "FAILED", "CANCELLED"}
-    active_statuses = {"PENDING", "QUEUED", "RUNNING"}
-    terminal = task.status in ("COMPLETED", "FAILED", "CANCELLED")
+
+@blueprint.post("/api/tasks/<task_id>/cancel")
+def cancel_task(task_id: str):
+    queue = container().task_queue
+    task = queue.get_task(task_id)
+    if task is None:
+        raise TaskNotFoundError(f"Task not found: {task_id}")
+    cancelled = queue.cancel_task(task_id)
+    if not cancelled:
+        return jsonify({
+            "status": "error",
+            "message": f"Task {task_id} cannot be cancelled (current status: {task.status})",
+            "task_id": task_id,
+            "task_status": task.status,
+        }), 400
+    updated = queue.get_task(task_id)
     return jsonify({
-        "task_id": task.task_id,
-        "task_type": task.task_type,
-        "status": task.status,
-        "status_group": "TERMINAL" if terminal else "ACTIVE",
-        "terminal": terminal,
-        "status_group": "ACTIVE" if task.status in active_statuses else "TERMINAL",
-        "terminal": task.status in terminal_statuses,
-        "progress": task.progress,
-        "message": task.message,
-        "result": task.result,
-        "error": task.error,
-        "created_at": task.created_at.isoformat() if task.created_at else None,
-        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "status": "success",
+        "message": "Task cancelled successfully",
+        "task": serialize_task(updated) if updated else None,
+    })
+
+
+@blueprint.post("/api/tasks/recover")
+def recover_crashed_tasks():
+    queue = container().task_queue
+    recovered = queue.recover_crashed_tasks()
+    return jsonify({
+        "status": "success",
+        "recovered_count": len(recovered),
+        "recovered_tasks": recovered,
     })

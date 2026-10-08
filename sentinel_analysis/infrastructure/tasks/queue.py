@@ -43,46 +43,85 @@ class ThreadedTaskQueue:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
+    def _row_to_task(self, row: Any) -> BackgroundTask:
+        result = None
+        if row["result_json"]:
+            try:
+                decoded = json.loads(row["result_json"])
+                result = decoded if isinstance(decoded, dict) else {"data": decoded}
+            except (TypeError, ValueError):
+                result = None
+        return BackgroundTask(
+            task_id=row["task_id"],
+            task_type=row["task_type"],
+            status=row["status"],
+            progress=float(row["progress"] or 0.0),
+            message=row["message"] or "",
+            scan_id=row["scan_id"] if "scan_id" in row.keys() else None,
+            created_at=self._parse_dt(row["created_at"]),
+            completed_at=self._parse_dt(row["completed_at"]),
+            result=result,
+            error=row["error_text"],
+        )
+
+    def recover_crashed_tasks(self, lease_timeout_seconds: float = 300) -> list[str]:
+        """Detect tasks abandoned by crashed workers or previous server lifecycles and recover their state."""
+        recovered_ids: list[str] = []
+        if self._database is None:
+            return recovered_ids
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        with self._database.connection(rows=True) as conn:
+            rows = conn.execute(
+                """
+                SELECT task_id, status FROM background_tasks
+                WHERE status IN ('QUEUED', 'RUNNING')
+                  AND (
+                    lease_expires_at IS NULL
+                    OR lease_expires_at <= ?
+                    OR owner_id != ?
+                  )
+                """,
+                (now_iso, self._owner_id),
+            ).fetchall()
+            for row in rows:
+                task_id = row["task_id"]
+                conn.execute(
+                    """
+                    UPDATE background_tasks
+                    SET status = 'FAILED',
+                        message = 'Worker crash detected or lease expired',
+                        completed_at = ?,
+                        error_text = 'Task worker died or heartbeat lease expired'
+                    WHERE task_id = ?
+                    """,
+                    (now_iso, task_id),
+                )
+                recovered_ids.append(task_id)
+
+        with self._lock:
+            for task_id in recovered_ids:
+                if task_id in self._tasks:
+                    current = self._tasks[task_id]
+                    self._tasks[task_id] = replace(
+                        current,
+                        status="FAILED",
+                        message="Worker crash detected or lease expired",
+                        completed_at=now,
+                        error="Task worker died or heartbeat lease expired",
+                    )
+        return recovered_ids
+
     def _load_persisted_tasks(self) -> None:
         if self._database is None:
             return
-        interrupted_at = datetime.now(timezone.utc).isoformat()
+        self.recover_crashed_tasks()
         with self._database.connection(rows=True) as conn:
-            conn.execute(
-                """
-                UPDATE background_tasks
-                SET status = 'FAILED',
-                    message = 'Interrupted by application restart',
-                    completed_at = ?,
-                    error_text = 'Application restarted before the task completed'
-                WHERE status IN ('QUEUED', 'RUNNING')
-                  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-                """,
-                (interrupted_at, interrupted_at),
-            )
             rows = conn.execute(
                 "SELECT * FROM background_tasks ORDER BY created_at DESC LIMIT 1000"
             ).fetchall()
         for row in rows:
-            result = None
-            if row["result_json"]:
-                try:
-                    decoded = json.loads(row["result_json"])
-                    result = decoded if isinstance(decoded, dict) else {"data": decoded}
-                except (TypeError, ValueError):
-                    result = None
-            task = BackgroundTask(
-                task_id=row["task_id"],
-                task_type=row["task_type"],
-                status=row["status"],
-                progress=float(row["progress"] or 0.0),
-                message=row["message"] or "",
-                scan_id=row["scan_id"] if "scan_id" in row.keys() else None,
-                created_at=self._parse_dt(row["created_at"]),
-                completed_at=self._parse_dt(row["completed_at"]),
-                result=result,
-                error=row["error_text"],
-            )
+            task = self._row_to_task(row)
             self._tasks[task.task_id] = task
 
     def _persist(self, task: BackgroundTask) -> None:
@@ -292,22 +331,86 @@ class ThreadedTaskQueue:
             row = conn.execute("SELECT * FROM background_tasks WHERE task_id = ?", (task_id,)).fetchone()
         if row is None:
             return
-        result = None
-        if row["result_json"]:
-            try:
-                decoded = json.loads(row["result_json"])
-                result = decoded if isinstance(decoded, dict) else {"data": decoded}
-            except (TypeError, ValueError):
-                pass
-        task = BackgroundTask(
-            task_id=row["task_id"], task_type=row["task_type"], status=row["status"],
-            progress=float(row["progress"] or 0.0), message=row["message"] or "",
-            scan_id=row["scan_id"], created_at=self._parse_dt(row["created_at"]),
-            completed_at=self._parse_dt(row["completed_at"]), result=result,
-            error=row["error_text"],
-        )
+        task = self._row_to_task(row)
         with self._lock:
             self._tasks[task_id] = task
+
+    def list_tasks(
+        self,
+        status: str | None = None,
+        task_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[BackgroundTask]:
+        """List background tasks with optional filtering and pagination."""
+        if self._database is not None:
+            query = "SELECT * FROM background_tasks WHERE 1=1"
+            params: list[Any] = []
+            if status:
+                query += " AND UPPER(status) = UPPER(?)"
+                params.append(status)
+            if task_type:
+                query += " AND task_type = ?"
+                params.append(task_type)
+            query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+            params.extend([max(1, limit), max(0, offset)])
+            with self._database.connection(rows=True) as conn:
+                rows = conn.execute(query, tuple(params)).fetchall()
+            return [self._row_to_task(row) for row in rows]
+        with self._lock:
+            tasks = list(self._tasks.values())
+            if status:
+                tasks = [t for t in tasks if t.status.upper() == status.upper()]
+            if task_type:
+                tasks = [t for t in tasks if t.task_type == task_type]
+            tasks.sort(key=lambda t: t.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+            return tasks[offset : offset + limit]
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a queued or running task. Returns True if cancelled, False otherwise."""
+        with self._lock:
+            if task_id not in self._tasks and self._database is not None:
+                self._load_one(task_id)
+            task = self._tasks.get(task_id)
+            if task is None or task.status in {"COMPLETED", "FAILED", "CANCELLED"}:
+                return False
+
+            future = self._futures.get(task_id)
+            if future is not None:
+                future.cancel()
+
+            stop = self._heartbeat_stops.pop(task_id, None)
+            if stop is not None:
+                stop.set()
+
+            cancelled = replace(
+                task,
+                status="CANCELLED",
+                message="Task cancelled by user",
+                completed_at=datetime.now(timezone.utc),
+                error="Cancelled",
+            )
+            self._tasks[task_id] = cancelled
+            self._persist(cancelled)
+            return True
+
+    def prune_tasks(self, older_than_days: int = 7) -> int:
+        """Prune old terminal tasks to free SQLite storage."""
+        if self._database is None:
+            return 0
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=older_than_days)).isoformat()
+        with self._database.connection() as conn:
+            cursor = conn.execute(
+                """
+                DELETE FROM background_tasks
+                WHERE status IN ('COMPLETED', 'FAILED', 'CANCELLED')
+                  AND completed_at IS NOT NULL
+                  AND completed_at < ?
+                """,
+                (cutoff,),
+            )
+            deleted = cursor.rowcount
+        return max(0, deleted)
 
     def update_progress(
         self,
