@@ -119,6 +119,102 @@ class UpdateSettings:
             except (TypeError, ValueError):
                 raise ValueError("Pixel spacing meters must be a positive number")
 
+        if key == "detection_method":
+            sval = str(value).lower()
+            if sval not in ("threshold", "cfar_ca", "cfar_go", "cfar_so", "cfar_os"):
+                raise ValueError("Detection method must be one of: threshold, cfar_ca, cfar_go, cfar_so, cfar_os")
+            return sval
+
+        if key == "cfar_guard_size":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 31):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("CFAR Guard Window Size must be an integer between 1 and 31")
+
+        if key == "cfar_train_size":
+            try:
+                ival = int(value)
+                if not (3 <= ival <= 61):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("CFAR Background Window Size must be an integer between 3 and 61")
+
+        if key == "cfar_factor":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 15.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("CFAR Threshold Multiplier must be between 1.0 and 15.0")
+
+        if key == "dual_pol_mode":
+            sval = str(value).lower()
+            if sval not in ("none", "ratio", "difference", "product", "enhanced"):
+                raise ValueError("Dual-pol fusion mode must be one of: none, ratio, difference, product, enhanced")
+            return sval
+
+        if key == "detector_engine":
+            sval = str(value).lower()
+            if sval not in ("classical", "deep_learning"):
+                raise ValueError("Detector engine must be one of: classical, deep_learning")
+            return sval
+
+        if key == "deep_learning_confidence":
+            try:
+                fval = float(value)
+                if not (0.1 <= fval <= 1.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Deep learning confidence must be between 0.1 and 1.0")
+
+        if key == "wake_speed_spoofing_threshold_knots":
+            try:
+                fval = float(value)
+                if not (0.5 <= fval <= 20.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Wake speed spoofing threshold must be between 0.5 and 20.0 knots")
+
+        if key == "ais_interpolation_method":
+            sval = str(value).lower()
+            if sval not in ("spline", "ekf", "linear"):
+                raise ValueError("AIS interpolation method must be one of: spline, ekf, linear")
+            return sval
+
+        if key == "ais_covariance_confidence":
+            try:
+                fval = float(value)
+                if not (0.50 <= fval <= 0.99):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("AIS covariance confidence must be between 0.50 and 0.99")
+
+        if key == "dark_vessel_solas_length_threshold":
+            try:
+                fval = float(value)
+                if not (10.0 <= fval <= 100.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Dark vessel SOLAS length threshold must be between 10.0 and 100.0 meters")
+
+        if key == "dark_vessel_critical_length_threshold":
+            try:
+                fval = float(value)
+                if not (50.0 <= fval <= 300.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Dark vessel critical length threshold must be between 50.0 and 300.0 meters")
+
         if key == "ais_correlation_distance_meters":
             try:
                 fval = float(value)
@@ -250,10 +346,99 @@ class UpdateSettings:
             "show_error",
             "ais_overlay_default_enabled",
             "nautical_chart_default_enabled",
+            "wake_detection_enabled",
+            "umbra_enabled",
+            "asf_enabled",
+            "optical_validation_enabled",
+            "scheduler_leader_election_enabled",
         ):
             if isinstance(value, str):
                 return value.lower() in ("true", "1", "yes")
             return bool(value)
+
+        if key == "umbra_stac_api_url":
+            sval = str(value).strip()
+            if not sval.startswith(("http://", "https://")):
+                raise ValueError("Umbra STAC catalog URL must start with http:// or https://")
+            return sval
+
+        if key == "umbra_max_results":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 100):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("Umbra max results must be an integer between 1 and 100")
+
+        if key == "asf_api_url":
+            sval = str(value).strip()
+            if not sval.startswith(("http://", "https://")):
+                raise ValueError("NASA ASF API endpoint must start with http:// or https://")
+            return sval
+
+        if key == "asf_flight_direction":
+            sval = str(value).upper()
+            if sval not in ("BOTH", "ASCENDING", "DESCENDING"):
+                raise ValueError("ASF flight direction must be one of: BOTH, ASCENDING, DESCENDING")
+            return sval
+
+        if key == "asf_polarization":
+            sval = str(value).upper()
+            if sval not in ("VV+VH", "HH+HV", "VV", "HH", "ALL"):
+                raise ValueError("ASF polarization must be one of: VV+VH, HH+HV, VV, HH, ALL")
+            return sval
+
+        if key == "asf_max_results":
+            try:
+                ival = int(value)
+                if not (1 <= ival <= 250):
+                    raise ValueError
+                return ival
+            except (TypeError, ValueError):
+                raise ValueError("ASF max results must be an integer between 1 and 250")
+
+        if key == "optical_max_cloud_cover":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 100.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Optical max cloud cover must be between 1.0 and 100.0 percent")
+
+        if key == "optical_time_window_hours":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 72.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Optical match window must be between 1.0 and 72.0 hours")
+
+        if key == "scheduler_leader_backend":
+            sval = str(value).lower()
+            if sval not in ("sqlite", "redis", "postgres"):
+                raise ValueError("Leader election backend must be one of: sqlite, redis, postgres")
+            return sval
+
+        if key == "scheduler_heartbeat_interval_seconds":
+            try:
+                fval = float(value)
+                if not (1.0 <= fval <= 60.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Scheduler heartbeat interval must be between 1.0 and 60.0 seconds")
+
+        if key == "scheduler_lease_ttl_seconds":
+            try:
+                fval = float(value)
+                if not (5.0 <= fval <= 120.0):
+                    raise ValueError
+                return fval
+            except (TypeError, ValueError):
+                raise ValueError("Scheduler lease TTL must be between 5.0 and 120.0 seconds")
 
         if key == "duration_seconds":
             try:
@@ -298,7 +483,7 @@ class UpdateSettings:
                 raise ValueError(f"Unknown satellite(s): {', '.join(invalid)}. Supported: {', '.join(ALL_SATELLITE_NAMES)}")
             return sats
 
-        if key in ("color_cv_detection", "color_obb_detection", "color_inside_box_detection", "color_outside_box_detection"):
+        if key in ("color_cv_detection", "color_obb_detection", "color_inside_box_detection", "color_outside_box_detection", "color_dark_vessel"):
             sval = str(value).strip()
             if not re.match(r"^#[0-9a-fA-F]{6}$", sval):
                 raise ValueError(f"{key} must be a valid 6-character hex color (e.g. #ff3333)")

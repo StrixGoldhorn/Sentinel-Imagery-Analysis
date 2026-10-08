@@ -45,9 +45,10 @@ function initFormChangeTracking() {
     const form = document.getElementById('settingsForm');
     if (!form) return;
     form.addEventListener('input', updateDirtyState);
-    form.addEventListener('change', updateDirtyState);
-    const maskToggle = document.getElementById('input_cv_dem_land_mask_enabled');
-    if (maskToggle) maskToggle.addEventListener('change', updateDependentControls);
+    form.addEventListener('change', () => {
+        updateDependentControls();
+        updateDirtyState();
+    });
 }
 
 async function loadSettingsRuntimeStatus() {
@@ -189,6 +190,55 @@ function updateDependentControls() {
             const control = document.getElementById(id);
             if (control) control.disabled = !maskEnabled;
         });
+
+    const detectionMethod = getString('input_cv_detection_method', 'threshold');
+    const isCfar = detectionMethod.startsWith('cfar');
+    ['input_cv_cfar_guard_size', 'sync_cv_cfar_guard_size',
+     'input_cv_cfar_train_size', 'sync_cv_cfar_train_size',
+     'input_cv_cfar_factor', 'sync_cv_cfar_factor'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !isCfar;
+    });
+
+    const isDl = getString('input_cv_detector_engine', 'classical') === 'deep_learning';
+    ['input_cv_deep_learning_confidence', 'sync_cv_deep_learning_confidence'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !isDl;
+    });
+
+    const wakeEnabled = getBool('input_cv_wake_detection_enabled', true);
+    const wakeSpeed = document.getElementById('input_cv_wake_speed_spoofing_threshold_knots');
+    if (wakeSpeed) wakeSpeed.disabled = !wakeEnabled;
+
+    const drEnabled = getBool('input_cv_ais_dead_reckoning_enabled', true);
+    const drWindow = document.getElementById('input_cv_ais_max_dead_reckoning_seconds');
+    if (drWindow) drWindow.disabled = !drEnabled;
+
+    const umbraEnabled = getBool('input_imagery_umbra_enabled', true);
+    ['input_imagery_umbra_stac_api_url', 'input_imagery_umbra_max_results'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !umbraEnabled;
+    });
+
+    const asfEnabled = getBool('input_imagery_asf_enabled', true);
+    ['input_imagery_asf_api_url', 'input_imagery_asf_flight_direction',
+     'input_imagery_asf_polarization', 'input_imagery_asf_max_results'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !asfEnabled;
+    });
+
+    const opticalEnabled = getBool('input_imagery_optical_validation_enabled', false);
+    ['input_imagery_optical_max_cloud_cover', 'input_imagery_optical_time_window_hours'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !opticalEnabled;
+    });
+
+    const leaderEnabled = getBool('input_scheduler_scheduler_leader_election_enabled', true);
+    ['input_scheduler_scheduler_leader_backend', 'input_scheduler_scheduler_heartbeat_interval_seconds',
+     'input_scheduler_scheduler_lease_ttl_seconds'].forEach(id => {
+        const control = document.getElementById(id);
+        if (control) control.disabled = !leaderEnabled;
+    });
 }
 
 function validateCrossFieldConstraints() {
@@ -315,20 +365,50 @@ function collectFormData() {
             dilation_iterations: getInt('input_cv_dilation_iterations', 2),
             pixel_spacing_meters: getFloat('input_cv_pixel_spacing_meters', 10.0),
             ais_correlation_distance_meters: getFloat('input_cv_ais_correlation_distance_meters', 100.0),
+            detection_method: getString('input_cv_detection_method', 'threshold'),
+            cfar_guard_size: getInt('input_cv_cfar_guard_size', 5),
+            cfar_train_size: getInt('input_cv_cfar_train_size', 15),
+            cfar_factor: getFloat('input_cv_cfar_factor', 3.5),
+            dual_pol_mode: getString('input_cv_dual_pol_mode', 'none'),
+            detector_engine: getString('input_cv_detector_engine', 'classical'),
+            deep_learning_confidence: getFloat('input_cv_deep_learning_confidence', 0.5),
+            wake_detection_enabled: getBool('input_cv_wake_detection_enabled', true),
+            wake_speed_spoofing_threshold_knots: getFloat('input_cv_wake_speed_spoofing_threshold_knots', 3.0),
+            ais_interpolation_method: getString('input_cv_ais_interpolation_method', 'spline'),
+            ais_covariance_confidence: getFloat('input_cv_ais_covariance_confidence', 0.95),
+            ais_dead_reckoning_enabled: getBool('input_cv_ais_dead_reckoning_enabled', true),
+            ais_max_dead_reckoning_seconds: getInt('input_cv_ais_max_dead_reckoning_seconds', 7200),
+            dark_vessel_solas_length_threshold: getFloat('input_cv_dark_vessel_solas_length_threshold', 30.0),
+            dark_vessel_critical_length_threshold: getFloat('input_cv_dark_vessel_critical_length_threshold', 100.0),
         },
         imagery: {
             default_evalscript: getString('input_imagery_default_evalscript', 'SAR'),
             search_window_days: getInt('input_imagery_search_window_days', 30),
             resolution_meters: getFloat('input_imagery_resolution_meters', 10.0),
             max_image_size: getInt('input_imagery_max_image_size', 2500),
+            umbra_enabled: getBool('input_imagery_umbra_enabled', true),
+            umbra_stac_api_url: getString('input_imagery_umbra_stac_api_url', 'https://umbra-open-data-catalog.s3.amazonaws.com'),
+            umbra_max_results: getInt('input_imagery_umbra_max_results', 20),
+            asf_enabled: getBool('input_imagery_asf_enabled', true),
+            asf_api_url: getString('input_imagery_asf_api_url', 'https://api.daac.asf.alaska.edu/services/search/param'),
+            asf_flight_direction: getString('input_imagery_asf_flight_direction', 'BOTH'),
+            asf_polarization: getString('input_imagery_asf_polarization', 'VV+VH'),
+            asf_max_results: getInt('input_imagery_asf_max_results', 25),
+            optical_validation_enabled: getBool('input_imagery_optical_validation_enabled', false),
+            optical_max_cloud_cover: getFloat('input_imagery_optical_max_cloud_cover', 20.0),
+            optical_time_window_hours: getFloat('input_imagery_optical_time_window_hours', 24.0),
         },
         scheduler: {
             auto_capture_default: getBool('input_scheduler_auto_capture_default', false),
             aoi_check_interval_seconds: getFloat('input_scheduler_aoi_check_interval_seconds', 30.0),
             post_pass_max_wait_hours: getFloat('input_scheduler_post_pass_max_wait_hours', 24.0),
             post_pass_worker_count: getInt('input_scheduler_post_pass_worker_count', 8),
-            satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232'),
+            satellite_norad_ids: getString('input_scheduler_satellite_norad_ids', '39634, 41456, 62232, 66315'),
             enabled_satellites: Array.from(document.querySelectorAll('input[name="satellite_selection"]:checked')).map(el => el.value),
+            scheduler_leader_election_enabled: getBool('input_scheduler_scheduler_leader_election_enabled', true),
+            scheduler_leader_backend: getString('input_scheduler_scheduler_leader_backend', 'sqlite'),
+            scheduler_heartbeat_interval_seconds: getFloat('input_scheduler_scheduler_heartbeat_interval_seconds', 5.0),
+            scheduler_lease_ttl_seconds: getFloat('input_scheduler_scheduler_lease_ttl_seconds', 15.0),
         },
         map_ui: {
             default_lat: getFloat('input_map_ui_default_lat', 1.290270),
@@ -341,6 +421,7 @@ function collectFormData() {
             color_obb_detection: getString('input_map_ui_color_obb_detection', '#e67e22'),
             color_inside_box_detection: getString('input_map_ui_color_inside_box_detection', '#10b981'),
             color_outside_box_detection: getString('input_map_ui_color_outside_box_detection', '#06b6d4'),
+            color_dark_vessel: getString('input_map_ui_color_dark_vessel', '#e11d48'),
         },
         notifications: {
             enabled: getBool('input_notifications_enabled', true),

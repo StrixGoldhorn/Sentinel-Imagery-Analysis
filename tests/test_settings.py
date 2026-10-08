@@ -121,6 +121,65 @@ class TestSQLiteSettingsRepository(unittest.TestCase):
         self.repo.reset_section("cv")
         self.assertEqual(self.repo.get("coastal_buffer_pixels"), 81)
 
+    def test_new_settings_definitions_and_defaults(self):
+        defs = self.repo.get_all_definitions()
+
+        # CV definitions
+        self.assertIn("detection_method", defs["cv"])
+        self.assertEqual(defs["cv"]["detection_method"]["value"], "threshold")
+        self.assertIn("cfar_guard_size", defs["cv"])
+        self.assertEqual(defs["cv"]["cfar_guard_size"]["value"], 5)
+        self.assertIn("cfar_train_size", defs["cv"])
+        self.assertEqual(defs["cv"]["cfar_train_size"]["value"], 15)
+        self.assertIn("cfar_factor", defs["cv"])
+        self.assertEqual(defs["cv"]["cfar_factor"]["value"], 3.5)
+        self.assertIn("dual_pol_mode", defs["cv"])
+        self.assertEqual(defs["cv"]["dual_pol_mode"]["value"], "none")
+        self.assertIn("detector_engine", defs["cv"])
+        self.assertEqual(defs["cv"]["detector_engine"]["value"], "classical")
+        self.assertIn("deep_learning_confidence", defs["cv"])
+        self.assertEqual(defs["cv"]["deep_learning_confidence"]["value"], 0.5)
+        self.assertIn("wake_detection_enabled", defs["cv"])
+        self.assertTrue(defs["cv"]["wake_detection_enabled"]["value"])
+        self.assertIn("wake_speed_spoofing_threshold_knots", defs["cv"])
+        self.assertEqual(defs["cv"]["wake_speed_spoofing_threshold_knots"]["value"], 3.0)
+        self.assertIn("ais_interpolation_method", defs["cv"])
+        self.assertEqual(defs["cv"]["ais_interpolation_method"]["value"], "spline")
+        self.assertIn("ais_covariance_confidence", defs["cv"])
+        self.assertEqual(defs["cv"]["ais_covariance_confidence"]["value"], 0.95)
+        self.assertIn("dark_vessel_solas_length_threshold", defs["cv"])
+        self.assertEqual(defs["cv"]["dark_vessel_solas_length_threshold"]["value"], 30.0)
+        self.assertIn("dark_vessel_critical_length_threshold", defs["cv"])
+        self.assertEqual(defs["cv"]["dark_vessel_critical_length_threshold"]["value"], 100.0)
+
+        # Imagery definitions
+        self.assertIn("umbra_enabled", defs["imagery"])
+        self.assertTrue(defs["imagery"]["umbra_enabled"]["value"])
+        self.assertIn("umbra_stac_api_url", defs["imagery"])
+        self.assertEqual(defs["imagery"]["umbra_max_results"]["value"], 20)
+        self.assertIn("asf_enabled", defs["imagery"])
+        self.assertTrue(defs["imagery"]["asf_enabled"]["value"])
+        self.assertIn("asf_api_url", defs["imagery"])
+        self.assertEqual(defs["imagery"]["asf_flight_direction"]["value"], "BOTH")
+        self.assertEqual(defs["imagery"]["asf_polarization"]["value"], "VV+VH")
+        self.assertEqual(defs["imagery"]["asf_max_results"]["value"], 25)
+        self.assertIn("optical_validation_enabled", defs["imagery"])
+        self.assertFalse(defs["imagery"]["optical_validation_enabled"]["value"])
+        self.assertEqual(defs["imagery"]["optical_max_cloud_cover"]["value"], 20.0)
+        self.assertEqual(defs["imagery"]["optical_time_window_hours"]["value"], 24.0)
+
+        # Scheduler definitions
+        self.assertIn("scheduler_leader_election_enabled", defs["scheduler"])
+        self.assertTrue(defs["scheduler"]["scheduler_leader_election_enabled"]["value"])
+        self.assertEqual(defs["scheduler"]["scheduler_leader_backend"]["value"], "sqlite")
+        self.assertEqual(defs["scheduler"]["scheduler_heartbeat_interval_seconds"]["value"], 5.0)
+        self.assertEqual(defs["scheduler"]["scheduler_lease_ttl_seconds"]["value"], 15.0)
+
+        # Map UI definitions
+        self.assertIn("color_dark_vessel", defs["map_ui"])
+        self.assertEqual(defs["map_ui"]["color_dark_vessel"]["value"], "#e11d48")
+
+
 
 class TestSettingsUseCases(unittest.TestCase):
     def setUp(self):
@@ -241,6 +300,110 @@ class TestSettingsUseCases(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.update_settings.execute({"map_ui": {"color_outside_box_detection": "#12345"}})
 
+    def test_new_settings_validations(self):
+        # Valid bulk updates for all new fields
+        self.update_settings.execute({
+            "cv": {
+                "detection_method": "cfar_go",
+                "cfar_guard_size": 7,
+                "cfar_train_size": 25,
+                "cfar_factor": 4.2,
+                "dual_pol_mode": "ratio",
+                "detector_engine": "deep_learning",
+                "deep_learning_confidence": 0.75,
+                "wake_detection_enabled": False,
+                "wake_speed_spoofing_threshold_knots": 4.5,
+                "ais_interpolation_method": "ekf",
+                "ais_covariance_confidence": 0.90,
+                "dark_vessel_solas_length_threshold": 25.0,
+                "dark_vessel_critical_length_threshold": 120.0,
+            },
+            "imagery": {
+                "umbra_enabled": False,
+                "umbra_stac_api_url": "https://custom-umbra.example.com",
+                "umbra_max_results": 40,
+                "asf_enabled": False,
+                "asf_api_url": "https://custom-asf.example.com",
+                "asf_flight_direction": "ASCENDING",
+                "asf_polarization": "HH",
+                "asf_max_results": 50,
+                "optical_validation_enabled": True,
+                "optical_max_cloud_cover": 15.0,
+                "optical_time_window_hours": 12.0,
+            },
+            "scheduler": {
+                "scheduler_leader_election_enabled": False,
+                "scheduler_leader_backend": "redis",
+                "scheduler_heartbeat_interval_seconds": 10.0,
+                "scheduler_lease_ttl_seconds": 30.0,
+            },
+            "map_ui": {
+                "color_dark_vessel": "#9333ea",
+            },
+        })
+
+        cv = self.get_settings.execute("cv")
+        self.assertEqual(cv["detection_method"], "cfar_go")
+        self.assertEqual(cv["cfar_guard_size"], 7)
+        self.assertEqual(cv["cfar_train_size"], 25)
+        self.assertEqual(cv["cfar_factor"], 4.2)
+        self.assertEqual(cv["dual_pol_mode"], "ratio")
+        self.assertEqual(cv["detector_engine"], "deep_learning")
+        self.assertEqual(cv["deep_learning_confidence"], 0.75)
+        self.assertFalse(cv["wake_detection_enabled"])
+        self.assertEqual(cv["wake_speed_spoofing_threshold_knots"], 4.5)
+        self.assertEqual(cv["ais_interpolation_method"], "ekf")
+        self.assertEqual(cv["ais_covariance_confidence"], 0.90)
+        self.assertEqual(cv["dark_vessel_solas_length_threshold"], 25.0)
+        self.assertEqual(cv["dark_vessel_critical_length_threshold"], 120.0)
+
+        imagery = self.get_settings.execute("imagery")
+        self.assertFalse(imagery["umbra_enabled"])
+        self.assertEqual(imagery["umbra_stac_api_url"], "https://custom-umbra.example.com")
+        self.assertEqual(imagery["umbra_max_results"], 40)
+        self.assertFalse(imagery["asf_enabled"])
+        self.assertEqual(imagery["asf_api_url"], "https://custom-asf.example.com")
+        self.assertEqual(imagery["asf_flight_direction"], "ASCENDING")
+        self.assertEqual(imagery["asf_polarization"], "HH")
+        self.assertEqual(imagery["asf_max_results"], 50)
+        self.assertTrue(imagery["optical_validation_enabled"])
+        self.assertEqual(imagery["optical_max_cloud_cover"], 15.0)
+        self.assertEqual(imagery["optical_time_window_hours"], 12.0)
+
+        sched = self.get_settings.execute("scheduler")
+        self.assertFalse(sched["scheduler_leader_election_enabled"])
+        self.assertEqual(sched["scheduler_leader_backend"], "redis")
+        self.assertEqual(sched["scheduler_heartbeat_interval_seconds"], 10.0)
+        self.assertEqual(sched["scheduler_lease_ttl_seconds"], 30.0)
+
+        map_ui = self.get_settings.execute("map_ui")
+        self.assertEqual(map_ui["color_dark_vessel"], "#9333ea")
+
+        # Invalid cases
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"detection_method": "invalid_method"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"cfar_factor": 25.0}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"deep_learning_confidence": 1.5}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"cv": {"ais_interpolation_method": "quadratic"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"imagery": {"umbra_stac_api_url": "ftp://bad-url"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"imagery": {"asf_flight_direction": "SIDEWAYS"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"scheduler": {"scheduler_leader_backend": "memcached"}})
+
+        with self.assertRaises(ValueError):
+            self.update_settings.execute({"map_ui": {"color_dark_vessel": "purple"}})
+
 
 class TestSettingsWebAPI(unittest.TestCase):
     def setUp(self):
@@ -277,6 +440,12 @@ class TestSettingsWebAPI(unittest.TestCase):
         self.assertNotIn(b"input_imagery_copernicus_username", resp.data)
         self.assertNotIn(b"input_imagery_copernicus_password", resp.data)
         self.assertIn(b"Managed via .env", resp.data)
+        # Verify newly added settings inputs are rendered
+        self.assertIn(b"input_imagery_umbra_enabled", resp.data)
+        self.assertIn(b"input_imagery_asf_enabled", resp.data)
+        self.assertIn(b"input_cv_detection_method", resp.data)
+        self.assertIn(b"input_scheduler_scheduler_leader_backend", resp.data)
+        self.assertIn(b"input_map_ui_color_dark_vessel", resp.data)
 
     def test_api_get_settings(self):
         resp = self.client.get("/api/settings?definitions=true")

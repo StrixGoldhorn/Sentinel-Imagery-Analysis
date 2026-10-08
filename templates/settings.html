@@ -213,6 +213,161 @@
                             <p class="setting-description">Geodesic search tolerance around detection bounding boxes for AIS vessel matching.</p>
                             <input type="number" id="input_cv_ais_correlation_distance_meters" class="form-input" min="0" max="5000" step="10" value="100.0">
                         </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_detection_method" class="setting-title">Detection Algorithm</label>
+                            <p class="setting-description">Clutter detection method: classical global thresholding or Constant False Alarm Rate (CFAR).</p>
+                            <select id="input_cv_detection_method" class="form-select">
+                                <option value="threshold">Global Intensity Thresholding</option>
+                                <option value="cfar_ca">CA-CFAR (Cell-Averaging)</option>
+                                <option value="cfar_go">GO-CFAR (Greatest-Of, Clutter Edges)</option>
+                                <option value="cfar_so">SO-CFAR (Smallest-Of, Target Masking)</option>
+                                <option value="cfar_os">OS-CFAR (Ordered-Statistic)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_cfar_guard_size" class="setting-title">CFAR Guard Window (Pixels)</label>
+                                <span class="badge-value" id="badge_cv_cfar_guard_size">5 px</span>
+                            </div>
+                            <p class="setting-description">Inner guard cell radius excluding direct target vessel energy from clutter estimation.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_cfar_guard_size" min="1" max="31" step="2" value="5"
+                                       oninput="updateRangeDisplay('cv_cfar_guard_size', this.value, ' px')">
+                                <input type="number" class="number-input-sync" id="sync_cv_cfar_guard_size" min="1" max="31" step="2" value="5"
+                                       oninput="syncSlider('cv_cfar_guard_size', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_cfar_train_size" class="setting-title">CFAR Training Window (Pixels)</label>
+                                <span class="badge-value" id="badge_cv_cfar_train_size">15 px</span>
+                            </div>
+                            <p class="setting-description">Outer background training window radius for local sea clutter statistical estimation.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_cfar_train_size" min="3" max="61" step="2" value="15"
+                                       oninput="updateRangeDisplay('cv_cfar_train_size', this.value, ' px')">
+                                <input type="number" class="number-input-sync" id="sync_cv_cfar_train_size" min="3" max="61" step="2" value="15"
+                                       oninput="syncSlider('cv_cfar_train_size', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_cfar_factor" class="setting-title">CFAR Multiplier Factor (k)</label>
+                                <span class="badge-value" id="badge_cv_cfar_factor">3.5</span>
+                            </div>
+                            <p class="setting-description">Clutter threshold scaling multiplier (T = &mu; + k &times; &sigma;) controlling false alarm probability.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_cfar_factor" min="1.0" max="15.0" step="0.1" value="3.5"
+                                       oninput="updateRangeDisplay('cv_cfar_factor', this.value, '')">
+                                <input type="number" class="number-input-sync" id="sync_cv_cfar_factor" min="1.0" max="15.0" step="0.1" value="3.5"
+                                       oninput="syncSlider('cv_cfar_factor', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_dual_pol_mode" class="setting-title">Dual-Polarization Fusion Mode</label>
+                            <p class="setting-description">Polarimetric channel fusion mode when both co-pol (VV) and cross-pol (VH) channels are available.</p>
+                            <select id="input_cv_dual_pol_mode" class="form-select">
+                                <option value="none">None (Single Channel)</option>
+                                <option value="ratio">Ratio (VV / VH Polarimetric Ratio)</option>
+                                <option value="difference">Difference (|VV - VH| Spectral Delta)</option>
+                                <option value="product">Product (VV &times; VH Intensity Power)</option>
+                                <option value="enhanced">Enhanced (Weighted Dual-Channel Fusion)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_detector_engine" class="setting-title">Detector Engine</label>
+                            <p class="setting-description">Primary vessel detection pipeline: classical CFAR/contour extraction or Deep Learning SAR-CNN.</p>
+                            <select id="input_cv_detector_engine" class="form-select">
+                                <option value="classical">Classical Radar Metrology (CFAR / Contours)</option>
+                                <option value="deep_learning">Deep Learning SAR-CNN (OBB Oriented Boxes)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="card-title-group">
+                                <label for="input_cv_deep_learning_confidence" class="setting-title">DL Confidence Threshold</label>
+                                <span class="badge-value" id="badge_cv_deep_learning_confidence">0.50</span>
+                            </div>
+                            <p class="setting-description">Minimum confidence score probability (0.1 - 1.0) for deep learning oriented bounding box (OBB) vessel detections.</p>
+                            <div class="range-control-group">
+                                <input type="range" id="input_cv_deep_learning_confidence" min="0.1" max="1.0" step="0.05" value="0.5"
+                                       oninput="updateRangeDisplay('cv_deep_learning_confidence', this.value, '')">
+                                <input type="number" class="number-input-sync" id="sync_cv_deep_learning_confidence" min="0.1" max="1.0" step="0.05" value="0.5"
+                                       oninput="syncSlider('cv_deep_learning_confidence', this.value)">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_cv_wake_detection_enabled">Ship Wake & Heading Analysis</label>
+                                    <p class="setting-description">Detect Kelvin & cusp wakes using Radon/Hough transforms to resolve 180&deg; heading ambiguity and verify Doppler velocity.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_cv_wake_detection_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_wake_speed_spoofing_threshold_knots" class="setting-title">AIS Speed Spoofing Threshold (Knots)</label>
+                            <p class="setting-description">Velocity discrepancy between radar-derived wake wave speed and AIS reported speed triggering a spoofing alert.</p>
+                            <input type="number" id="input_cv_wake_speed_spoofing_threshold_knots" class="form-input" min="0.5" max="20.0" step="0.5" value="3.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_ais_interpolation_method" class="setting-title">AIS Kinematic Interpolation</label>
+                            <p class="setting-description">Trajectory interpolation method: Cubic Hermite Spline with rate-of-turn, Kinematic EKF, or linear dead-reckoning.</p>
+                            <select id="input_cv_ais_interpolation_method" class="form-select">
+                                <option value="spline">Cubic Hermite Spline (Curved Maneuver & RoT)</option>
+                                <option value="ekf">Extended Kalman Filter (EKF State Estimation)</option>
+                                <option value="linear">Linear Dead-Reckoning Extrapolation</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_ais_covariance_confidence" class="setting-title">AIS Covariance Confidence Level</label>
+                            <p class="setting-description">Confidence level (0.50 - 0.99) for dynamic spatial uncertainty covariance ellipses.</p>
+                            <input type="number" id="input_cv_ais_covariance_confidence" class="form-input" min="0.50" max="0.99" step="0.01" value="0.95">
+                        </div>
+
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_cv_ais_dead_reckoning_enabled">AIS Dead-Reckoning Extrapolation</label>
+                                    <p class="setting-description">Propagate AIS vessel positions along speed/course vectors to match exact satellite pass timestamp.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_cv_ais_dead_reckoning_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_ais_max_dead_reckoning_seconds" class="setting-title">Max Dead-Reckoning Window (Seconds)</label>
+                            <p class="setting-description">Maximum time difference allowed between AIS ping and satellite acquisition for kinematic extrapolation.</p>
+                            <input type="number" id="input_cv_ais_max_dead_reckoning_seconds" class="form-input" min="60" max="86400" step="60" value="7200">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_dark_vessel_solas_length_threshold" class="setting-title">Dark Vessel SOLAS Threshold (Meters)</label>
+                            <p class="setting-description">Estimated vessel length in meters triggering mandatory AIS carriage assessment under IMO SOLAS regulations.</p>
+                            <input type="number" id="input_cv_dark_vessel_solas_length_threshold" class="form-input" min="10.0" max="100.0" step="1.0" value="30.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_cv_dark_vessel_critical_length_threshold" class="setting-title">Critical Dark Vessel Threshold (Meters)</label>
+                            <p class="setting-description">Estimated vessel length in meters triggering CRITICAL priority security alert for uncorrelated radar detections.</p>
+                            <input type="number" id="input_cv_dark_vessel_critical_length_threshold" class="form-input" min="50.0" max="300.0" step="5.0" value="100.0">
+                        </div>
                     </div>
                 </section>
 
@@ -260,6 +415,108 @@
                             <label for="input_imagery_max_image_size" class="setting-title">Max Tile Size (Pixels)</label>
                             <p class="setting-description">Maximum width/height dimension per tile download.</p>
                             <input type="number" id="input_imagery_max_image_size" class="form-input" min="500" max="2500" step="100" value="2500">
+                        </div>
+
+                        <!-- Umbra SAR Open Data Catalog -->
+                        <div class="settings-card card-highlight">
+                            <div class="card-badge">COMMERCIAL HIGH-RES SAR</div>
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_imagery_umbra_enabled">Enable Umbra Open Data SAR</label>
+                                    <p class="setting-description">Search and ingest open-access sub-meter (&lt;1m GSD) commercial X-band SAR imagery from Umbra Open Data on AWS.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_imagery_umbra_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_umbra_stac_api_url" class="setting-title">Umbra STAC Catalog URL</label>
+                            <p class="setting-description">Base endpoint URL of the AWS Open Data STAC catalog for Umbra SAR imagery.</p>
+                            <input type="url" id="input_imagery_umbra_stac_api_url" class="form-input" value="https://umbra-open-data-catalog.s3.amazonaws.com">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_umbra_max_results" class="setting-title">Umbra Max Scene Results</label>
+                            <p class="setting-description">Maximum candidate Umbra radar scenes to query per spatial search request.</p>
+                            <input type="number" id="input_imagery_umbra_max_results" class="form-input" min="1" max="100" value="20">
+                        </div>
+
+                        <!-- NASA ASF DAAC Archive -->
+                        <div class="settings-card card-highlight">
+                            <div class="card-badge">HISTORICAL &amp; COMPLEMENTARY ARCHIVE</div>
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_imagery_asf_enabled">Enable NASA ASF DAAC Archive</label>
+                                    <p class="setting-description">Query and retrieve Sentinel-1 and historical SAR granules from NASA Alaska Satellite Facility DAAC.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_imagery_asf_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_asf_api_url" class="setting-title">NASA ASF Search API Endpoint</label>
+                            <p class="setting-description">REST API endpoint for querying NASA ASF DAAC granules.</p>
+                            <input type="url" id="input_imagery_asf_api_url" class="form-input" value="https://api.daac.asf.alaska.edu/services/search/param">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_asf_flight_direction" class="setting-title">ASF Orbit Flight Direction</label>
+                            <p class="setting-description">Orbit pass direction filter for NASA ASF DAAC queries.</p>
+                            <select id="input_imagery_asf_flight_direction" class="form-select">
+                                <option value="BOTH">Both (Ascending &amp; Descending)</option>
+                                <option value="ASCENDING">Ascending (South-to-North)</option>
+                                <option value="DESCENDING">Descending (North-to-South)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_asf_polarization" class="setting-title">ASF Polarization Filter</label>
+                            <p class="setting-description">Radar polarization channel filter for ASF queries.</p>
+                            <select id="input_imagery_asf_polarization" class="form-select">
+                                <option value="VV+VH">Dual-Pol: VV + VH</option>
+                                <option value="HH+HV">Dual-Pol: HH + HV</option>
+                                <option value="VV">Single-Pol: VV</option>
+                                <option value="HH">Single-Pol: HH</option>
+                                <option value="ALL">All Polarizations</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_asf_max_results" class="setting-title">ASF Max Granules Result</label>
+                            <p class="setting-description">Maximum number of SAR granules to retrieve per ASF search request.</p>
+                            <input type="number" id="input_imagery_asf_max_results" class="form-input" min="1" max="250" value="25">
+                        </div>
+
+                        <!-- Sentinel-2 Optical Cross-Validation -->
+                        <div class="settings-card">
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_imagery_optical_validation_enabled">Sentinel-2 Optical Cross-Validation</label>
+                                    <p class="setting-description">Cross-validate radar vessel detections against concurrent cloud-free Sentinel-2 MSI optical imagery.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_imagery_optical_validation_enabled">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_optical_max_cloud_cover" class="setting-title">Optical Max Cloud Cover (%)</label>
+                            <p class="setting-description">Maximum allowed cloud coverage percentage for Sentinel-2 optical verification scenes.</p>
+                            <input type="number" id="input_imagery_optical_max_cloud_cover" class="form-input" min="1.0" max="100.0" step="1.0" value="20.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_imagery_optical_time_window_hours" class="setting-title">Optical Match Window (Hours)</label>
+                            <p class="setting-description">Concurrent temporal tolerance window around the SAR pass for matching optical observations.</p>
+                            <input type="number" id="input_imagery_optical_time_window_hours" class="form-input" min="1.0" max="72.0" step="1.0" value="24.0">
                         </div>
                     </div>
                 </section>
@@ -320,10 +577,47 @@
                             <p class="setting-description">This cadence is fixed to reduce repeated catalog requests. It is not user-configurable.</p>
                         </div>
 
+                        <!-- Scheduler Single-Leader Election -->
+                        <div class="settings-card card-highlight">
+                            <div class="card-badge">HIGH AVAILABILITY</div>
+                            <div class="toggle-control-group">
+                                <div>
+                                    <label class="setting-title" for="input_scheduler_scheduler_leader_election_enabled">Scheduler Leader Election</label>
+                                    <p class="setting-description">Ensure only a single worker executes scheduling tasks in multi-worker or distributed deployments.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="input_scheduler_scheduler_leader_election_enabled" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_scheduler_leader_backend" class="setting-title">Leader Lock Backend</label>
+                            <p class="setting-description">Lock coordination backend for high-availability leader election.</p>
+                            <select id="input_scheduler_scheduler_leader_backend" class="form-select">
+                                <option value="sqlite">SQLite Database Lease Lock (Local / Shared FS)</option>
+                                <option value="redis">Redis Distributed Lock (Cluster / Redlock)</option>
+                                <option value="postgres">PostgreSQL Advisory Lock (Distributed DB)</option>
+                            </select>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_scheduler_heartbeat_interval_seconds" class="setting-title">Leader Heartbeat Interval (Seconds)</label>
+                            <p class="setting-description">Interval between lease renewal heartbeats by the active scheduler leader node.</p>
+                            <input type="number" id="input_scheduler_scheduler_heartbeat_interval_seconds" class="form-input" min="1.0" max="60.0" step="1.0" value="5.0">
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_scheduler_scheduler_lease_ttl_seconds" class="setting-title">Leader Lease TTL (Seconds)</label>
+                            <p class="setting-description">Time to lease expiration before a failover election is triggered if the leader drops heartbeat.</p>
+                            <input type="number" id="input_scheduler_scheduler_lease_ttl_seconds" class="form-input" min="5.0" max="120.0" step="1.0" value="15.0">
+                        </div>
+
                         <div class="settings-card">
                             <label for="input_scheduler_satellite_norad_ids" class="setting-title">Sentinel-1 NORAD IDs</label>
                             <p class="setting-description">Comma-separated NORAD tracking IDs for Sentinel-1 satellites.</p>
-                            <input type="text" id="input_scheduler_satellite_norad_ids" class="form-input" value="39634, 41456, 62232">
+                            <input type="text" id="input_scheduler_satellite_norad_ids" class="form-input" value="39634, 41456, 62232, 66315">
                         </div>
 
                         <div class="settings-card card-span-2">
@@ -468,6 +762,16 @@
                                 <input type="color" id="input_map_ui_color_obb_detection" value="#e67e22">
                                 <input type="text" class="form-input hex-input" id="hex_map_ui_color_obb_detection" value="#e67e22"
                                        oninput="document.getElementById('input_map_ui_color_obb_detection').value = this.value">
+                            </div>
+                        </div>
+
+                        <div class="settings-card">
+                            <label for="input_map_ui_color_dark_vessel" class="setting-title">Dark Vessel Alert Color</label>
+                            <p class="setting-description">Border and highlight color for uncorrelated dark vessels on the map.</p>
+                            <div class="color-picker-group">
+                                <input type="color" id="input_map_ui_color_dark_vessel" value="#e11d48">
+                                <input type="text" class="form-input hex-input" id="hex_map_ui_color_dark_vessel" value="#e11d48"
+                                       oninput="document.getElementById('input_map_ui_color_dark_vessel').value = this.value">
                             </div>
                         </div>
                     </div>
