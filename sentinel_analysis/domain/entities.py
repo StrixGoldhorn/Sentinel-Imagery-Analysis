@@ -551,3 +551,47 @@ class MultiTemporalChangeReport:
         _non_negative_integer(self.persistent_structures_count, "Persistent structures count")
 
 
+@dataclass(frozen=True)
+class WebhookConfig:
+    id: str
+    url: str
+    service_type: str = "generic"
+    name: str = ""
+    enabled: bool = True
+    min_severity: str = "INFO"
+    secret_token: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "id", _required_text(self.id, "Webhook ID"))
+        object.__setattr__(self, "url", _required_text(self.url, "Webhook URL"))
+        object.__setattr__(self, "service_type", _required_text(self.service_type, "Service type").lower())
+        object.__setattr__(self, "name", str(self.name or self.id))
+        object.__setattr__(self, "enabled", bool(self.enabled))
+        object.__setattr__(self, "min_severity", _required_text(self.min_severity, "Min severity").upper())
+
+
+@dataclass(frozen=True)
+class MaritimeAlert:
+    alert_id: str
+    event_type: str
+    severity: str
+    title: str
+    summary: str
+    details: dict[str, object] = field(default_factory=dict)
+    timestamp: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "alert_id", _required_text(self.alert_id, "Alert ID"))
+        object.__setattr__(self, "event_type", _required_text(self.event_type, "Event type").upper())
+        object.__setattr__(self, "severity", _required_text(self.severity, "Severity").upper())
+        object.__setattr__(self, "title", _required_text(self.title, "Title"))
+        object.__setattr__(self, "summary", _required_text(self.summary, "Summary"))
+        if not isinstance(self.details, dict):
+            raise DomainValidationError("Alert details must be a dictionary")
+        object.__setattr__(self, "details", dict(self.details))
+        if self.timestamp is not None:
+            object.__setattr__(self, "timestamp", _utc_datetime(self.timestamp, "Timestamp"))
+
+
+

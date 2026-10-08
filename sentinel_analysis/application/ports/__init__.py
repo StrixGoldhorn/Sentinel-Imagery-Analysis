@@ -20,6 +20,7 @@ from sentinel_analysis.application.ports.optical import (
     OpticalScene,
     OpticalValidationResult,
 )
+from sentinel_analysis.application.ports.alerting import WebhookDispatcher, WebhookRepository
 from sentinel_analysis.application.ports.sar_change_detector import SARChangeDetector
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
@@ -57,4 +58,6 @@ __all__ = [
     "TaskQueue",
     "TileCache",
     "TileImage",
+    "WebhookDispatcher",
+    "WebhookRepository",
 ]

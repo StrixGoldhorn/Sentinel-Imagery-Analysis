@@ -16,6 +16,7 @@ from sentinel_analysis.application.use_cases import (
     DetectShips,
     ComputeSARChangeDetection,
     DetectTransshipmentAnomalies,
+    DispatchMaritimeAlert,
     ExportGeospatial,
     GenerateDEM,
     GenerateIntelligenceBrief,
@@ -31,6 +32,7 @@ from sentinel_analysis.application.use_cases import (
     ListAreasOfInterest,
     ListScans,
     ListScrapers,
+    ManageWebhooks,
     PredictAreaOfInterest,
     RenameScan,
     ResetScraperCooldown,
@@ -46,6 +48,7 @@ from sentinel_analysis.application.use_cases import (
 
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
+from sentinel_analysis.infrastructure.alerting import HTTPWebhookDispatcher
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 from sentinel_analysis.infrastructure.detection.onnx_detector import DeepLearningShipDetector
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
@@ -59,6 +62,7 @@ from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRep
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_webhooks import SQLiteWebhookRepository
 from sentinel_analysis.infrastructure.reporting import MatplotlibIntelligenceBriefGenerator
 from sentinel_analysis.infrastructure.sar_processing import NumpySARChangeDetector
 from sentinel_analysis.infrastructure.satellite.asf_client import ASFSearchClient
@@ -87,6 +91,8 @@ class ApplicationContainer:
         self.ais_repository = SQLiteAISRepository(settings.database_path)
         self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
+        self.webhook_repository = SQLiteWebhookRepository(settings.database_path)
+        self.webhook_dispatcher = HTTPWebhookDispatcher()
         self.tile_cache = FilesystemTileCache(settings.cache_root)
         self.task_queue = ThreadedTaskQueue(database_path=settings.database_path)
 
@@ -144,6 +150,8 @@ class ApplicationContainer:
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.sar_change_detector = NumpySARChangeDetector()
         self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
+        self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
+        self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)
         self.delete_scan = DeleteScan(self.scan_repository)

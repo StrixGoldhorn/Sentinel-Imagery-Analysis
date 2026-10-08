@@ -3,5 +3,11 @@
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_webhooks import SQLiteWebhookRepository
 
-__all__ = ["FilesystemScanRepository", "SQLiteAISRepository", "SQLiteAreaOfInterestRepository"]
+__all__ = [
+    "FilesystemScanRepository",
+    "SQLiteAISRepository",
+    "SQLiteAreaOfInterestRepository",
+    "SQLiteWebhookRepository",
+]

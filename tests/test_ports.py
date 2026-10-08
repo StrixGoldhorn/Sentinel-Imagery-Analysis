@@ -21,6 +21,8 @@ from sentinel_analysis.application.ports import (
     ShipDetector,
     TaskQueue,
     TileCache,
+    WebhookDispatcher,
+    WebhookRepository,
 )
 
 
@@ -205,6 +207,12 @@ class CompleteAdapter:
     def compute_change_map(self, reference_image_path, target_image_path, output_path, *, threshold_db=4.5):
         return {}
 
+    def dispatch(self, webhook, alert):
+        return True
+
+    def test_ping(self, webhook):
+        return True
+
 
 
 def test_ports_support_structural_runtime_checks() -> None:
@@ -227,6 +235,8 @@ def test_ports_support_structural_runtime_checks() -> None:
         ShipDetector,
         TaskQueue,
         TileCache,
+        WebhookDispatcher,
+        WebhookRepository,
     )
 
     for port in ports:
