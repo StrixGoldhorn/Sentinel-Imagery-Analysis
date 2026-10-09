@@ -23,6 +23,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
+    GeofenceMonitor,
     GetScan,
     GetStorageQuota,
     GetScraperDetail,
@@ -154,6 +155,10 @@ class ApplicationContainer:
         self.export_geospatial = ExportGeospatial(self.scan_repository, self.geotiff_writer)
         self.brief_generator = MatplotlibIntelligenceBriefGenerator()
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
+        self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
+        self.geofence_monitor = GeofenceMonitor()
+        self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
+        self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
         self.post_acquisition_pipeline = PostAcquisitionPipeline(
             scan_repository=self.scan_repository,
             detect_ships=self.detect_ships,
@@ -164,12 +169,12 @@ class ApplicationContainer:
             settings_repository=self.settings_repository,
             output_root=settings.output_root,
             detection_saver=save_detection_results,
+            detect_transshipment=self.detect_transshipment,
+            geofence_monitor=self.geofence_monitor,
+            dispatch_alert=self.dispatch_alert,
         )
-        self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.sar_change_detector = NumpySARChangeDetector()
         self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
-        self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
-        self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
         self.generate_traffic_heatmap = GenerateHistoricalTrafficHeatmap(self.ais_repository, self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)

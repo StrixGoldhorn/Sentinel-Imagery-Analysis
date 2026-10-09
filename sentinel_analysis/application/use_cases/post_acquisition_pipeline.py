@@ -5,19 +5,24 @@ intelligence briefing (PDF) compilation, and geospatial product exports automati
 upon SAR image acquisition.
 """
 
+from datetime import datetime, timezone
 import json
 import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
+import uuid
 
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.application.use_cases.correlate_ais_detections import CorrelateDetectionsWithAIS
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
+from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
-from sentinel_analysis.domain.entities import Scan
+from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
+from sentinel_analysis.application.use_cases.manage_alerts import DispatchMaritimeAlert
+from sentinel_analysis.domain.entities import MaritimeAlert, Scan
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,9 @@ class PostAcquisitionPipeline:
         settings_repository: Optional[Any] = None,
         output_root: Optional[Path | str] = None,
         detection_saver: Optional[Any] = None,
+        detect_transshipment: Optional[DetectTransshipmentAnomalies] = None,
+        geofence_monitor: Optional[GeofenceMonitor] = None,
+        dispatch_alert: Optional[DispatchMaritimeAlert] = None,
     ) -> None:
         self._scan_repository = scan_repository
         self._detect_ships = detect_ships
@@ -46,6 +54,9 @@ class PostAcquisitionPipeline:
         self._settings_repository = settings_repository
         self._output_root = Path(output_root).resolve() if output_root else None
         self._detection_saver = detection_saver
+        self._detect_transshipment = detect_transshipment
+        self._geofence_monitor = geofence_monitor
+        self._dispatch_alert = dispatch_alert
 
     def _get_setting(self, key: str, default: Any) -> Any:
         if self._settings_repository is not None and hasattr(self._settings_repository, "get"):
@@ -177,8 +188,94 @@ class PostAcquisitionPipeline:
                     "correlated_ais": None,
                 })
 
-        # 5. Visual overlays, structured JSON, GeoJSON, and World files (.pgw, .prj)
-        report(70, "Generating visual overlays and GIS metadata")
+        # 5. Operational Intelligence: EEZ & MPA Geofencing, STS Transshipment & Anomaly Analysis
+        report(65, "Evaluating EEZ & MPA geofencing rules and STS transshipment patterns")
+        geofence_engine = self._geofence_monitor or GeofenceMonitor()
+        geofence_res: dict[str, Any] = {}
+        try:
+            geofence_res = geofence_engine.evaluate_detections(enriched_detections, scan_bbox=scan.bbox)
+            geofence_file = folder_dir / f"{scan.folder_name}_geofence.json"
+            geofence_file.write_text(json.dumps(geofence_res, indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Geofence evaluation failed for %s: %s", scan.folder_name, exc, exc_info=True)
+
+        transshipment_engine = self._detect_transshipment or DetectTransshipmentAnomalies(self._scan_repository)
+        transshipment_res: dict[str, Any] = {}
+        try:
+            transshipment_res = transshipment_engine.execute_from_detections(
+                enriched_detections,
+                scan_bbox=scan.bbox,
+                image_width=img_width,
+                image_height=img_height,
+            )
+            trans_file = folder_dir / f"{scan.folder_name}_transshipment.json"
+            trans_file.write_text(json.dumps(transshipment_res, indent=2), encoding="utf-8")
+            if "geojson" in transshipment_res:
+                trans_geojson = folder_dir / f"{scan.folder_name}_transshipment.geojson"
+                trans_geojson.write_text(json.dumps(transshipment_res["geojson"], indent=2), encoding="utf-8")
+
+            # Tag detections with transshipment rendezvous status
+            for r_event in transshipment_res.get("rendezvous_events", []):
+                idx_a = r_event.get("vessel_a_index")
+                idx_b = r_event.get("vessel_b_index")
+                for t_idx, p_id, p_dark in [
+                    (idx_a, r_event.get("vessel_b_identifier"), r_event.get("vessel_b_is_dark")),
+                    (idx_b, r_event.get("vessel_a_identifier"), r_event.get("vessel_a_is_dark")),
+                ]:
+                    if t_idx is not None and 0 <= t_idx < len(enriched_detections):
+                        det = enriched_detections[t_idx]
+                        det["is_transshipment_suspect"] = True
+                        if "transshipment_events" not in det:
+                            det["transshipment_events"] = []
+                        det["transshipment_events"].append({
+                            "partner": p_id,
+                            "partner_is_dark": p_dark,
+                            "distance_meters": r_event.get("distance_meters"),
+                            "risk_level": r_event.get("risk_level"),
+                            "narrative": r_event.get("narrative"),
+                        })
+        except Exception as exc:
+            logger.warning("Transshipment detection failed for %s: %s", scan.folder_name, exc, exc_info=True)
+
+        # Automated Webhook Alert Dispatch
+        if self._dispatch_alert is not None:
+            try:
+                critical_dark = sum(
+                    1 for d in enriched_detections
+                    if d.get("is_dark_vessel", False) and (d.get("dark_vessel_risk") == "HIGH" or d.get("is_solas_suspect", False))
+                )
+                crit_sts = int(transshipment_res.get("critical_rendezvous_count", 0))
+                crit_geo = int(geofence_res.get("critical_breaches", 0))
+                if critical_dark > 0 or crit_sts > 0 or crit_geo > 0:
+                    summary_parts = []
+                    if critical_dark > 0:
+                        summary_parts.append(f"{critical_dark} critical dark vessel(s)")
+                    if crit_sts > 0:
+                        summary_parts.append(f"{crit_sts} STS rendezvous event(s)")
+                    if crit_geo > 0:
+                        summary_parts.append(f"{crit_geo} MPA/geofence breach(es)")
+
+                    alert = MaritimeAlert(
+                        alert_id=f"alt-{uuid.uuid4().hex[:10]}",
+                        event_type="OPERATIONAL_INTELLIGENCE_EVENT",
+                        severity="CRITICAL",
+                        title=f"Critical Maritime Intelligence Alert: {scan.folder_name}",
+                        summary=f"Automated threat detection in {scan.folder_name}: {', '.join(summary_parts)}.",
+                        details={
+                            "scan_folder": scan.folder_name,
+                            "critical_dark_vessels": critical_dark,
+                            "critical_sts_rendezvous": crit_sts,
+                            "critical_geofence_breaches": crit_geo,
+                            "total_detections": len(enriched_detections),
+                        },
+                        timestamp=datetime.now(timezone.utc),
+                    )
+                    self._dispatch_alert.execute(alert)
+            except Exception as exc:
+                logger.warning("Automated webhook alert dispatch failed for %s: %s", scan.folder_name, exc)
+
+        # 6. Visual overlays, structured JSON, GeoJSON, and World files (.pgw, .prj)
+        report(75, "Generating visual overlays and GIS metadata")
         saved_info: dict[str, Any] = {}
         if self._detection_saver is not None:
             try:
@@ -199,7 +296,7 @@ class PostAcquisitionPipeline:
             except Exception as exc:
                 logger.warning("Saving detection results failed for scan %s: %s", scan.folder_name, exc, exc_info=True)
 
-        # 6. PDF Maritime Intelligence Briefing
+        # 7. PDF Maritime Intelligence Briefing
         report(85, "Generating Maritime Intelligence Briefing (PDF)")
         briefing_pdf_path: Optional[Path] = None
         if self._generate_briefing is not None:
@@ -208,7 +305,7 @@ class PostAcquisitionPipeline:
             except Exception as exc:
                 logger.warning("Automated PDF briefing generation failed for %s: %s", scan.folder_name, exc, exc_info=True)
 
-        # 7. Geospatial exports (GeoTIFF & STAC Item)
+        # 8. Geospatial exports (GeoTIFF & STAC Item)
         report(92, "Exporting GeoTIFF and STAC metadata")
         geotiff_path: Optional[Path] = None
         stac_path: Optional[Path] = None
@@ -225,7 +322,7 @@ class PostAcquisitionPipeline:
             except Exception as exc:
                 logger.warning("STAC export failed for %s: %s", scan.folder_name, exc)
 
-        # 8. Update scan metadata and persist
+        # 9. Update scan metadata and persist
         report(96, "Finalizing scan intelligence catalog")
         inside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "inside_box")
         outside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "outside_box")
@@ -248,6 +345,12 @@ class PostAcquisitionPipeline:
             "land_masked": bool(dem_path is not None),
             "detected_image": saved_info.get("detected_image_name"),
             "detections_json": saved_info.get("detections_json_name"),
+            "transshipment_rendezvous_count": transshipment_res.get("rendezvous_count", 0),
+            "critical_rendezvous_count": transshipment_res.get("critical_rendezvous_count", 0),
+            "loitering_count": transshipment_res.get("loitering_count", 0),
+            "geofence_breach_count": geofence_res.get("total_breaches", 0),
+            "critical_geofence_breach_count": geofence_res.get("critical_breaches", 0),
+            "transshipment_threat_level": transshipment_res.get("overall_threat_level", "LOW"),
         }
         if briefing_pdf_path:
             scan_meta["briefing_pdf"] = Path(briefing_pdf_path).name
@@ -322,6 +425,9 @@ class PostAcquisitionPipeline:
             "gis_bundle_url": f"/api/scan/{scan.folder_name}/gis_bundle",
             "briefing_pdf_url": f"/api/scan/{scan.folder_name}/briefing/pdf",
             "route_correlation_image_url": f"/api/scan/{scan.folder_name}/route_correlation_image",
+            "transshipment_url": f"/api/scan/{scan.folder_name}/transshipment",
+            "transshipment": transshipment_res,
+            "geofence": geofence_res,
             "geotiff_url": f"/api/scan/{scan.folder_name}/geotiff",
             "stac_url": f"/api/scan/{scan.folder_name}/stac",
         }

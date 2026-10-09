@@ -516,6 +516,54 @@ class LoiteringAnomaly:
 
 
 @dataclass(frozen=True)
+class GeofenceZone:
+    zone_id: str
+    name: str
+    zone_type: str  # "MPA", "EEZ", "RESTRICTED_ANCHORAGE", "TRAFFIC_SEPARATION_SCHEME", "FISHERIES_EXCLUSION"
+    polygon: tuple[tuple[float, float], ...]  # (lat, lon) coordinates
+    description: str = ""
+    restrictions: tuple[str, ...] = ("NO_DARK_VESSEL",)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "zone_id", _required_text(self.zone_id, "Zone ID"))
+        object.__setattr__(self, "name", _required_text(self.name, "Zone name"))
+        object.__setattr__(self, "zone_type", _required_text(self.zone_type, "Zone type").upper())
+        if not isinstance(self.polygon, (list, tuple)) or len(self.polygon) < 3:
+            raise DomainValidationError("GeofenceZone polygon must contain at least 3 (lat, lon) vertices")
+        clean_pts = tuple((float(pt[0]), float(pt[1])) for pt in self.polygon)
+        object.__setattr__(self, "polygon", clean_pts)
+        if isinstance(self.restrictions, (list, tuple)):
+            object.__setattr__(self, "restrictions", tuple(str(r).upper() for r in self.restrictions))
+
+
+@dataclass(frozen=True)
+class GeofenceBreach:
+    zone_id: str
+    zone_name: str
+    zone_type: str
+    vessel_index: int
+    vessel_identifier: str
+    is_dark: bool
+    lat: float
+    lon: float
+    violation_type: str
+    severity: str
+    narrative: str
+    vessel_class: Optional[str] = None
+    speed_knots: Optional[float] = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "zone_id", _required_text(self.zone_id, "Zone ID"))
+        object.__setattr__(self, "zone_name", _required_text(self.zone_name, "Zone name"))
+        object.__setattr__(self, "zone_type", _required_text(self.zone_type, "Zone type").upper())
+        _non_negative_integer(self.vessel_index, "Vessel index")
+        object.__setattr__(self, "lat", _number(self.lat, "Latitude"))
+        object.__setattr__(self, "lon", _number(self.lon, "Longitude"))
+        object.__setattr__(self, "severity", _required_text(self.severity, "Severity").upper())
+        object.__setattr__(self, "violation_type", _required_text(self.violation_type, "Violation type").upper())
+
+
+@dataclass(frozen=True)
 class TemporalChangePoint:
     x: float
     y: float

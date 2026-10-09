@@ -524,19 +524,48 @@ class MatplotlibIntelligenceBriefGenerator:
             ("Nearest AIS Traffic", nearest_traffic_str),
         ]
 
-        y_pos = 0.74
-        for lbl, val in compliance_items:
-            sec_frame.text(0.04, y_pos, lbl, fontsize=7.2, color="#718096", fontweight="bold", va="center")
-            val_col = solas_color if ("NON-COMPLIANT" in val or "HIGH" in val) else "#1a202c"
-            sec_frame.text(0.96, y_pos, val, fontsize=7.2, color=val_col, ha="right", va="center", fontweight="bold" if val_col != "#1a202c" else "normal")
-            y_pos -= 0.088
+        breaches = target.get("geofence_breaches", [])
+        trans_events = target.get("transshipment_events", [])
 
-        reason_desc = reasons[0] if reasons else "No matching AIS position message received within spatial correlation tolerance."
+        if breaches:
+            b0 = breaches[0]
+            z_name = b0.get("zone_name", "MPA")
+            v_type = b0.get("violation_type", "BREACH")
+            compliance_items.append(("Geofence / MPA Status", f"{z_name[:16]} ({v_type[:12]})"))
+        elif target.get("in_protected_area"):
+            p_names = target.get("protected_areas", [])
+            p_str = p_names[0] if p_names else "Protected Area"
+            compliance_items.append(("Protected Sanctuary", f"Inside {p_str[:18]}"))
+
+        if trans_events:
+            t0 = trans_events[0]
+            dist_val = float(t0.get("distance_meters") or 0.0)
+            partner = str(t0.get("partner") or "Unknown")
+            compliance_items.append(("STS Rendezvous Event", f"{dist_val:.0f}m to {partner[:12]}"))
+
+        item_count = len(compliance_items)
+        y_pos = 0.76 if item_count > 6 else 0.74
+        y_step = 0.068 if item_count > 6 else 0.088
+        for lbl, val in compliance_items:
+            sec_frame.text(0.04, y_pos, lbl, fontsize=6.8 if item_count > 6 else 7.2, color="#718096", fontweight="bold", va="center")
+            val_col = solas_color if any(k in val for k in ("NON-COMPLIANT", "HIGH", "CRITICAL", "BREACH", "VIOLATION")) else "#1a202c"
+            sec_frame.text(0.96, y_pos, val, fontsize=6.8 if item_count > 6 else 7.2, color=val_col, ha="right", va="center", fontweight="bold" if val_col != "#1a202c" else "normal")
+            y_pos -= y_step
+
+        findings_lines = []
+        if breaches:
+            findings_lines.append(f"BREACH: {breaches[0].get('narrative', '')[:95]}")
+        if trans_events:
+            findings_lines.append(f"STS: {trans_events[0].get('narrative', '')[:95]}")
+        if not findings_lines:
+            findings_lines.append(reasons[0] if reasons else "No matching AIS position message received within spatial correlation tolerance.")
+
+        primary_finding_text = "\n".join(findings_lines[:2])
         sec_frame.text(
-            0.04, 0.20,
-            f"Primary Finding:\n{reason_desc[:90]}",
-            fontsize=6.8,
-            color="#9b2c2c" if is_solas else "#c05621",
+            0.04, 0.16 if len(findings_lines) > 1 else 0.18,
+            f"Primary Finding:\n{primary_finding_text}",
+            fontsize=6.5 if len(findings_lines) > 1 else 6.8,
+            color="#9b2c2c" if (is_solas or breaches or trans_events) else "#c05621",
             fontstyle="italic",
         )
 
@@ -829,6 +858,8 @@ class MatplotlibIntelligenceBriefGenerator:
                 ("Orbit Direction", str(acq.orbit_direction or "N/A")),
                 ("Relative Orbit", str(acq.relative_orbit or "N/A")),
                 ("Polarizations", ", ".join(acq.polarizations) if acq.polarizations else "N/A"),
+                ("STS Rendezvous Pairs", str(metadata.get("transshipment_rendezvous_count", 0))),
+                ("MPA / Geofence Breaches", str(metadata.get("geofence_breach_count", 0))),
             ]
             t = table_ax.table(
                 cellText=meta_rows,
@@ -837,8 +868,8 @@ class MatplotlibIntelligenceBriefGenerator:
                 cellLoc="left",
             )
             t.auto_set_font_size(False)
-            t.set_fontsize(8)
-            t.scale(1.0, 1.25)
+            t.set_fontsize(7.5)
+            t.scale(1.0, 1.05)
             for key, cell in t.get_celld().items():
                 cell.set_edgecolor("#e2e8f0")
                 if key[1] == 0:
