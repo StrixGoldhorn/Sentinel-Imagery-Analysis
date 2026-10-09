@@ -214,6 +214,10 @@ def extract_scan_intelligence(scan: Scan) -> dict[str, Any]:
             "vessel_type": vessel_type,
             "dark_vessel_risk": risk_category,
             "dark_vessel_reasons": reasons,
+            "optical_status": d.get("optical_status"),
+            "optical_confirmed": d.get("optical_confirmed"),
+            "optical_confidence": d.get("optical_confidence"),
+            "temporal_change_type": d.get("temporal_change_type"),
             "correlated_ais": ais,
             "raw_detection": d,
         })

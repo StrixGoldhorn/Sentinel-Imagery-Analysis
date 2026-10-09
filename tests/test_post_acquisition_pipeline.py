@@ -207,6 +207,137 @@ class TestPostAcquisitionPipeline(unittest.TestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["ship_count"], 0)
 
+    def test_pipeline_executes_optical_cross_validation(self):
+        mock_detect = MagicMock()
+        mock_detect.execute.return_value = DetectionResult(
+            image_width=100,
+            image_height=100,
+            detections=[
+                ShipDetection(
+                    x=10,
+                    y=20,
+                    width=15,
+                    height=25,
+                    confidence=0.92,
+                    angle=45.0,
+                    length=50.0,
+                    beam=12.0,
+                    center_x=17.5,
+                    center_y=32.5,
+                )
+            ],
+        )
+
+        mock_optical = MagicMock()
+        mock_optical.execute.return_value = {
+            "status": "success",
+            "confirmed_count": 1,
+            "results": [
+                {
+                    "status": "CONFIRMED_VESSEL",
+                    "optical_confirmed": True,
+                    "optical_confidence": 0.88,
+                    "scene_id": "S2A_TEST_SCENE",
+                    "cloud_cover": 5.0,
+                    "time_delta_hours": 1.5,
+                    "details": "NDWI anomaly 0.42 confirms floating vessel.",
+                }
+            ],
+        }
+
+        pipeline = PostAcquisitionPipeline(
+            scan_repository=self.scan_repo,
+            detect_ships=mock_detect,
+            cross_validate_optical=mock_optical,
+            output_root=self.output_root,
+        )
+
+        result = pipeline.execute(self.scan, optical_validation_enabled=True)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["detections"]), 1)
+        det = result["detections"][0]
+        self.assertEqual(det["optical_status"], "CONFIRMED_VESSEL")
+        self.assertTrue(det["optical_confirmed"])
+        self.assertEqual(det["optical_confidence"], 0.88)
+        self.assertIn("optical_validation", result)
+        mock_optical.execute.assert_called_once_with(self.scan_folder)
+
+    def test_pipeline_executes_sar_change_detection(self):
+        # Create prior reference scan
+        prior_folder = "prior_pass_scan"
+        prior_dir = self.scan_repo.prepare(prior_folder)
+        prior_img = prior_dir / "images" / f"{prior_folder}_stitched.png"
+        Image.fromarray(np.full((100, 100), 120, dtype=np.uint8)).save(prior_img)
+
+        prior_scan = Scan(
+            folder_name=prior_folder,
+            bbox=self.bbox,
+            acquisition=Acquisition(
+                datetime(2026, 9, 10, 10, 0, tzinfo=timezone.utc),
+                "SENTINEL-1A",
+                "sentinel-1-grd",
+            ),
+            image_path=str(prior_img),
+        )
+        self.scan_repo.save(prior_scan)
+
+        mock_detect = MagicMock()
+        mock_detect.execute.return_value = DetectionResult(
+            image_width=100,
+            image_height=100,
+            detections=[
+                ShipDetection(
+                    x=10,
+                    y=20,
+                    width=15,
+                    height=25,
+                    confidence=0.92,
+                    angle=45.0,
+                    length=50.0,
+                    beam=12.0,
+                    center_x=17.5,
+                    center_y=32.5,
+                )
+            ],
+        )
+
+        mock_change = MagicMock()
+        mock_change.execute.return_value = {
+            "status": "success",
+            "reference_scan": prior_folder,
+            "target_scan": self.scan_folder,
+            "change_points": [
+                {
+                    "x": 17.5,
+                    "y": 32.5,
+                    "change_type": "PERSISTENT",
+                    "magnitude_db": 5.2,
+                    "confidence": 0.95,
+                }
+            ],
+        }
+
+        pipeline = PostAcquisitionPipeline(
+            scan_repository=self.scan_repo,
+            detect_ships=mock_detect,
+            detect_sar_changes=mock_change,
+            output_root=self.output_root,
+        )
+
+        result = pipeline.execute(self.scan, sar_change_detection_enabled=True)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["detections"]), 1)
+        det = result["detections"][0]
+        self.assertEqual(det["temporal_change_type"], "PERSISTENT")
+        self.assertIn("sar_change_detection", result)
+        mock_change.execute.assert_called_once_with(
+            target_folder=self.scan_folder,
+            reference_folder=prior_folder,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+

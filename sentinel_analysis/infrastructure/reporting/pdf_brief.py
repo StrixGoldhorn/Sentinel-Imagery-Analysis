@@ -542,6 +542,9 @@ class MatplotlibIntelligenceBriefGenerator:
         is_spd_spoofed = bool(target.get("is_speed_spoofed") or target.get("raw_detection", {}).get("is_speed_spoofed"))
         is_crs_spoofed = bool(target.get("is_course_spoofed") or target.get("raw_detection", {}).get("is_course_spoofed"))
         is_spoofed = bool(is_spd_spoofed or is_crs_spoofed or target.get("is_spoofed") or target.get("raw_detection", {}).get("is_spoofed"))
+        opt_status = target.get("optical_status") or target.get("raw_detection", {}).get("optical_status")
+        opt_conf = target.get("optical_confidence") or target.get("raw_detection", {}).get("optical_confidence")
+        temp_change = target.get("temporal_change_type") or target.get("raw_detection", {}).get("temporal_change_type")
 
         if breaches:
             b0 = breaches[0]
@@ -568,13 +571,39 @@ class MatplotlibIntelligenceBriefGenerator:
         elif is_spoofed:
             compliance_items.append(("Kinematic Integrity", "AIS SPOOFING DETECTED"))
 
+        if opt_status == "CONFIRMED_VESSEL":
+            conf_pct = int((opt_conf or 1.0) * 100)
+            compliance_items.append(("Sentinel-2 Optical", f"CONFIRMED ({conf_pct}% NDWI)"))
+        elif opt_status == "LAND_FALSE_ALARM":
+            compliance_items.append(("Sentinel-2 Optical", "LAND/REEF FALSE ALARM"))
+        elif opt_status == "CLOUD_OBSCURED":
+            compliance_items.append(("Sentinel-2 Optical", "CLOUD OBSCURED"))
+
+        if temp_change == "PERSISTENT":
+            compliance_items.append(("SAR Coherence/Pass", "PERSISTENT STRUCTURE"))
+        elif temp_change == "ARRIVED":
+            compliance_items.append(("SAR Coherence/Pass", "NEW ARRIVAL (T2)"))
+
         item_count = len(compliance_items)
-        y_pos = 0.77 if item_count > 7 else (0.76 if item_count > 6 else 0.74)
-        y_step = 0.058 if item_count > 7 else (0.068 if item_count > 6 else 0.088)
-        f_size = 6.4 if item_count > 7 else (6.8 if item_count > 6 else 7.2)
+        if item_count > 8:
+            y_pos, y_step, f_size = 0.78, 0.050, 5.8
+        elif item_count > 7:
+            y_pos, y_step, f_size = 0.77, 0.058, 6.4
+        elif item_count > 6:
+            y_pos, y_step, f_size = 0.76, 0.068, 6.8
+        else:
+            y_pos, y_step, f_size = 0.74, 0.088, 7.2
+
         for lbl, val in compliance_items:
             sec_frame.text(0.04, y_pos, lbl, fontsize=f_size, color="#718096", fontweight="bold", va="center")
-            val_col = solas_color if any(k in val for k in ("NON-COMPLIANT", "HIGH", "CRITICAL", "BREACH", "VIOLATION", "SPOOFED")) else "#1a202c"
+            if any(k in val for k in ("NON-COMPLIANT", "HIGH", "CRITICAL", "BREACH", "VIOLATION", "SPOOFED")):
+                val_col = solas_color
+            elif "CONFIRMED" in val:
+                val_col = "#276749"
+            elif any(k in val for k in ("LAND", "REEF", "PERSISTENT")):
+                val_col = "#4a5568"
+            else:
+                val_col = "#1a202c"
             sec_frame.text(0.96, y_pos, val, fontsize=f_size, color=val_col, ha="right", va="center", fontweight="bold" if val_col != "#1a202c" else "normal")
             y_pos -= y_step
 
@@ -585,6 +614,12 @@ class MatplotlibIntelligenceBriefGenerator:
             findings_lines.append(f"STS: {trans_events[0].get('narrative', '')[:95]}")
         if is_spoofed:
             findings_lines.append("SPOOFING: Hydrodynamic SAR kinematics contradict broadcast AIS parameters.")
+        if opt_status == "CONFIRMED_VESSEL":
+            findings_lines.append(f"OPTICAL: Sentinel-2 multispectral NDWI confirms floating vessel ({int((opt_conf or 1.0)*100)}% conf).")
+        elif opt_status == "LAND_FALSE_ALARM":
+            findings_lines.append("OPTICAL: Sentinel-2 NDWI identifies radar target as land/reef false alarm.")
+        elif temp_change == "PERSISTENT":
+            findings_lines.append("TEMPORAL SAR: High coherence across repeat passes indicates fixed structure.")
         if not findings_lines:
             findings_lines.append(reasons[0] if reasons else "No matching AIS position message received within spatial correlation tolerance.")
 
@@ -1196,12 +1231,31 @@ class MatplotlibIntelligenceBriefGenerator:
                             ("Compliance", comp_label),
                         ]
 
-                        y_text = 0.88
+                        opt_status = target.get("optical_status") or ais.get("optical_status") or target.get("raw_detection", {}).get("optical_status")
+                        opt_conf = target.get("optical_confidence") or target.get("raw_detection", {}).get("optical_confidence")
+                        temp_change = target.get("temporal_change_type") or target.get("raw_detection", {}).get("temporal_change_type")
+
+                        if opt_status == "CONFIRMED_VESSEL":
+                            info_lines.append(("Optical (S2)", f"CONFIRMED ({int((opt_conf or 1.0) * 100)}%)"))
+                        elif opt_status == "LAND_FALSE_ALARM":
+                            info_lines.append(("Optical (S2)", "LAND/REEF DETECTED"))
+
+                        if temp_change == "PERSISTENT":
+                            info_lines.append(("SAR Coherence", "PERSISTENT STRUCTURE"))
+                        elif temp_change == "ARRIVED":
+                            info_lines.append(("SAR Coherence", "NEW ARRIVAL (T2)"))
+
+                        n_lines = len(info_lines)
+                        y_text = 0.90 if n_lines > 9 else 0.88
+                        y_step = 0.82 / max(1, n_lines)
+                        f_sz = 6.0 if n_lines > 9 else 6.8
                         for label, val in info_lines:
-                            info_ax.text(0.0, y_text, label, fontsize=6.8, color="#718096", fontweight="bold")
-                            val_col = "#c53030" if (is_spoofed and label == "Compliance") else "#1a202c"
-                            info_ax.text(1.0, y_text, val, fontsize=6.8, color=val_col, ha="right", fontweight="bold" if is_spoofed and label == "Compliance" else "normal")
-                            y_text -= 0.098
+                            info_ax.text(0.0, y_text, label, fontsize=f_sz, color="#718096", fontweight="bold")
+                            val_col = "#c53030" if (is_spoofed and label == "Compliance") else (
+                                "#276749" if "CONFIRMED" in val else "#1a202c"
+                            )
+                            info_ax.text(1.0, y_text, val, fontsize=f_sz, color=val_col, ha="right", fontweight="bold" if is_spoofed and label == "Compliance" else "normal")
+                            y_text -= y_step
 
                     pdf.savefig(fig_dossier)
                     plt.close(fig_dossier)
@@ -1273,7 +1327,14 @@ class MatplotlibIntelligenceBriefGenerator:
                     is_crs_spoofed = bool(d.get("is_course_spoofed") or ais.get("is_course_spoofed") or d.get("raw_detection", {}).get("is_course_spoofed"))
                     is_spoofed = bool(is_spd_spoofed or is_crs_spoofed or d.get("is_spoofed") or ais.get("is_spoofed"))
 
-                    if is_solas:
+                    opt_status = d.get("optical_status") or d.get("raw_detection", {}).get("optical_status")
+                    temp_change = d.get("temporal_change_type") or d.get("raw_detection", {}).get("temporal_change_type")
+
+                    if opt_status == "LAND_FALSE_ALARM":
+                        solas_flag = "LAND/REEF (S2)"
+                    elif temp_change == "PERSISTENT":
+                        solas_flag = "FIXED STRUCT"
+                    elif is_solas:
                         solas_flag = "NON-COMPLIANT"
                     elif is_spoofed:
                         solas_flag = "SPOOFED (AIS)"
@@ -1321,6 +1382,11 @@ class MatplotlibIntelligenceBriefGenerator:
                             cell.set_facecolor("#fff5f5" if c in (6, 7) else "white")
                             if c == 7:
                                 cell.get_text().set_color("#c53030")
+                                cell.get_text().set_fontweight("bold")
+                        elif solas_col in ("LAND/REEF (S2)", "FIXED STRUCT"):
+                            cell.set_facecolor("#edf2f7" if c in (6, 7) else "white")
+                            if c == 7:
+                                cell.get_text().set_color("#4a5568")
                                 cell.get_text().set_fontweight("bold")
                         elif status_col == "DARK TARGET":
                             cell.set_facecolor("#fffaf0" if c == 6 else "white")

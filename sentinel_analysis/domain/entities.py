@@ -234,6 +234,10 @@ class ShipDetection:
     is_course_spoofed: Optional[bool] = None
     vessel_class: Optional[str] = None
     classification_confidence: Optional[float] = None
+    optical_status: Optional[str] = None
+    optical_confirmed: Optional[bool] = None
+    optical_confidence: Optional[float] = None
+    temporal_change_type: Optional[str] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -278,6 +282,8 @@ class ShipDetection:
             object.__setattr__(self, "wake_confidence", _number(self.wake_confidence, "Wake confidence"))
         if self.is_speed_spoofed is not None:
             object.__setattr__(self, "is_speed_spoofed", bool(self.is_speed_spoofed))
+        if self.is_course_spoofed is not None:
+            object.__setattr__(self, "is_course_spoofed", bool(self.is_course_spoofed))
         if self.vessel_class is not None:
             object.__setattr__(self, "vessel_class", _required_text(self.vessel_class, "Vessel class"))
         if self.classification_confidence is not None:
@@ -285,6 +291,17 @@ class ShipDetection:
             if not 0 <= class_conf <= 1:
                 raise DomainValidationError("Classification confidence must be between 0 and 1")
             object.__setattr__(self, "classification_confidence", class_conf)
+        if self.optical_status is not None:
+            object.__setattr__(self, "optical_status", _required_text(self.optical_status, "Optical status"))
+        if self.optical_confirmed is not None:
+            object.__setattr__(self, "optical_confirmed", bool(self.optical_confirmed))
+        if self.optical_confidence is not None:
+            opt_conf = _number(self.optical_confidence, "Optical confidence")
+            if not 0 <= opt_conf <= 1:
+                raise DomainValidationError("Optical confidence must be between 0 and 1")
+            object.__setattr__(self, "optical_confidence", opt_conf)
+        if self.temporal_change_type is not None:
+            object.__setattr__(self, "temporal_change_type", _required_text(self.temporal_change_type, "Temporal change type"))
 
 
 @dataclass(frozen=True)

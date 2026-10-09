@@ -8,6 +8,7 @@ upon SAR image acquisition.
 from datetime import datetime, timezone
 import json
 import logging
+import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
@@ -15,6 +16,8 @@ import uuid
 
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
 from sentinel_analysis.application.use_cases.correlate_ais_detections import CorrelateDetectionsWithAIS
+from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
+from sentinel_analysis.application.use_cases.detect_sar_changes import ComputeSARChangeDetection
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
@@ -44,6 +47,8 @@ class PostAcquisitionPipeline:
         detect_transshipment: Optional[DetectTransshipmentAnomalies] = None,
         geofence_monitor: Optional[GeofenceMonitor] = None,
         dispatch_alert: Optional[DispatchMaritimeAlert] = None,
+        cross_validate_optical: Optional[CrossValidateOptical] = None,
+        detect_sar_changes: Optional[ComputeSARChangeDetection] = None,
     ) -> None:
         self._scan_repository = scan_repository
         self._detect_ships = detect_ships
@@ -57,6 +62,8 @@ class PostAcquisitionPipeline:
         self._detect_transshipment = detect_transshipment
         self._geofence_monitor = geofence_monitor
         self._dispatch_alert = dispatch_alert
+        self._cross_validate_optical = cross_validate_optical
+        self._detect_sar_changes = detect_sar_changes
 
     def _get_setting(self, key: str, default: Any) -> Any:
         if self._settings_repository is not None and hasattr(self._settings_repository, "get"):
@@ -88,6 +95,8 @@ class PostAcquisitionPipeline:
         ais_distance: Optional[float] = None,
         dem_enabled: Optional[bool] = None,
         enable_kinematics: Optional[bool] = None,
+        optical_validation_enabled: Optional[bool] = None,
+        sar_change_detection_enabled: Optional[bool] = None,
         progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> dict[str, Any]:
         """Execute the post-acquisition analysis pipeline end-to-end."""
@@ -108,6 +117,10 @@ class PostAcquisitionPipeline:
             ais_distance = float(self._get_setting("ais_correlation_distance_meters", 100.0))
         if dem_enabled is None:
             dem_enabled = bool(self._get_setting("dem_land_mask_enabled", True))
+        if optical_validation_enabled is None:
+            optical_validation_enabled = bool(self._get_setting("optical_validation_enabled", True))
+        if sar_change_detection_enabled is None:
+            sar_change_detection_enabled = bool(self._get_setting("sar_change_detection_enabled", True))
 
         image_path = Path(scan.image_path)
         folder_dir = image_path.parent
@@ -323,6 +336,96 @@ class PostAcquisitionPipeline:
             except Exception as exc:
                 logger.warning("Saving detection results failed for scan %s: %s", scan.folder_name, exc, exc_info=True)
 
+        # 6.2 Multi-Sensor Sentinel-2 Optical Cross-Validation & NDWI
+        optical_res: dict[str, Any] = {}
+        if self._cross_validate_optical is not None and optical_validation_enabled:
+            report(78, "Cross-validating detections with Sentinel-2 optical scenes")
+            try:
+                optical_res = self._cross_validate_optical.execute(scan.folder_name)
+                opt_results = optical_res.get("results", [])
+                for d, v in zip(enriched_detections, opt_results):
+                    d["optical_status"] = v.get("status")
+                    d["optical_confirmed"] = v.get("optical_confirmed")
+                    d["optical_confidence"] = v.get("optical_confidence")
+                    d["optical_scene_id"] = v.get("scene_id")
+                    d["optical_cloud_cover"] = v.get("cloud_cover")
+                    d["optical_time_delta_hours"] = v.get("time_delta_hours")
+                    d["optical_details"] = v.get("details")
+            except Exception as exc:
+                logger.warning("Optical cross-validation failed for %s: %s", scan.folder_name, exc, exc_info=True)
+
+        # 6.4 Multi-Temporal Repeat-Pass SAR Coherence & Change Detection
+        change_res: dict[str, Any] = {}
+        if self._detect_sar_changes is not None and sar_change_detection_enabled:
+            report(81, "Analyzing multi-temporal SAR coherence and change detection")
+            try:
+                all_scans = list(self._scan_repository.list())
+                curr_time = scan.acquisition.acquired_at
+                prior_scans = [
+                    s for s in all_scans
+                    if s.folder_name != scan.folder_name
+                    and s.acquisition.acquired_at < curr_time
+                    and Path(s.image_path).is_file()
+                ]
+                if prior_scans:
+                    def _center(b: Any) -> tuple[float, float]:
+                        return ((b.min_latitude + b.max_latitude) / 2.0, (b.min_longitude + b.max_longitude) / 2.0)
+                    c_curr = _center(scan.bbox)
+                    best_ref = None
+                    min_dist = float("inf")
+                    for ps in prior_scans:
+                        c_p = _center(ps.bbox)
+                        d_sq = (c_p[0] - c_curr[0]) ** 2 + (c_p[1] - c_curr[1]) ** 2
+                        if d_sq < 0.25 and d_sq < min_dist:
+                            min_dist = d_sq
+                            best_ref = ps
+
+                    if best_ref is not None:
+                        change_res = self._detect_sar_changes.execute(
+                            target_folder=scan.folder_name,
+                            reference_folder=best_ref.folder_name,
+                        )
+                        cps = change_res.get("change_points", [])
+                        for d in enriched_detections:
+                            det_px = float(d.get("center_x") or d.get("x") or 0.0)
+                            det_py = float(d.get("center_y") or d.get("y") or 0.0)
+                            closest_cp = None
+                            min_cp_dist = 40.0
+                            for cp in cps:
+                                dist = math.hypot(float(cp.get("x", 0.0)) - det_px, float(cp.get("y", 0.0)) - det_py)
+                                if dist < min_cp_dist:
+                                    min_cp_dist = dist
+                                    closest_cp = cp
+                            if closest_cp is not None:
+                                d["temporal_change_type"] = closest_cp.get("change_type")
+                                d["temporal_magnitude_db"] = closest_cp.get("magnitude_db")
+
+                        if cps:
+                            try:
+                                det_json_path = folder_dir / "detection_results.json"
+                                if det_json_path.is_file():
+                                    jdata = json.loads(det_json_path.read_text(encoding="utf-8"))
+                                    jdata["detections"] = enriched_detections
+                                    jdata["sar_change_summary"] = {
+                                        "reference_scan": change_res.get("reference_scan"),
+                                        "arrived_count": change_res.get("arrived_count", 0),
+                                        "departed_count": change_res.get("departed_count", 0),
+                                        "persistent_structures_count": change_res.get("persistent_structures_count", 0),
+                                        "change_map_filename": change_res.get("change_map_filename"),
+                                    }
+                                    det_json_path.write_text(json.dumps(jdata, indent=2), encoding="utf-8")
+                                det_gj_path = folder_dir / "detections.geojson"
+                                if det_gj_path.is_file():
+                                    gjdata = json.loads(det_gj_path.read_text(encoding="utf-8"))
+                                    for feat, ed in zip(gjdata.get("features", []), enriched_detections):
+                                        if "properties" in feat and isinstance(feat["properties"], dict):
+                                            feat["properties"]["temporal_change_type"] = ed.get("temporal_change_type")
+                                    det_gj_path.write_text(json.dumps(gjdata, indent=2), encoding="utf-8")
+                            except Exception as exc:
+                                logger.debug("Updating detection files with SAR change data failed: %s", exc)
+            except Exception as exc:
+                logger.warning("SAR change detection failed for %s: %s", scan.folder_name, exc, exc_info=True)
+
         # 7. PDF Maritime Intelligence Briefing
         report(85, "Generating Maritime Intelligence Briefing (PDF)")
         briefing_pdf_path: Optional[Path] = None
@@ -378,6 +481,21 @@ class PostAcquisitionPipeline:
             "geofence_breach_count": geofence_res.get("total_breaches", 0),
             "critical_geofence_breach_count": geofence_res.get("critical_breaches", 0),
             "transshipment_threat_level": transshipment_res.get("overall_threat_level", "LOW"),
+            "optical_validation": {
+                "status": optical_res.get("status"),
+                "scenes_found": optical_res.get("scenes_found", 0),
+                "confirmed_count": optical_res.get("confirmed_count", 0),
+                "land_false_alarm_count": optical_res.get("land_false_alarm_count", 0),
+                "best_scene_id": optical_res.get("best_scene", {}).get("scene_id") if isinstance(optical_res.get("best_scene"), dict) else None,
+            },
+            "sar_change_detection": {
+                "status": change_res.get("status"),
+                "reference_scan": change_res.get("reference_scan"),
+                "arrived_count": change_res.get("arrived_count", 0),
+                "departed_count": change_res.get("departed_count", 0),
+                "persistent_structures_count": change_res.get("persistent_structures_count", 0),
+                "change_map_filename": change_res.get("change_map_filename"),
+            },
         }
         if briefing_pdf_path:
             scan_meta["briefing_pdf"] = Path(briefing_pdf_path).name
@@ -455,6 +573,10 @@ class PostAcquisitionPipeline:
             "transshipment_url": f"/api/scan/{scan.folder_name}/transshipment",
             "transshipment": transshipment_res,
             "geofence": geofence_res,
+            "optical_validation": optical_res,
+            "sar_change_detection": change_res,
+            "optical_validation_url": f"/api/scan/{scan.folder_name}/optical_validation",
+            "sar_change_url": f"/api/scan/{scan.folder_name}/change_detection",
             "geotiff_url": f"/api/scan/{scan.folder_name}/geotiff",
             "stac_url": f"/api/scan/{scan.folder_name}/stac",
         }

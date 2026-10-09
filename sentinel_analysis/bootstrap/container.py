@@ -159,6 +159,8 @@ class ApplicationContainer:
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
+        self.sar_change_detector = NumpySARChangeDetector()
+        self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
         self.post_acquisition_pipeline = PostAcquisitionPipeline(
             scan_repository=self.scan_repository,
             detect_ships=self.detect_ships,
@@ -172,9 +174,10 @@ class ApplicationContainer:
             detect_transshipment=self.detect_transshipment,
             geofence_monitor=self.geofence_monitor,
             dispatch_alert=self.dispatch_alert,
+            cross_validate_optical=self.cross_validate_optical,
+            detect_sar_changes=self.detect_sar_changes,
         )
-        self.sar_change_detector = NumpySARChangeDetector()
-        self.detect_sar_changes = ComputeSARChangeDetection(self.scan_repository, self.sar_change_detector)
+
         self.generate_traffic_heatmap = GenerateHistoricalTrafficHeatmap(self.ais_repository, self.scan_repository)
         self.list_scans = ListScans(self.scan_repository)
         self.rename_scan = RenameScan(self.scan_repository)

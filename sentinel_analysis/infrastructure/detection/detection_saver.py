@@ -43,6 +43,10 @@ def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> di
         "is_course_spoofed": getattr(item, "is_course_spoofed", None),
         "vessel_class": getattr(item, "vessel_class", None),
         "classification_confidence": getattr(item, "classification_confidence", None),
+        "optical_status": getattr(item, "optical_status", None),
+        "optical_confirmed": getattr(item, "optical_confirmed", None),
+        "optical_confidence": getattr(item, "optical_confidence", None),
+        "temporal_change_type": getattr(item, "temporal_change_type", None),
         "correlation_status": "uncorrelated",
         "is_correlated": False,
         "correlated_ais": None,
@@ -146,6 +150,10 @@ def _build_geojson_feature_collection(
             "heading_deg": ais.get("heading"),
             "dead_reckoned": ais.get("dead_reckoned", False),
             "distance_to_shape_meters": ais.get("distance_to_box_meters"),
+            "optical_status": d.get("optical_status"),
+            "optical_confirmed": d.get("optical_confirmed"),
+            "optical_confidence": d.get("optical_confidence"),
+            "temporal_change_type": d.get("temporal_change_type"),
         }
 
         features.append({
