@@ -337,6 +337,30 @@
 
 <div id="map"></div>
 
+<!-- Floating Tactical Map Quick Filter Bar -->
+<div id="tacticalMapFilterBar" class="tactical-map-filter-bar">
+    <div class="tactical-filter-pill-group">
+        <button type="button" class="tactical-filter-pill active" data-filter="all" onclick="setTacticalMapFilter('all')">
+            <span class="pill-dot pill-all"></span> All Contacts
+        </button>
+        <button type="button" class="tactical-filter-pill" data-filter="dark" onclick="setTacticalMapFilter('dark')">
+            <span class="pill-dot pill-dark"></span> Dark Vessels
+        </button>
+        <button type="button" class="tactical-filter-pill" data-filter="solas" onclick="setTacticalMapFilter('solas')">
+            <span class="pill-dot pill-solas"></span> SOLAS Violators
+        </button>
+        <button type="button" class="tactical-filter-pill" data-filter="spoofed" onclick="setTacticalMapFilter('spoofed')">
+            <span class="pill-dot pill-spoofed"></span> Spoofed / Discrepancy
+        </button>
+        <button type="button" class="tactical-filter-pill" data-filter="sts" onclick="setTacticalMapFilter('sts')">
+            <span class="pill-dot pill-sts"></span> STS Suspects
+        </button>
+        <button type="button" class="tactical-filter-pill" data-filter="optical" onclick="setTacticalMapFilter('optical')">
+            <span class="pill-dot pill-optical"></span> S-2 Optical Validated
+        </button>
+    </div>
+</div>
+
 <!-- C2 Right Sidebar: Ship Dossier & Telemetry Details -->
 <aside class="c2-ship-sidebar" id="c2ShipSidebar">
     <div class="c2-ship-header">
@@ -483,9 +507,42 @@
                     </div>
                 </div>
 
+                <!-- Threat & Compliance Alerts Card -->
+                <div class="c2-ship-card" id="shipSidebarAlertsCard" style="display: none;">
+                    <h4 class="c2-card-title">⚠️ Compliance & Operational Alerts</h4>
+                    <div id="shipSidebarAlertsList" style="display: flex; flex-direction: column; gap: 6px;">
+                        <!-- Populated dynamically via openSarDetectionInShipSidebar() -->
+                    </div>
+                </div>
+
+                <!-- Multi-Sensor & Temporal Analytics Card -->
+                <div class="c2-ship-card" id="shipSidebarMultiSensorCard" style="display: none;">
+                    <h4 class="c2-card-title">🛰️ Multi-Sensor & Temporal Analytics</h4>
+                    <div class="c2-ship-grid-2">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Sentinel-2 Optical</span>
+                            <span class="c2-value" id="shipSidebarOpticalStatus">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Repeat-Pass Coherence</span>
+                            <span class="c2-value" id="shipSidebarTemporalStatus">-</span>
+                        </div>
+                    </div>
+                    <div id="shipSidebarWakeRow" class="c2-ship-grid-2" style="margin-top: 8px; display: none;">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Wake Speed (Radon)</span>
+                            <span class="c2-value" id="shipSidebarWakeSpeed">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Kinematic Heading</span>
+                            <span class="c2-value" id="shipSidebarWakeHeading">-</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Actions -->
-                <div class="c2-ship-actions">
-                    <button type="button" class="btn btn-primary" id="shipSidebarCenterBtn" onclick="centerOnSelectedShip()">
+                <div class="c2-ship-actions" style="flex-wrap: wrap;">
+                    <button type="button" class="btn btn-primary" id="shipSidebarCenterBtn" onclick="centerOnSelectedShip()" style="flex: 1 1 45%;">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"></circle>
                             <line x1="22" y1="12" x2="18" y2="12"></line>
@@ -495,9 +552,14 @@
                         </svg>
                         Center on Map
                     </button>
-                    <button type="button" class="btn btn-secondary" id="shipSidebarEditBtn" onclick="editSelectedShipDetails()">
+                    <button type="button" class="btn btn-secondary" id="shipSidebarEditBtn" onclick="editSelectedShipDetails()" style="flex: 1 1 45%;">
                         ✏️ Edit Details
                     </button>
+                    <div id="shipSidebarExportRow" style="display: none; width: 100%; gap: 6px; margin-top: 6px;">
+                        <button type="button" class="btn btn-sm btn-outline-primary" style="flex: 1; font-size: 0.74rem; padding: 4px 6px;" onclick="exportCurrentSelectedKmz()" title="Export Google Earth KMZ">🌍 KMZ</button>
+                        <button type="button" class="btn btn-sm btn-outline-info" style="flex: 1; font-size: 0.74rem; padding: 4px 6px;" onclick="exportCurrentSelectedCot()" title="Export MIL-STD-2525 Cursor-on-Target XML">📡 CoT</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" style="flex: 1; font-size: 0.74rem; padding: 4px 6px;" onclick="exportCurrentSelectedBriefingPdf()" title="Download PDF Tactical Briefing">📄 PDF Brief</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -794,7 +856,17 @@
                 <span id="sarModalThresholdVal" style="font-size: 0.85rem; font-weight: 700; color: #2563eb; min-width: 28px;">40</span>
                 <button type="button" id="sarModalRerunBtn" class="btn" style="padding: 5px 12px; font-size: 0.8rem; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap; box-shadow: 0 1px 2px rgba(37,99,235,0.2);" onclick="rerunCvFromModal()">⚡ Re-run CV</button>
             </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <label style="font-size: 0.8rem; font-weight: 700; color: #475569;">Filter:</label>
+                <select id="sarDetectionsFilterSelect" style="padding: 5px 10px; font-size: 0.82rem; font-weight: 500; border: 1px solid #cbd5e1; border-radius: 6px; background: white; color: #1e293b; cursor: pointer;" onchange="onSarModalFilterChange(this.value)">
+                    <option value="all">All Contacts</option>
+                    <option value="dark">Dark Vessels Only</option>
+                    <option value="solas">SOLAS Violators</option>
+                    <option value="spoofed">Spoofed / Discrepancy</option>
+                    <option value="sts">STS Suspects</option>
+                    <option value="optical">S-2 Optical Confirmed</option>
+                    <option value="inside">AIS In-Box Only</option>
+                </select>
                 <label style="font-size: 0.8rem; font-weight: 700; color: #475569;">Sort by:</label>
                 <select id="sarDetectionsSortSelect" style="padding: 5px 10px; font-size: 0.82rem; font-weight: 500; border: 1px solid #cbd5e1; border-radius: 6px; background: white; color: #1e293b; cursor: pointer;" onchange="renderSarDetectionsList()">
                     <option value="conf_desc">Confidence (High → Low)</option>
@@ -810,10 +882,15 @@
             <!-- Populated dynamically -->
         </div>
 
-        <!-- Footer / Close -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+        <!-- Footer / Close & Exports -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; flex-wrap: wrap; gap: 10px;">
             <div id="sarDetectionsStatsSummary" style="font-size: 0.82rem; color: #64748b; font-weight: 500;"></div>
-            <button type="button" style="padding: 7px 18px; font-size: 0.84rem; font-weight: 600; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'" onclick="closeSarShipDetectionsModal()">Close</button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" class="btn btn-sm" style="padding: 6px 12px; font-size: 0.8rem; font-weight: 600; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; cursor: pointer;" onclick="exportCurrentModalScanKmz()" title="Export Google Earth KMZ">🌍 KMZ</button>
+                <button type="button" class="btn btn-sm" style="padding: 6px 12px; font-size: 0.8rem; font-weight: 600; background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; border-radius: 6px; cursor: pointer;" onclick="exportCurrentModalScanCot()" title="Export MIL-STD-2525 Cursor-on-Target XML">📡 CoT XML</button>
+                <button type="button" class="btn btn-sm" style="padding: 6px 12px; font-size: 0.8rem; font-weight: 600; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 6px; cursor: pointer;" onclick="exportCurrentModalScanPdf()" title="Download PDF Tactical Briefing">📄 Intel Brief</button>
+                <button type="button" style="padding: 7px 18px; font-size: 0.84rem; font-weight: 600; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; transition: all 0.15s ease;" onmouseover="this.style.background='#e2e8f0'; this.style.color='#0f172a'" onmouseout="this.style.background='#f1f5f9'; this.style.color='#475569'" onclick="closeSarShipDetectionsModal()">Close</button>
+            </div>
         </div>
     </div>
 </div>

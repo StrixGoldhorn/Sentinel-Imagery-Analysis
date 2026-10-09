@@ -147,6 +147,29 @@ class TestExportGeospatial(unittest.TestCase):
         self.assertEqual(feat1["properties"]["length_m"], 220.0)
         self.assertFalse(feat1["properties"]["is_dark"])
 
+    def test_export_kmz(self):
+        import zipfile
+        kmz_path = self.exporter.export_kmz(self.scan_folder)
+        self.assertTrue(kmz_path.is_file())
+        self.assertTrue(kmz_path.name.endswith(".kmz"))
+
+        with zipfile.ZipFile(kmz_path, "r") as kmz:
+            self.assertIn("doc.kml", kmz.namelist())
+            kml_text = kmz.read("doc.kml").decode("utf-8")
+            self.assertIn("<kml xmlns=", kml_text)
+            self.assertIn(self.scan_folder, kml_text)
+            self.assertIn("darkVesselStyle", kml_text)
+            self.assertIn("compliantVesselStyle", kml_text)
+            self.assertIn("12.5,42.7,0", kml_text)
+
+    def test_export_cursor_on_target(self):
+        cot_xml = self.exporter.export_cursor_on_target(self.scan_folder)
+        self.assertIn('<?xml version="1.0" encoding="UTF-8"?>', cot_xml)
+        self.assertIn('<events version="2.0">', cot_xml)
+        self.assertIn('<event version="2.0"', cot_xml)
+        self.assertIn('lat="42.700000" lon="12.500000"', cot_xml)
+        self.assertIn('type="a-u-S"', cot_xml)  # dark vessel
+
 
 class TestExportGeospatialWebAPI(unittest.TestCase):
     def setUp(self):
@@ -216,6 +239,21 @@ class TestExportGeospatialWebAPI(unittest.TestCase):
         data = resp.get_json()
         self.assertEqual(data["type"], "FeatureCollection")
         self.assertEqual(len(data["features"]), 1)
+
+    def test_kmz_endpoint(self):
+        resp = self.client.get(f"/api/scan/{self.scan_folder}/export/kmz")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/vnd.google-earth.kmz", resp.content_type)
+        self.assertTrue(len(resp.data) > 0)
+        resp.close()
+
+    def test_cot_endpoint(self):
+        resp = self.client.get(f"/api/scan/{self.scan_folder}/export/cot")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/xml", resp.content_type)
+        self.assertIn(b"<events version=\"2.0\">", resp.data)
+        self.assertIn(b"<event version=\"2.0\"", resp.data)
+        resp.close()
 
 
 if __name__ == "__main__":

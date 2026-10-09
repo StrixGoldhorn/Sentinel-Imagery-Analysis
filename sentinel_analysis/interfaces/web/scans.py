@@ -950,6 +950,47 @@ def export_scan_stac(folder_name: str):
         return jsonify(error=f"STAC export failed: {exc}"), 500
 
 
+@blueprint.get("/api/scan/<folder_name>/export/kmz")
+@blueprint.get("/api/scan/<folder_name>/kmz")
+def export_scan_kmz(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    try:
+        kmz_path = cnt.export_geospatial.export_kmz(safe_name)
+        as_att = request.args.get("download", "true").lower() in ("1", "true")
+        return send_file(
+            kmz_path,
+            mimetype="application/vnd.google-earth.kmz",
+            as_attachment=as_att,
+            download_name=kmz_path.name,
+        )
+    except Exception as exc:
+        return jsonify(error=f"KMZ export failed: {exc}"), 500
+
+
+@blueprint.get("/api/scan/<folder_name>/export/cot")
+@blueprint.get("/api/scan/<folder_name>/cot")
+def export_scan_cot(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    cnt = container()
+    try:
+        cot_xml = cnt.export_geospatial.export_cursor_on_target(safe_name)
+        as_att = request.args.get("download", "false").lower() in ("1", "true")
+        if as_att:
+            import io
+            buf = io.BytesIO(cot_xml.encode("utf-8"))
+            return send_file(
+                buf,
+                mimetype="application/xml",
+                as_attachment=True,
+                download_name=f"{safe_name}_cot_events.xml",
+            )
+        from flask import Response
+        return Response(cot_xml, mimetype="application/xml")
+    except Exception as exc:
+        return jsonify(error=f"Cursor-on-Target export failed: {exc}"), 500
+
+
 @blueprint.get("/api/scan/<folder_name>/briefing/pdf")
 @blueprint.get("/api/scan/<folder_name>/briefing.pdf")
 def export_scan_briefing_pdf(folder_name: str):

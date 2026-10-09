@@ -253,6 +253,44 @@ function toggleShipDetailsSidebar() {
     }
 }
 
+let currentTacticalFilter = 'all';
+window.currentTacticalFilter = currentTacticalFilter;
+
+function setTacticalMapFilter(filterType) {
+    currentTacticalFilter = filterType || 'all';
+    window.currentTacticalFilter = currentTacticalFilter;
+
+    // Update tactical filter pills active class
+    const pills = document.querySelectorAll('.tactical-filter-pill');
+    pills.forEach(pill => {
+        if (pill.getAttribute('data-filter') === currentTacticalFilter) {
+            pill.classList.add('active');
+        } else {
+            pill.classList.remove('active');
+        }
+    });
+
+    // Sync modal filter select if present
+    const modalSelect = document.getElementById('sarDetectionsFilterSelect');
+    if (modalSelect && modalSelect.value !== currentTacticalFilter) {
+        modalSelect.value = currentTacticalFilter;
+    }
+
+    // Apply filter to map layers
+    if (typeof window.applyTacticalMapFilter === 'function') {
+        window.applyTacticalMapFilter(currentTacticalFilter);
+    }
+
+    // Re-render sidebar contacts list
+    renderSarDetectionsInSidebar();
+
+    // Re-render modal if open
+    if (typeof renderSarDetectionsList === 'function' && typeof currentModalLayerId !== 'undefined' && currentModalLayerId) {
+        renderSarDetectionsList();
+    }
+}
+window.setTacticalMapFilter = setTacticalMapFilter;
+
 function updateSarDetectionsInSidebar() {
     const layers = (typeof activeLayers !== 'undefined' && Array.isArray(activeLayers)) ? activeLayers : [];
     let totalDetections = 0;
@@ -329,6 +367,11 @@ function renderSarDetectionsInSidebar() {
         });
     });
 
+    const totalDetectionsCount = allItems.length;
+    if (currentTacticalFilter && currentTacticalFilter !== 'all' && typeof matchesTacticalFilter === 'function') {
+        allItems = allItems.filter(({ item }) => matchesTacticalFilter(item, currentTacticalFilter));
+    }
+
     if (allItems.length === 0) {
         if (!hasCvRun) {
             container.innerHTML = `
@@ -340,6 +383,19 @@ function renderSarDetectionsInSidebar() {
                     </p>
                     <button type="button" class="btn btn-primary btn-sm" style="padding: 6px 14px; font-size: 0.82rem;" onclick="runCvForActiveLayer()">
                         ▶ Run Ship Detection Now
+                    </button>
+                </div>
+            `;
+        } else if (totalDetectionsCount > 0) {
+            container.innerHTML = `
+                <div class="sar-detections-empty-state">
+                    <div style="font-size: 2.2rem; margin-bottom: 8px;">🎯</div>
+                    <h4 style="margin: 0 0 6px 0; color: #1e293b; font-size: 0.95rem;">No Matching Contacts</h4>
+                    <p style="font-size: 0.8rem; color: #64748b; margin: 0 0 12px 0; line-height: 1.4;">
+                        No targets match tactical filter (<strong>${escapeHtml(currentTacticalFilter)}</strong>) out of ${totalDetectionsCount} detections.
+                    </p>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setTacticalMapFilter('all')">
+                        Show All Contacts
                     </button>
                 </div>
             `;
@@ -393,6 +449,28 @@ function renderSarDetectionsInSidebar() {
         const bboxStr = Array.isArray(coords) ? coords.join(',') : coords;
         const cropUrl = `/api/scan/${layer.folder}/crop?raw=1&bbox=${encodeURIComponent(bboxStr)}`;
 
+        const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
+        const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
+
+        let threatBadgesHtml = '';
+        if (item.is_solas_suspect || (isDark && lengthM >= 45.0)) {
+            threatBadgesHtml += `<span class="sar-badge-tag solas" title="SOLAS Chapter V non-compliance">⚠️ SOLAS Suspect</span>`;
+        }
+        if (item.is_speed_spoofed || item.is_course_spoofed || item.spoofing_warning) {
+            threatBadgesHtml += `<span class="sar-badge-tag spoofed" title="Radar vs AIS kinematic discrepancy">🚨 AIS Spoofed</span>`;
+        }
+        if (item.transshipment_suspect || (item.transshipment_events && item.transshipment_events.length > 0) || item.is_transshipment_suspect) {
+            threatBadgesHtml += `<span class="sar-badge-tag sts" title="Ship-to-ship rendezvous proximity">⚓ STS Risk</span>`;
+        }
+        if (item.optical_status === 'CONFIRMED_VESSEL' || item.optical_confirmed) {
+            threatBadgesHtml += `<span class="sar-badge-tag optical" title="Confirmed by Sentinel-2 MSI">🛰️ S2 Optical</span>`;
+        }
+        if (item.temporal_change_type === 'NEW_TARGET') {
+            threatBadgesHtml += `<span class="sar-badge-tag temporal" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid #ef4444;">🆕 New Target</span>`;
+        } else if (item.temporal_change_type === 'PERSISTENT') {
+            threatBadgesHtml += `<span class="sar-badge-tag temporal" style="background:rgba(100, 116, 139, 0.15); color:#475569; border:1px solid #cbd5e1;">⚓ Persistent</span>`;
+        }
+
         html += `
             <div class="sar-detection-card" id="sarCard_${layer.uiId}_${index}">
                 <div class="sar-detection-card-header">
@@ -405,6 +483,7 @@ function renderSarDetectionsInSidebar() {
                     </div>
                     <span class="sar-conf-pill" style="background: ${confColor};">${confPct}% Conf</span>
                 </div>
+                ${threatBadgesHtml ? `<div class="sar-badge-tags" style="padding: 0 10px 6px 10px;">${threatBadgesHtml}</div>` : ''}
 
                 <div class="sar-detection-thumb-wrap">
                     <img class="sar-crop-thumb" src="${cropUrl}" alt="Radar Chip" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\\'color:#94a3b8; font-size:0.75rem; text-align:center; padding:10px;\\'>Radar Chip Preview Unavailable</div>';">
@@ -592,6 +671,12 @@ function openShipDetailsSidebar(vessel) {
     }
 
     if (sarCard) sarCard.style.display = 'none';
+    const alertsCard = document.getElementById('shipSidebarAlertsCard');
+    if (alertsCard) alertsCard.style.display = 'none';
+    const multiSensorCard = document.getElementById('shipSidebarMultiSensorCard');
+    if (multiSensorCard) multiSensorCard.style.display = 'none';
+    const exportRow = document.getElementById('shipSidebarExportRow');
+    if (exportRow) exportRow.style.display = 'none';
 
     const placeholder = document.getElementById('shipSidebarPlaceholder');
     const detailsContainer = document.getElementById('shipSidebarDetails');
@@ -740,6 +825,118 @@ function openSarDetectionInShipSidebar(folderName, item) {
         }
     }
 
+    // Compliance & Operational Threat Alerts Card
+    const alertsCard = document.getElementById('shipSidebarAlertsCard');
+    const alertsList = document.getElementById('shipSidebarAlertsList');
+    if (alertsCard && alertsList) {
+        let alertsHtml = '';
+        const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
+        const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
+
+        if (item.is_solas_suspect || (isDark && lengthM >= 45.0)) {
+            alertsHtml += `
+                <div class="c2-alert-badge solas">
+                    ⚠️ <strong>SOLAS Chapter V Breach:</strong> Vessel length est. ${lengthM > 0 ? `${lengthM.toFixed(0)}m` : '>45m'} navigating without broadcast AIS transponder.
+                </div>
+            `;
+        }
+        if (item.is_speed_spoofed || item.is_course_spoofed || item.spoofing_warning) {
+            alertsHtml += `
+                <div class="c2-alert-badge spoof">
+                    🚨 <strong>AIS Spoofing / Telemetry Conflict:</strong> ${escapeHtml(item.spoofing_warning || 'Radar kinematics conflict with broadcast AIS parameters.')}
+                </div>
+            `;
+        }
+        if (item.transshipment_suspect || (item.transshipment_events && item.transshipment_events.length > 0) || item.is_transshipment_suspect) {
+            alertsHtml += `
+                <div class="c2-alert-badge sts">
+                    ⚓ <strong>STS Transshipment Alert:</strong> Slow-speed rendezvous proximity or tandem cargo transfer signature detected.
+                </div>
+            `;
+        }
+        if (item.mpa_breach || item.geofence_warning) {
+            alertsHtml += `
+                <div class="c2-alert-badge mpa">
+                    🛡️ <strong>Marine Protected Area Geofence:</strong> Contact located within restricted ecological or maritime boundary.
+                </div>
+            `;
+        }
+
+        if (!alertsHtml) {
+            if (isCorrelated) {
+                alertsHtml = `
+                    <div class="c2-alert-badge normal">
+                        ✅ <strong>Compliant Contact:</strong> Broadcast AIS position, speed, and heading match radar signature.
+                    </div>
+                `;
+            } else {
+                alertsHtml = `
+                    <div class="c2-alert-badge normal" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;">
+                        ℹ️ <strong>Radar Contact:</strong> Non-correlated radar detection (est. ${lengthM > 0 ? `${lengthM.toFixed(0)}m` : 'N/A'}).
+                    </div>
+                `;
+            }
+        }
+        alertsList.innerHTML = alertsHtml;
+        alertsCard.style.display = 'block';
+    }
+
+    // Multi-Sensor & Temporal Analytics Card
+    const multiSensorCard = document.getElementById('shipSidebarMultiSensorCard');
+    const opticalStatusEl = document.getElementById('shipSidebarOpticalStatus');
+    const temporalStatusEl = document.getElementById('shipSidebarTemporalStatus');
+    const wakeRowEl = document.getElementById('shipSidebarWakeRow');
+    const wakeSpeedEl = document.getElementById('shipSidebarWakeSpeed');
+    const wakeHdgEl = document.getElementById('shipSidebarWakeHeading');
+
+    if (multiSensorCard) {
+        multiSensorCard.style.display = 'block';
+
+        if (opticalStatusEl) {
+            if (item.optical_status === 'CONFIRMED_VESSEL' || item.optical_confirmed) {
+                opticalStatusEl.innerHTML = '<span style="color: #10b981; font-weight: 600;">✅ Confirmed Visual</span>';
+            } else if (item.optical_status === 'CLOUD_OBSCURED') {
+                opticalStatusEl.innerHTML = '<span style="color: #f59e0b; font-weight: 500;">☁️ Cloud Obscured</span>';
+            } else if (item.optical_status === 'NO_CORRELATION') {
+                opticalStatusEl.innerHTML = '<span style="color: #64748b;">No Visual Match</span>';
+            } else {
+                opticalStatusEl.innerHTML = '<span style="color: #64748b;">Not Evaluated</span>';
+            }
+        }
+
+        if (temporalStatusEl) {
+            if (item.temporal_change_type === 'NEW_TARGET') {
+                temporalStatusEl.innerHTML = '<span style="color: #ef4444; font-weight: 600;">🆕 New Contact</span>';
+            } else if (item.temporal_change_type === 'PERSISTENT') {
+                temporalStatusEl.innerHTML = '<span style="color: #64748b; font-weight: 500;">⚓ Persistent Structure</span>';
+            } else if (item.temporal_change_type === 'DEPARTED') {
+                temporalStatusEl.innerHTML = '<span style="color: #f59e0b; font-weight: 500;">Departed Position</span>';
+            } else if (item.temporal_change_type) {
+                temporalStatusEl.innerHTML = `<span>${escapeHtml(item.temporal_change_type)}</span>`;
+            } else {
+                temporalStatusEl.innerHTML = '<span style="color: #64748b;">Baseline Pass</span>';
+            }
+        }
+
+        if (wakeRowEl && wakeSpeedEl && wakeHdgEl) {
+            const hasWakeSpeed = item.wake_speed_knots !== undefined && item.wake_speed_knots !== null;
+            const hasWakeHdg = item.wake_heading_deg !== undefined && item.wake_heading_deg !== null;
+            if (hasWakeSpeed || hasWakeHdg) {
+                wakeRowEl.style.display = 'grid';
+                wakeSpeedEl.textContent = hasWakeSpeed ? `${Number(item.wake_speed_knots).toFixed(1)} kn` : 'N/A';
+                wakeHdgEl.textContent = hasWakeHdg ? `${Number(item.wake_heading_deg).toFixed(0)}°` : 'N/A';
+            } else {
+                wakeRowEl.style.display = 'none';
+            }
+        }
+    }
+
+    // Export Row in Sidebar
+    const exportRow = document.getElementById('shipSidebarExportRow');
+    if (exportRow) {
+        exportRow.style.display = 'flex';
+    }
+
     const placeholder = document.getElementById('shipSidebarPlaceholder');
     const detailsContainer = document.getElementById('shipSidebarDetails');
     if (placeholder) placeholder.style.display = 'none';
@@ -759,10 +956,51 @@ function closeShipDetailsSidebar() {
     const sidebar = document.getElementById('c2ShipSidebar');
     if (sidebar) sidebar.classList.remove('open');
     document.body.classList.remove('ship-sidebar-open');
+
+    const alertsCard = document.getElementById('shipSidebarAlertsCard');
+    if (alertsCard) alertsCard.style.display = 'none';
+    const multiSensorCard = document.getElementById('shipSidebarMultiSensorCard');
+    if (multiSensorCard) multiSensorCard.style.display = 'none';
+    const exportRow = document.getElementById('shipSidebarExportRow');
+    if (exportRow) exportRow.style.display = 'none';
+
     setTimeout(() => {
         if (window.map) map.invalidateSize({ pan: false });
     }, 280);
 }
+
+function exportCurrentSelectedKmz() {
+    if (!currentSelectedShip || !currentSelectedShip.folderName) {
+        if (typeof showNotification === 'function') {
+            showNotification("No SAR scan associated with this contact.", "warning");
+        }
+        return;
+    }
+    window.open(`/api/scan/${encodeURIComponent(currentSelectedShip.folderName)}/export/kmz`, '_blank');
+}
+window.exportCurrentSelectedKmz = exportCurrentSelectedKmz;
+
+function exportCurrentSelectedCot() {
+    if (!currentSelectedShip || !currentSelectedShip.folderName) {
+        if (typeof showNotification === 'function') {
+            showNotification("No SAR scan associated with this contact.", "warning");
+        }
+        return;
+    }
+    window.open(`/api/scan/${encodeURIComponent(currentSelectedShip.folderName)}/export/cot`, '_blank');
+}
+window.exportCurrentSelectedCot = exportCurrentSelectedCot;
+
+function exportCurrentSelectedBriefingPdf() {
+    if (!currentSelectedShip || !currentSelectedShip.folderName) {
+        if (typeof showNotification === 'function') {
+            showNotification("No SAR scan associated with this contact.", "warning");
+        }
+        return;
+    }
+    window.open(`/api/scan/${encodeURIComponent(currentSelectedShip.folderName)}/briefing/pdf`, '_blank');
+}
+window.exportCurrentSelectedBriefingPdf = exportCurrentSelectedBriefingPdf;
 
 function centerOnSelectedShip() {
     if (!currentSelectedShip) return;

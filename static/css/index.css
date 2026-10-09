@@ -2264,3 +2264,189 @@ body.ship-sidebar-open .c2-right-toggle-btn {
     border: 1px dashed #cbd5e1;
     border-radius: 8px;
 }
+
+/* ==========================================================================
+   C2 Tactical Quick Map Filters & Intelligence Badges
+   ========================================================================== */
+
+/* Floating Tactical Map Filter Bar */
+.tactical-map-filter-bar {
+    position: fixed;
+    top: calc(var(--navbar-total-h, 74px) + 14px);
+    left: calc(50% + (var(--c2-rail-w) + var(--c2-drawer-w)) / 2);
+    transform: translateX(-50%);
+    z-index: 1010;
+    transition: left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+}
+
+body.drawer-collapsed .tactical-map-filter-bar {
+    left: calc(50% + var(--c2-rail-w) / 2);
+}
+
+body.ship-sidebar-open .tactical-map-filter-bar {
+    left: calc(50% + (var(--c2-rail-w) + var(--c2-drawer-w) - var(--c2-ship-sidebar-w, 360px)) / 2);
+}
+
+body.drawer-collapsed.ship-sidebar-open .tactical-map-filter-bar {
+    left: calc(50% + (var(--c2-rail-w) - var(--c2-ship-sidebar-w, 360px)) / 2);
+}
+
+.tactical-filter-pill-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 4px 6px;
+    border-radius: 30px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.tactical-filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+
+.tactical-filter-pill:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.tactical-filter-pill.active {
+    color: #ffffff;
+    background: #2563eb;
+    border-color: #3b82f6;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+}
+
+.pill-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.pill-all { background: #94a3b8; }
+.pill-dark { background: #ef4444; }
+.pill-solas { background: #f97316; }
+.pill-spoofed { background: #eab308; }
+.pill-sts { background: #a855f7; }
+.pill-optical { background: #10b981; }
+
+/* Threat & Compliance Badges in SAR Cards */
+.sar-badge-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.sar-badge-tag {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.sar-badge-solas {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.sar-badge-spoofed {
+    background: rgba(245, 158, 11, 0.15);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.sar-badge-sts {
+    background: rgba(168, 85, 247, 0.15);
+    color: #9333ea;
+    border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.sar-badge-optical {
+    background: rgba(16, 185, 129, 0.15);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.sar-badge-temporal {
+    background: rgba(14, 165, 233, 0.15);
+    color: #0284c7;
+    border: 1px solid rgba(14, 165, 233, 0.4);
+}
+
+.sar-badge-dark {
+    background: rgba(220, 38, 38, 0.12);
+    color: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.35);
+}
+
+.sar-badge-inbox {
+    background: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+/* Sidebar Detailed Alert Badges */
+.c2-alert-badge {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.77rem;
+    line-height: 1.35;
+    font-weight: 500;
+}
+
+.c2-alert-solas {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #991b1b;
+}
+
+.c2-alert-spoof {
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #92400e;
+}
+
+.c2-alert-sts {
+    background: rgba(168, 85, 247, 0.1);
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    color: #6b21a8;
+}
+
+.c2-alert-mpa {
+    background: rgba(220, 38, 38, 0.1);
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    color: #991b1b;
+}
+
+.c2-alert-normal {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #065f46;
+}

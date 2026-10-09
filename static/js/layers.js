@@ -76,6 +76,8 @@ function getSarTabPopupContent(uiId) {
             <div class="sar-tab-popup-footer" style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #dee2e6; padding-top: 6px; margin-top: 6px; font-size: 0.85em;">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
                     <a href="/api/scan/${layerObj.folder}/briefing/pdf" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">📄 Intel Brief (PDF)</a>
+                    <a href="/api/scan/${layerObj.folder}/export/kmz" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">🌍 KMZ</a>
+                    <a href="/api/scan/${layerObj.folder}/export/cot" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">📡 CoT XML</a>
                     <a href="/api/scan/${layerObj.folder}/geotiff" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">🗺️ GeoTIFF</a>
                     <a href="/api/scan/${layerObj.folder}/gis_bundle" target="_blank" rel="noopener noreferrer" style="color: #0284c7; text-decoration: none; font-weight: 500;">📦 GIS Bundle</a>
                 </div>
@@ -484,6 +486,10 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
             }
         });
 
+        shapeLayer.detectionItem = item;
+        shapeLayer.layerObj = layerObj;
+        shapeLayer.defaultStrokeColor = strokeColor;
+
         shapeLayer.addTo(detectLayer);
 
         let tabTooltipText = `<strong>Ship Detected #${idx + 1}</strong>`;
@@ -503,6 +509,10 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
 
     if (!toggleCb || toggleCb.checked) {
         detectLayer.addTo(map);
+    }
+
+    if (typeof window.currentTacticalFilter !== 'undefined' && window.currentTacticalFilter !== 'all') {
+        applyTacticalMapFilter(window.currentTacticalFilter);
     }
 
     const insideCount = typeof data.inside_box_count === 'number' ? data.inside_box_count : detectionsList.filter(d => d.correlation_status === 'inside_box').length;
@@ -655,6 +665,78 @@ function rerunCvFromModal() {
     });
 }
 
+function matchesTacticalFilter(item, filterType) {
+    if (!filterType || filterType === 'all') return true;
+    const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
+    const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
+
+    if (filterType === 'dark') {
+        return isDark;
+    }
+    if (filterType === 'solas') {
+        return Boolean(item.is_solas_suspect || (isDark && lengthM >= 45.0));
+    }
+    if (filterType === 'spoofed') {
+        return Boolean(item.is_speed_spoofed || item.is_course_spoofed || item.ais_speed_discrepancy || item.spoofing_warning);
+    }
+    if (filterType === 'sts') {
+        return Boolean(item.transshipment_suspect || (item.transshipment_events && item.transshipment_events.length > 0) || item.is_transshipment_suspect);
+    }
+    if (filterType === 'optical') {
+        return Boolean(item.optical_status === 'CONFIRMED_VESSEL' || item.optical_confirmed);
+    }
+    if (filterType === 'inside') {
+        return Boolean(item.correlation_status === 'inside_box');
+    }
+    return true;
+}
+window.matchesTacticalFilter = matchesTacticalFilter;
+
+function applyTacticalMapFilter(filterType) {
+    const layers = (typeof activeLayers !== 'undefined' && Array.isArray(activeLayers)) ? activeLayers : [];
+    layers.forEach(layerObj => {
+        if (!layerObj.detectLayer) return;
+        layerObj.detectLayer.eachLayer(shape => {
+            const item = shape.detectionItem;
+            if (!item) return;
+            const matches = matchesTacticalFilter(item, filterType);
+            if (filterType === 'all') {
+                if (typeof shape.setStyle === 'function') {
+                    shape.setStyle({
+                        color: shape.defaultStrokeColor || '#e67e22',
+                        fillColor: shape.defaultStrokeColor || '#e67e22',
+                        weight: 2,
+                        opacity: 1.0,
+                        fillOpacity: (shape instanceof L.Polygon) ? 0.15 : 0.08
+                    });
+                }
+            } else if (matches) {
+                if (typeof shape.setStyle === 'function') {
+                    shape.setStyle({
+                        color: '#f59e0b',
+                        fillColor: '#f59e0b',
+                        weight: 3.5,
+                        opacity: 1.0,
+                        fillOpacity: 0.45
+                    });
+                }
+                if (typeof shape.bringToFront === 'function') {
+                    shape.bringToFront();
+                }
+            } else {
+                if (typeof shape.setStyle === 'function') {
+                    shape.setStyle({
+                        opacity: 0.10,
+                        fillOpacity: 0.02,
+                        weight: 1
+                    });
+                }
+            }
+        });
+    });
+}
+window.applyTacticalMapFilter = applyTacticalMapFilter;
+
 function renderSarDetectionsList() {
     if (!currentModalLayerId) return;
     const layerObj = activeLayers.find(l => l.uiId === currentModalLayerId);
@@ -700,11 +782,34 @@ function renderSarDetectionsList() {
         return;
     }
 
+    // Filter detections
+    const filterSelect = document.getElementById('sarDetectionsFilterSelect');
+    const filterVal = filterSelect ? filterSelect.value : (typeof window.currentTacticalFilter !== 'undefined' ? window.currentTacticalFilter : 'all');
+
     // Sort detections
     const sortSelect = document.getElementById('sarDetectionsSortSelect');
     const sortVal = sortSelect ? sortSelect.value : 'conf_desc';
 
-    const indexed = detections.map((d, origIdx) => ({ ...d, origIdx }));
+    let indexed = detections.map((d, origIdx) => ({ ...d, origIdx }));
+    if (filterVal && filterVal !== 'all') {
+        indexed = indexed.filter(item => matchesTacticalFilter(item, filterVal));
+    }
+
+    if (indexed.length === 0) {
+        container.innerHTML = `
+            <div class="sar-detections-empty">
+                <div style="font-size: 2.2rem; margin-bottom: 8px;">🎯</div>
+                <h4 style="margin: 0 0 6px 0; color: #1e293b;">No Matching Contacts</h4>
+                <p style="font-size: 0.85rem; margin: 0 0 14px 0;">No contacts match the tactical filter <strong>${escapeHtml(filterVal)}</strong> (out of ${count} total detections).</p>
+                <button type="button" class="btn" style="padding: 6px 14px; font-size: 0.84rem; background: #64748b; color: white; border: none; border-radius: 6px; cursor: pointer;" onclick="onSarModalFilterChange('all')">
+                    Reset to All Contacts
+                </button>
+            </div>
+        `;
+        if (summaryEl) summaryEl.innerHTML = `0 / ${count} vessels matching filter: <strong>${escapeHtml(filterVal)}</strong>`;
+        return;
+    }
+
     indexed.sort((a, b) => {
         if (sortVal === 'conf_desc') return (b.confidence || 0) - (a.confidence || 0);
         if (sortVal === 'length_desc') return (b.length || 0) - (a.length || 0);
@@ -739,6 +844,28 @@ function renderSarDetectionsList() {
         const shipLat = (maxLat - (item.center_y || (item.y + item.height/2)) * latScale).toFixed(5);
         const shipLon = (minLon + (item.center_x || (item.x + item.width/2)) * lonScale).toFixed(5);
 
+        const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
+        const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
+
+        let threatBadgesHtml = '';
+        if (item.is_solas_suspect || (isDark && lengthM >= 45.0)) {
+            threatBadgesHtml += `<span class="sar-badge-tag solas" title="SOLAS Chapter V AIS non-compliance">⚠️ SOLAS Suspect</span>`;
+        }
+        if (item.is_speed_spoofed || item.is_course_spoofed || item.spoofing_warning) {
+            threatBadgesHtml += `<span class="sar-badge-tag spoofed" title="Radar vs AIS kinematic discrepancy">🚨 AIS Spoofed</span>`;
+        }
+        if (item.transshipment_suspect || (item.transshipment_events && item.transshipment_events.length > 0) || item.is_transshipment_suspect) {
+            threatBadgesHtml += `<span class="sar-badge-tag sts" title="Ship-to-ship rendezvous proximity">⚓ STS Risk</span>`;
+        }
+        if (item.optical_status === 'CONFIRMED_VESSEL' || item.optical_confirmed) {
+            threatBadgesHtml += `<span class="sar-badge-tag optical" title="Confirmed by Sentinel-2 MSI">🛰️ S2 Optical</span>`;
+        }
+        if (item.temporal_change_type === 'NEW_TARGET') {
+            threatBadgesHtml += `<span class="sar-badge-tag temporal" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid #ef4444;">🆕 New Target</span>`;
+        } else if (item.temporal_change_type === 'PERSISTENT') {
+            threatBadgesHtml += `<span class="sar-badge-tag temporal" style="background:rgba(100, 116, 139, 0.15); color:#475569; border:1px solid #cbd5e1;">⚓ Persistent</span>`;
+        }
+
         let correlationBadge = '';
         let aisFieldHtml = '';
         if (item.correlation_status === 'inside_box') {
@@ -769,9 +896,12 @@ function renderSarDetectionsList() {
         return `
             <div class="detection-item-card">
                 <div class="detection-item-header">
-                    <span class="detection-item-title">
-                        <span>🚢 Vessel #${item.origIdx + 1}</span>
-                    </span>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <span class="detection-item-title">
+                            <span>🚢 Vessel #${item.origIdx + 1}</span>
+                        </span>
+                        ${threatBadgesHtml ? `<div class="sar-badge-tags" style="margin-top:2px;">${threatBadgesHtml}</div>` : ''}
+                    </div>
                     <div style="display:flex; align-items:center; gap:6px;">
                         ${correlationBadge}
                         <span class="${confBadgeClass}">
@@ -809,6 +939,9 @@ function renderSarDetectionsList() {
                     <button type="button" class="sar-btn-inspect" onclick='inspectDetection("${layerObj.folder}", ${JSON.stringify(item)})'>
                         🔍 Inspect Radar Crop
                     </button>
+                    <button type="button" class="sar-btn-primary" style="background:#0ea5e9; color:white; border:none; border-radius:4px; padding:6px 12px; font-size:0.8rem; font-weight:600; cursor:pointer;" onclick='if (typeof openSarDetectionInShipSidebar === "function") { openSarDetectionInShipSidebar("${layerObj.folder}", ${JSON.stringify(item)}); closeSarShipDetectionsModal(); }'>
+                        🚢 Dossier
+                    </button>
                 </div>
             </div>
         `;
@@ -818,9 +951,47 @@ function renderSarDetectionsList() {
 
     if (summaryEl) {
         const avgLen = validLengths > 0 ? (totalLength / validLengths).toFixed(1) : 'N/A';
-        summaryEl.innerHTML = `Total Detected: <strong>${count}</strong> | Avg Length: <strong>${avgLen} m</strong> | Threshold: <strong>${layerObj.cvThreshold || 40}</strong>`;
+        const filterNote = (filterVal && filterVal !== 'all') ? ` (Filtered: ${indexed.length} of ${count})` : '';
+        summaryEl.innerHTML = `Total Detected: <strong>${count}</strong>${filterNote} | Avg Length: <strong>${avgLen} m</strong> | Threshold: <strong>${layerObj.cvThreshold || 40}</strong>`;
     }
 }
+
+function onSarModalFilterChange(filterVal) {
+    const select = document.getElementById('sarDetectionsFilterSelect');
+    if (select && select.value !== filterVal) {
+        select.value = filterVal;
+    }
+    if (typeof window.setTacticalMapFilter === 'function') {
+        window.setTacticalMapFilter(filterVal);
+    } else {
+        renderSarDetectionsList();
+    }
+}
+window.onSarModalFilterChange = onSarModalFilterChange;
+
+function exportCurrentModalScanKmz() {
+    if (!currentModalLayerId) return;
+    const layerObj = activeLayers.find(l => l.uiId === currentModalLayerId);
+    if (!layerObj) return;
+    window.open(`/api/scan/${encodeURIComponent(layerObj.folder)}/export/kmz`, '_blank');
+}
+window.exportCurrentModalScanKmz = exportCurrentModalScanKmz;
+
+function exportCurrentModalScanCot() {
+    if (!currentModalLayerId) return;
+    const layerObj = activeLayers.find(l => l.uiId === currentModalLayerId);
+    if (!layerObj) return;
+    window.open(`/api/scan/${encodeURIComponent(layerObj.folder)}/export/cot`, '_blank');
+}
+window.exportCurrentModalScanCot = exportCurrentModalScanCot;
+
+function exportCurrentModalScanPdf() {
+    if (!currentModalLayerId) return;
+    const layerObj = activeLayers.find(l => l.uiId === currentModalLayerId);
+    if (!layerObj) return;
+    window.open(`/api/scan/${encodeURIComponent(layerObj.folder)}/briefing/pdf`, '_blank');
+}
+window.exportCurrentModalScanPdf = exportCurrentModalScanPdf;
 
 function zoomToShipDetection(uiId, detectionIndex) {
     const layerObj = activeLayers.find(l => l.uiId === uiId);
