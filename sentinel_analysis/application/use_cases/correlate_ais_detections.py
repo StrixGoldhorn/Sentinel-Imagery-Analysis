@@ -855,6 +855,7 @@ class CorrelateDetectionsWithAIS:
                 "wake_speed_knots": wake_speed_knots,
                 "wake_confidence": wake_confidence,
                 "is_speed_spoofed": None,
+                "is_course_spoofed": None,
                 "speed_discrepancy_knots": None,
                 "heading_discrepancy_deg": None,
                 "correlation_status": "uncorrelated",
@@ -992,6 +993,7 @@ class CorrelateDetectionsWithAIS:
 
             # AIS Speed & Heading Spoofing Cross-Validation
             is_speed_spoofed = None
+            is_course_spoofed = None
             speed_discrepancy_knots = None
             heading_discrepancy_deg = None
 
@@ -1014,6 +1016,7 @@ class CorrelateDetectionsWithAIS:
                 try:
                     h_diff = abs(float(wake_hdg) - float(ais_hdg)) % 360.0
                     heading_discrepancy_deg = round(min(h_diff, 360.0 - h_diff), 1)
+                    is_course_spoofed = bool(heading_discrepancy_deg >= 45.0)
                 except (TypeError, ValueError):
                     pass
 
@@ -1023,6 +1026,7 @@ class CorrelateDetectionsWithAIS:
             matched_vessel_keys.add(v_key)
 
             projected_detections[det_idx]["is_speed_spoofed"] = is_speed_spoofed
+            projected_detections[det_idx]["is_course_spoofed"] = is_course_spoofed
             projected_detections[det_idx]["speed_discrepancy_knots"] = speed_discrepancy_knots
             projected_detections[det_idx]["heading_discrepancy_deg"] = heading_discrepancy_deg
 
@@ -1049,6 +1053,7 @@ class CorrelateDetectionsWithAIS:
                 "interpolation_method": cand.get("interpolation_method"),
                 "match_type": match_status,
                 "is_speed_spoofed": is_speed_spoofed,
+                "is_course_spoofed": is_course_spoofed,
                 "speed_discrepancy_knots": speed_discrepancy_knots,
                 "heading_discrepancy_deg": heading_discrepancy_deg,
                 "timestamp": (
@@ -1076,6 +1081,12 @@ class CorrelateDetectionsWithAIS:
                 p_det.setdefault("dark_vessel_reasons", []).append(
                     f"AIS speed spoofing detected (wake speed {p_det.get('wake_speed_knots')} kn vs AIS {p_det['correlated_ais'].get('speed')} kn)"
                 )
+            if p_det.get("is_course_spoofed"):
+                p_det.setdefault("dark_vessel_reasons", []).append(
+                    f"AIS course spoofing detected (wake heading {p_det.get('wake_heading')}° vs AIS {p_det['correlated_ais'].get('heading')}°)"
+                )
+            if p_det.get("is_speed_spoofed") or p_det.get("is_course_spoofed"):
+                p_det["is_spoofed"] = True
 
         # 6. Extract ghost vessels (AIS broadcasts within scan bbox with no radar match)
         ghosts = extract_ghost_vessels(prepared_candidates, matched_vessel_keys, scan_bbox)

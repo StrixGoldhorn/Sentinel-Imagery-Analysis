@@ -22,6 +22,7 @@ class WakeAnalysisResult:
     estimated_speed_knots: Optional[float] = None
     arm_angles_deg: Optional[tuple[float, float]] = None
     is_speed_spoofed: Optional[bool] = None
+    is_course_spoofed: Optional[bool] = None
     speed_discrepancy_knots: Optional[float] = None
     heading_discrepancy_deg: Optional[float] = None
     details: dict[str, Any] = field(default_factory=dict)
@@ -386,6 +387,7 @@ class ShipWakeDetector:
 
         # 6. AIS Speed & Heading Spoofing Cross-Validation
         is_speed_spoofed = None
+        is_course_spoofed = None
         spd_discrepancy = None
         hdg_discrepancy = None
         spoof_reason = None
@@ -418,6 +420,12 @@ class ShipWakeDetector:
                     h_val = float(ais_heading) % 360.0
                     diff = abs(true_heading_deg - h_val)
                     hdg_discrepancy = round(min(diff, 360.0 - diff), 1)
+                    if hdg_discrepancy >= self.heading_discrepancy_threshold_deg:
+                        is_course_spoofed = True
+                        course_msg = f"Course discrepancy {hdg_discrepancy}° exceeds threshold {self.heading_discrepancy_threshold_deg}°"
+                        spoof_reason = f"{spoof_reason} | {course_msg}" if spoof_reason else course_msg
+                    else:
+                        is_course_spoofed = False
                 except (TypeError, ValueError):
                     pass
 
@@ -430,6 +438,7 @@ class ShipWakeDetector:
             estimated_speed_knots=estimated_speed_knots,
             arm_angles_deg=kelvin_arms,
             is_speed_spoofed=is_speed_spoofed,
+            is_course_spoofed=is_course_spoofed,
             speed_discrepancy_knots=spd_discrepancy,
             heading_discrepancy_deg=hdg_discrepancy,
             details={

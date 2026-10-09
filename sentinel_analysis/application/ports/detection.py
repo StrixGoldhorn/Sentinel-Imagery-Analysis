@@ -23,6 +23,7 @@ class ShipDetector(Protocol):
         image_path: Path,
         dem_path: Path | None = None,
         threshold: int = 40,
+        **kwargs: Any,
     ) -> DetectionResult:
         ...
 

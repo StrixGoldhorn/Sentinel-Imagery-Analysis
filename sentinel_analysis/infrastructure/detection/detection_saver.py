@@ -40,6 +40,7 @@ def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> di
         "wake_speed_knots": getattr(item, "wake_speed_knots", None),
         "wake_confidence": getattr(item, "wake_confidence", None),
         "is_speed_spoofed": getattr(item, "is_speed_spoofed", None),
+        "is_course_spoofed": getattr(item, "is_course_spoofed", None),
         "vessel_class": getattr(item, "vessel_class", None),
         "classification_confidence": getattr(item, "classification_confidence", None),
         "correlation_status": "uncorrelated",

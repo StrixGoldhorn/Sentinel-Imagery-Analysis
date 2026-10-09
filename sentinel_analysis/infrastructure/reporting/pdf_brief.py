@@ -294,6 +294,16 @@ class MatplotlibIntelligenceBriefGenerator:
             va="center",
         )
 
+        has_wake = target.get("has_wake") if target.get("has_wake") is not None else target.get("raw_detection", {}).get("has_wake")
+        wake_spd = target.get("wake_speed_knots") if target.get("wake_speed_knots") is not None else target.get("raw_detection", {}).get("wake_speed_knots")
+        wake_hdg = target.get("wake_heading_deg") if target.get("wake_heading_deg") is not None else target.get("raw_detection", {}).get("wake_heading_deg")
+        if has_wake and wake_spd is not None and wake_hdg is not None:
+            wake_str = f"{wake_spd:.1f} kn @ {wake_hdg:.0f}° True"
+        elif has_wake:
+            wake_str = "Observed / Low Dynamic"
+        else:
+            wake_str = "None Observed / Low Dynamic"
+
         sig_items = [
             ("Estimated Length", f"{length_m:.1f} meters"),
             ("Estimated Beam (Width)", f"{width_m:.1f} meters"),
@@ -301,15 +311,18 @@ class MatplotlibIntelligenceBriefGenerator:
             ("Radar Detection Conf", f"{conf * 100:.1f}%"),
             ("Vessel Classification", f"{vessel_class[:24]}"),
             ("Peak Radar Return", f"{crop_max_dn:.0f} DN (8-bit)" if crop_max_dn > 0 else "High Backscatter"),
+            ("Hydrodynamic Wake", wake_str),
             ("Sensor & Polarization", f"{acq.satellite} ({', '.join(acq.polarizations) if acq.polarizations else 'SAR'})"),
             ("Orbit Geometry", f"{acq.orbit_direction or 'Ascending'} (Pass {acq.relative_orbit or 'N/A'})"),
         ]
 
-        y_pos = 0.74
+        y_pos = 0.76 if len(sig_items) > 8 else 0.74
+        y_step = 0.080 if len(sig_items) > 8 else 0.095
+        f_size = 6.8 if len(sig_items) > 8 else 7.2
         for lbl, val in sig_items:
-            card_frame.text(0.04, y_pos, lbl, fontsize=7.2, color="#718096", fontweight="bold", va="center")
-            card_frame.text(0.96, y_pos, val, fontsize=7.2, color="#1a202c", ha="right", va="center")
-            y_pos -= 0.095
+            card_frame.text(0.04, y_pos, lbl, fontsize=f_size, color="#718096", fontweight="bold", va="center")
+            card_frame.text(0.96, y_pos, val, fontsize=f_size, color="#1a202c", ha="right", va="center")
+            y_pos -= y_step
 
         # -------------------------------------------------------------------------
         # 4. Top-Right Panel: Local Tactical Context Map (Inset)
@@ -526,6 +539,9 @@ class MatplotlibIntelligenceBriefGenerator:
 
         breaches = target.get("geofence_breaches", [])
         trans_events = target.get("transshipment_events", [])
+        is_spd_spoofed = bool(target.get("is_speed_spoofed") or target.get("raw_detection", {}).get("is_speed_spoofed"))
+        is_crs_spoofed = bool(target.get("is_course_spoofed") or target.get("raw_detection", {}).get("is_course_spoofed"))
+        is_spoofed = bool(is_spd_spoofed or is_crs_spoofed or target.get("is_spoofed") or target.get("raw_detection", {}).get("is_spoofed"))
 
         if breaches:
             b0 = breaches[0]
@@ -543,13 +559,23 @@ class MatplotlibIntelligenceBriefGenerator:
             partner = str(t0.get("partner") or "Unknown")
             compliance_items.append(("STS Rendezvous Event", f"{dist_val:.0f}m to {partner[:12]}"))
 
+        if is_spd_spoofed and is_crs_spoofed:
+            compliance_items.append(("Kinematic Integrity", "AIS SPEED & COURSE SPOOFED"))
+        elif is_spd_spoofed:
+            compliance_items.append(("Kinematic Integrity", "AIS SPEED SPOOFED"))
+        elif is_crs_spoofed:
+            compliance_items.append(("Kinematic Integrity", "AIS COURSE SPOOFED"))
+        elif is_spoofed:
+            compliance_items.append(("Kinematic Integrity", "AIS SPOOFING DETECTED"))
+
         item_count = len(compliance_items)
-        y_pos = 0.76 if item_count > 6 else 0.74
-        y_step = 0.068 if item_count > 6 else 0.088
+        y_pos = 0.77 if item_count > 7 else (0.76 if item_count > 6 else 0.74)
+        y_step = 0.058 if item_count > 7 else (0.068 if item_count > 6 else 0.088)
+        f_size = 6.4 if item_count > 7 else (6.8 if item_count > 6 else 7.2)
         for lbl, val in compliance_items:
-            sec_frame.text(0.04, y_pos, lbl, fontsize=6.8 if item_count > 6 else 7.2, color="#718096", fontweight="bold", va="center")
-            val_col = solas_color if any(k in val for k in ("NON-COMPLIANT", "HIGH", "CRITICAL", "BREACH", "VIOLATION")) else "#1a202c"
-            sec_frame.text(0.96, y_pos, val, fontsize=6.8 if item_count > 6 else 7.2, color=val_col, ha="right", va="center", fontweight="bold" if val_col != "#1a202c" else "normal")
+            sec_frame.text(0.04, y_pos, lbl, fontsize=f_size, color="#718096", fontweight="bold", va="center")
+            val_col = solas_color if any(k in val for k in ("NON-COMPLIANT", "HIGH", "CRITICAL", "BREACH", "VIOLATION", "SPOOFED")) else "#1a202c"
+            sec_frame.text(0.96, y_pos, val, fontsize=f_size, color=val_col, ha="right", va="center", fontweight="bold" if val_col != "#1a202c" else "normal")
             y_pos -= y_step
 
         findings_lines = []
@@ -557,6 +583,8 @@ class MatplotlibIntelligenceBriefGenerator:
             findings_lines.append(f"BREACH: {breaches[0].get('narrative', '')[:95]}")
         if trans_events:
             findings_lines.append(f"STS: {trans_events[0].get('narrative', '')[:95]}")
+        if is_spoofed:
+            findings_lines.append("SPOOFING: Hydrodynamic SAR kinematics contradict broadcast AIS parameters.")
         if not findings_lines:
             findings_lines.append(reasons[0] if reasons else "No matching AIS position message received within spatial correlation tolerance.")
 
@@ -565,7 +593,7 @@ class MatplotlibIntelligenceBriefGenerator:
             0.04, 0.16 if len(findings_lines) > 1 else 0.18,
             f"Primary Finding:\n{primary_finding_text}",
             fontsize=6.5 if len(findings_lines) > 1 else 6.8,
-            color="#9b2c2c" if (is_solas or breaches or trans_events) else "#c05621",
+            color="#9b2c2c" if (is_solas or breaches or trans_events or is_spoofed) else "#c05621",
             fontstyle="italic",
         )
 
@@ -1150,6 +1178,12 @@ class MatplotlibIntelligenceBriefGenerator:
                         cog_str = f"{cog_val:.0f}°" if cog_val > 0 else "N/A"
                         offset_m = float(ais.get("distance_to_center_meters") or ais.get("distance_to_box_meters") or 0.0)
 
+                        is_spd_spoofed = bool(target.get("is_speed_spoofed") or ais.get("is_speed_spoofed") or target.get("raw_detection", {}).get("is_speed_spoofed"))
+                        is_crs_spoofed = bool(target.get("is_course_spoofed") or ais.get("is_course_spoofed") or target.get("raw_detection", {}).get("is_course_spoofed"))
+                        is_spoofed = bool(is_spd_spoofed or is_crs_spoofed or target.get("is_spoofed") or ais.get("is_spoofed"))
+
+                        comp_label = "AIS KINEMATIC ANOMALY // SPOOFED" if is_spoofed else "SOLAS COMPLIANT // AIS ACTIVE"
+
                         info_lines = [
                             ("Vessel Name", v_name[:18]),
                             ("MMSI // IMO", f"{mmsi} / {imo[:7]}"),
@@ -1159,13 +1193,14 @@ class MatplotlibIntelligenceBriefGenerator:
                             ("Dimensions", f"L: {length_val:.0f}m, B: {width_val:.0f}m"),
                             ("Speed / Course", f"{sog_str} / {cog_str}"),
                             ("Correlation Offset", f"Δ = {offset_m:.0f} m"),
-                            ("Compliance", "SOLAS COMPLIANT // AIS ACTIVE"),
+                            ("Compliance", comp_label),
                         ]
 
                         y_text = 0.88
                         for label, val in info_lines:
                             info_ax.text(0.0, y_text, label, fontsize=6.8, color="#718096", fontweight="bold")
-                            info_ax.text(1.0, y_text, val, fontsize=6.8, color="#1a202c", ha="right")
+                            val_col = "#c53030" if (is_spoofed and label == "Compliance") else "#1a202c"
+                            info_ax.text(1.0, y_text, val, fontsize=6.8, color=val_col, ha="right", fontweight="bold" if is_spoofed and label == "Compliance" else "normal")
                             y_text -= 0.098
 
                     pdf.savefig(fig_dossier)
@@ -1234,6 +1269,17 @@ class MatplotlibIntelligenceBriefGenerator:
 
                     dim_str = f"{length_m:.0f}m x {width_m:.0f}m" if length_m > 0 else "-"
 
+                    is_spd_spoofed = bool(d.get("is_speed_spoofed") or ais.get("is_speed_spoofed") or d.get("raw_detection", {}).get("is_speed_spoofed"))
+                    is_crs_spoofed = bool(d.get("is_course_spoofed") or ais.get("is_course_spoofed") or d.get("raw_detection", {}).get("is_course_spoofed"))
+                    is_spoofed = bool(is_spd_spoofed or is_crs_spoofed or d.get("is_spoofed") or ais.get("is_spoofed"))
+
+                    if is_solas:
+                        solas_flag = "NON-COMPLIANT"
+                    elif is_spoofed:
+                        solas_flag = "SPOOFED (AIS)"
+                    else:
+                        solas_flag = "CLEAR"
+
                     table_data.append([
                         f"#{d.get('id', m_page * rows_per_page + i + 1)}",
                         format_lat(d.get("latitude")),
@@ -1242,7 +1288,7 @@ class MatplotlibIntelligenceBriefGenerator:
                         dim_str,
                         sog_cog_str,
                         "DARK TARGET" if is_dark else "CORRELATED",
-                        "NON-COMPLIANT" if is_solas else "CLEAR",
+                        solas_flag,
                     ])
 
                 if not table_data:
@@ -1271,7 +1317,7 @@ class MatplotlibIntelligenceBriefGenerator:
                     else:
                         status_col = table_data[r - 1][6]
                         solas_col = table_data[r - 1][7]
-                        if solas_col == "NON-COMPLIANT":
+                        if solas_col in ("NON-COMPLIANT", "SPOOFED (AIS)"):
                             cell.set_facecolor("#fff5f5" if c in (6, 7) else "white")
                             if c == 7:
                                 cell.get_text().set_color("#c53030")

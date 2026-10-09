@@ -224,6 +224,92 @@ class TestAISCorrelationWakeSpoofing(unittest.TestCase):
         self.assertIn("AIS speed spoofing detected", " ".join(r.get("dark_vessel_reasons", [])))
         self.assertTrue(r["correlated_ais"]["is_speed_spoofed"])
 
+    def test_ais_correlation_flags_course_spoofing(self):
+        # Detection at pixel (500, 500) with wake heading = 90.0 deg True (East)
+        det = ShipDetection(
+            x=480,
+            y=480,
+            width=40,
+            height=40,
+            confidence=0.95,
+            length=180.0,
+            beam=30.0,
+            wake_detected=True,
+            wake_heading=90.0,
+            wake_speed_knots=15.0,
+            wake_confidence=0.88,
+        )
+
+        # Candidate AIS reporting heading 180.0 deg (South) -> 90 deg discrepancy
+        vessel = {
+            "mmsi": "999333444",
+            "vessel_name": "COURSE SPOOFER",
+            "latitude": 1.250,
+            "longitude": 103.750,
+            "speed": 15.0,
+            "heading": 180.0,
+            "timestamp": "2026-09-01T12:00:00Z",
+        }
+
+        class MockAISRepo:
+            def get_vessel_positions(self, **kwargs):
+                return [vessel]
+
+        use_case = CorrelateDetectionsWithAIS(MockAISRepo())
+        results = use_case.execute([det], self.scan, 1000, 1000, tolerance_meters=100.0)
+
+        self.assertEqual(len(results), 1)
+        r = results[0]
+        self.assertTrue(r["is_correlated"])
+        self.assertTrue(r["is_course_spoofed"])
+        self.assertAlmostEqual(r["heading_discrepancy_deg"], 90.0, delta=1.0)
+        self.assertIn("AIS course spoofing detected", " ".join(r.get("dark_vessel_reasons", [])))
+        self.assertTrue(r["correlated_ais"]["is_course_spoofed"])
+
+    def test_wake_detector_course_spoofing(self):
+        detector = ShipWakeDetector(pixel_spacing_meters=10.0, chip_size=128, heading_discrepancy_threshold_deg=45.0)
+        img = np.full((120, 120), 40, dtype=np.uint8)
+        # Draw ship heading East (90 deg)
+        cv2.ellipse(img, (60, 55), (10, 4), 0, 0, 360, 220, -1)
+        cv2.line(img, (15, 55), (48, 55), 190, 2)
+
+        det = ShipDetection(x=50, y=50, width=20, height=10, center_x=60, center_y=55)
+        # AIS reports heading 200 deg (heading discrepancy > 45 deg)
+        ais_spoofed = {"mmsi": "888777666", "speed": 15.0, "heading": 200.0}
+        res = detector.analyze_detection(img, det, ais_record=ais_spoofed)
+
+        self.assertTrue(res.wake_detected)
+        self.assertTrue(res.is_course_spoofed)
+        self.assertGreaterEqual(res.heading_discrepancy_deg, 45.0)
+
+
+class TestDualPolClutterRejection(unittest.TestCase):
+    def test_dual_pol_detection(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            vv_path = Path(tmp_dir) / "test_vv.png"
+            vh_path = Path(tmp_dir) / "test_vh.png"
+
+            # Create VV image with ship and sea clutter
+            vv = np.full((150, 150), 30, dtype=np.uint8)
+            cv2.ellipse(vv, (75, 75), (12, 5), 0, 0, 360, 230, -1)
+            cv2.imwrite(str(vv_path), vv)
+
+            # Create VH cross-pol image with ship
+            vh = np.full((150, 150), 20, dtype=np.uint8)
+            cv2.ellipse(vh, (75, 75), (12, 5), 0, 0, 360, 210, -1)
+            cv2.imwrite(str(vh_path), vh)
+
+            detector = ClassicalShipDetector(
+                minimum_area=15,
+                maximum_area=1500,
+                dual_pol_mode="ratio",
+            )
+            result = detector.detect(vv_path, vh_path=vh_path, threshold=150)
+            self.assertGreaterEqual(len(result.detections), 1)
+            det = result.detections[0]
+            self.assertAlmostEqual(det.center_x, 75.0, delta=5.0)
+            self.assertAlmostEqual(det.center_y, 75.0, delta=5.0)
+
 
 if __name__ == "__main__":
     unittest.main()

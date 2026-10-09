@@ -126,17 +126,36 @@ class PostAcquisitionPipeline:
 
         dem_path = dem_candidates[0] if (dem_enabled and dem_candidates) else None
 
-        # 3. Ship detection model
+        # 3. Ship detection model with dual-polarization and wake hydrodynamic processing
         report(30, "Running ship detection model")
         det_result = None
+        vh_candidates = (
+            list(folder_dir.glob("*_vh.png"))
+            + list(folder_dir.glob("*_vh.tif"))
+            + list(folder_dir.glob("*_VH.png"))
+            + list(folder_dir.glob("*_VH.tif"))
+        )
+        vh_path = vh_candidates[0] if vh_candidates else None
+        enable_wake = bool(self._get_setting("enable_wake_detection", True))
+
         if self._detect_ships is not None:
             try:
-                det_result = self._detect_ships.execute(
-                    image_path,
-                    dem_path,
-                    threshold,
-                    coastal_buffer=coastal_buffer,
-                )
+                try:
+                    det_result = self._detect_ships.execute(
+                        image_path,
+                        dem_path,
+                        threshold,
+                        coastal_buffer=coastal_buffer,
+                        enable_wake_detection=enable_wake,
+                        vh_path=vh_path,
+                    )
+                except TypeError:
+                    det_result = self._detect_ships.execute(
+                        image_path,
+                        dem_path,
+                        threshold,
+                        coastal_buffer=coastal_buffer,
+                    )
             except Exception as exc:
                 logger.warning("Ship detection model execution failed for %s: %s", scan.folder_name, exc, exc_info=True)
 
@@ -180,6 +199,14 @@ class PostAcquisitionPipeline:
                     "center_x": item.center_x,
                     "center_y": item.center_y,
                     "polygon_points": getattr(item, "polygon_points", None),
+                    "wake_detected": getattr(item, "wake_detected", None),
+                    "wake_heading": getattr(item, "wake_heading", None),
+                    "wake_speed_knots": getattr(item, "wake_speed_knots", None),
+                    "wake_confidence": getattr(item, "wake_confidence", None),
+                    "is_speed_spoofed": getattr(item, "is_speed_spoofed", None),
+                    "is_course_spoofed": getattr(item, "is_course_spoofed", None),
+                    "vessel_class": getattr(item, "vessel_class", None),
+                    "classification_confidence": getattr(item, "classification_confidence", None),
                     "correlation_status": "uncorrelated",
                     "is_correlated": False,
                     "is_dark_vessel": False,

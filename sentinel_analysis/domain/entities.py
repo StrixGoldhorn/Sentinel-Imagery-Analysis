@@ -231,6 +231,7 @@ class ShipDetection:
     wake_speed_knots: Optional[float] = None
     wake_confidence: Optional[float] = None
     is_speed_spoofed: Optional[bool] = None
+    is_course_spoofed: Optional[bool] = None
     vessel_class: Optional[str] = None
     classification_confidence: Optional[float] = None
 
