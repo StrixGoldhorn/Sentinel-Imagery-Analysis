@@ -14,6 +14,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker

@@ -3,10 +3,11 @@ requests
 Pillow
 opencv-python
 numpy
+scipy>=1.10.0
+matplotlib>=3.7.0
 python-dotenv
 playwright
 playwright-stealth
 pyais
 apscheduler>=3.10.0
 gunicorn>=21.2.0
-

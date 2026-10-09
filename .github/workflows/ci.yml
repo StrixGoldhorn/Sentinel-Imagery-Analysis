@@ -36,5 +36,6 @@ jobs:
       - name: Check Clean Architecture boundaries & run test suite
         env:
           PYTHONPATH: .
+          MPLCONFIGDIR: /tmp/matplotlib
         run: |
           python -m unittest discover -s tests -v
