@@ -181,10 +181,6 @@ python -m sentinel_analysis annotate path/to/tiles
 | `/api/scan/<folder>/crop?idx=0` | `GET` | PNG | High-res cropped radar chip for target index. |
 | `/api/run_cv/<folder>` | `POST` | JSON | Triggers full CV detection, wake physics & correlation. |
 | `/api/tasks/scan` | `POST` | JSON | Asynchronously initiates an imagery acquisition task. |
-
----
-
-
 ---
 
 ## 🧪 Verification & Test Suite

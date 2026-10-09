@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang | default: 'en-US' }}">
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+    {% seo %}
+    <!-- MathJax for rendering radar physics and hydrodynamic equations -->
+    <script>
+      window.MathJax = {
+        tex: {
+          inlineMath: [['$', '$'], ['\\(', '\\)']],
+          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+        }
+      };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+      .site-nav {
+        background: #1e252b;
+        border: 1px solid #303b44;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 16px 0 24px 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        align-items: center;
+      }
+      .site-nav a {
+        color: #79d4fd;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 0.88em;
+      }
+      .site-nav a:hover {
+        color: #39ff14;
+        text-decoration: underline;
+      }
+      table {
+        display: table;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container">
+        <a id="a-title" href="{{ '/' | relative_url }}">
+          <h1>{{ site.title }}</h1>
+        </a>
+        <h2>{{ site.description }}</h2>
+
+        <section id="downloads">
+          <a href="https://github.com/{{ site.repository }}" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <nav class="site-nav">
+        <a href="{{ '/' | relative_url }}">🏠 Home</a>
+        <a href="{{ '/getting-started.html' | relative_url }}">🚀 Getting Started</a>
+        <a href="{{ '/c2-web-interface.html' | relative_url }}">🗺️ Tactical C2 UI</a>
+        <a href="{{ '/maritime-intelligence.html' | relative_url }}">🛰️ Maritime Intel</a>
+        <a href="{{ '/sensor-physics-cv.html' | relative_url }}">⚡ Sensor Physics</a>
+        <a href="{{ '/reporting-and-exports.html' | relative_url }}">📑 Exports & Reports</a>
+        <a href="{{ '/cli-and-api.html' | relative_url }}">💻 CLI & API</a>
+      </nav>
+      <section id="main_content">
+        {{ content }}
+      </section>
+    </div>
+  </body>
+</html>
