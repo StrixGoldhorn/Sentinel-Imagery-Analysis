@@ -9,6 +9,8 @@ from sentinel_analysis.bootstrap.container import ApplicationContainer
 from sentinel_analysis.interfaces.web.application import create_app
 from sentinel_analysis.interfaces.web.security import (
     SlidingWindowRateLimiter,
+    get_api_key_from_request,
+    get_client_ip,
     rate_limiter,
     validate_api_key,
 )
@@ -22,6 +24,31 @@ class TestSecurityUnit(unittest.TestCase):
         self.assertFalse(validate_api_key("", "expected"))
         self.assertFalse(validate_api_key("wrong", "expected"))
         self.assertTrue(validate_api_key("correct-key-xyz", "correct-key-xyz"))
+
+    def test_get_api_key_rejects_query_param(self):
+        from flask import Flask
+        app = Flask(__name__)
+        with app.test_request_context("/api/test?api_key=secret-param"):
+            self.assertIsNone(get_api_key_from_request())
+
+        with app.test_request_context("/api/test", headers={"X-API-Key": "my-key"}):
+            self.assertEqual(get_api_key_from_request(), "my-key")
+
+        with app.test_request_context("/api/test", headers={"Authorization": "Bearer token123"}):
+            self.assertEqual(get_api_key_from_request(), "token123")
+
+    def test_get_client_ip_trusted_proxy_logic(self):
+        from flask import Flask
+        app = Flask(__name__)
+        with app.test_request_context("/", environ_base={"REMOTE_ADDR": "127.0.0.1"}, headers={"X-Forwarded-For": "1.2.3.4"}):
+            # Untrusted: ignores X-Forwarded-For
+            self.assertEqual(get_client_ip(()), "127.0.0.1")
+            self.assertEqual(get_client_ip(("10.0.0.1",)), "127.0.0.1")
+            # Trusted: honors X-Forwarded-For
+            self.assertEqual(get_client_ip(("127.0.0.1",)), "1.2.3.4")
+
+        with app.test_request_context("/", environ_base={"REMOTE_ADDR": "10.0.0.1"}, headers={"X-Forwarded-For": "5.6.7.8, 10.0.0.1"}):
+            self.assertEqual(get_client_ip(("10.0.0.1",)), "5.6.7.8")
 
     def test_sliding_window_limiter(self):
         limiter = SlidingWindowRateLimiter()
@@ -65,7 +92,7 @@ class TestAuthAndRateLimitingIntegration(unittest.TestCase):
         except Exception:
             pass
 
-    def _create_app(self, api_key=None, rate_limit=120, rate_limiting_enabled=True):
+    def _create_app(self, api_key=None, rate_limit=120, rate_limiting_enabled=True, trusted_proxies=()):
         settings = Settings(
             copernicus_username="test",
             copernicus_password="pwd",
@@ -77,6 +104,7 @@ class TestAuthAndRateLimitingIntegration(unittest.TestCase):
             api_key=api_key,
             rate_limit_per_minute=rate_limit,
             rate_limiting_enabled=rate_limiting_enabled,
+            trusted_proxies=trusted_proxies,
             debug=False,
         )
         self.container = ApplicationContainer(settings)
@@ -114,9 +142,11 @@ class TestAuthAndRateLimitingIntegration(unittest.TestCase):
         )
         self.assertEqual(res_bearer.status_code, 200)
 
-        # 5. Query param -> 200
+        # 5. Query param -> rejected (401)
         res_query = client.get("/api/aoi?api_key=secret-token-xyz")
-        self.assertEqual(res_query.status_code, 200)
+        self.assertEqual(res_query.status_code, 401)
+        data_query = res_query.get_json()
+        self.assertEqual(data_query["error"], "Unauthorized")
 
     def test_permissive_when_no_api_key(self):
         client = self._create_app(api_key=None)
@@ -137,6 +167,41 @@ class TestAuthAndRateLimitingIntegration(unittest.TestCase):
         self.assertEqual(data["error"], "Too Many Requests")
         self.assertIn("Retry-After", res_blocked.headers)
         self.assertIn("X-RateLimit-Limit", res_blocked.headers)
+
+    def test_untrusted_x_forwarded_for_cannot_bypass_rate_limiting(self):
+        # By default, trusted_proxies is empty.
+        # Sending arbitrary X-Forwarded-For should NOT bypass rate limiting.
+        client = self._create_app(rate_limit=2, rate_limiting_enabled=True, trusted_proxies=())
+
+        # Request 1 with spoofed header
+        res1 = client.get("/api/aoi", headers={"X-Forwarded-For": "203.0.113.1"})
+        self.assertEqual(res1.status_code, 200)
+
+        # Request 2 with another spoofed header
+        res2 = client.get("/api/aoi", headers={"X-Forwarded-For": "203.0.113.2"})
+        self.assertEqual(res2.status_code, 200)
+
+        # Request 3 with yet another spoofed header should still be blocked (429)
+        res3 = client.get("/api/aoi", headers={"X-Forwarded-For": "203.0.113.3"})
+        self.assertEqual(res3.status_code, 429)
+
+    def test_trusted_proxy_honors_x_forwarded_for(self):
+        # When 127.0.0.1 is configured as a trusted proxy
+        client = self._create_app(rate_limit=2, rate_limiting_enabled=True, trusted_proxies=("127.0.0.1",))
+
+        # Two requests from client A
+        res1 = client.get("/api/aoi", headers={"X-Forwarded-For": "198.51.100.1"})
+        self.assertEqual(res1.status_code, 200)
+        res2 = client.get("/api/aoi", headers={"X-Forwarded-For": "198.51.100.1"})
+        self.assertEqual(res2.status_code, 200)
+
+        # Third request from client A is blocked
+        res3 = client.get("/api/aoi", headers={"X-Forwarded-For": "198.51.100.1"})
+        self.assertEqual(res3.status_code, 429)
+
+        # But request from client B is allowed
+        res4 = client.get("/api/aoi", headers={"X-Forwarded-For": "198.51.100.2"})
+        self.assertEqual(res4.status_code, 200)
 
 
 if __name__ == "__main__":

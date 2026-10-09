@@ -10,11 +10,11 @@ Sentinel Imagery Analysis is a modular maritime-intelligence application that ac
 
 The codebase follows Clean Architecture with meaningful separation between domain entities, application use cases and ports, infrastructure adapters, delivery interfaces, and the bootstrap composition root. Automated architecture tests enforce the inward dependency rule, and inspection found no direct imports from the application or domain layers into Flask, SQLite, OpenCV, or other outer-layer implementations. This is the system's strongest architectural quality: external providers and persistence mechanisms can be substituted without rewriting core orchestration.
 
-Operationally, however, the system is a modular monolith rather than a distributed or horizontally scalable service. Flask, the APScheduler worker, pass-monitor threads, an in-memory task queue, SQLite, the filesystem scan repository, and external-service clients all run on one host and usually in one process. That topology is appropriate for a local analyst workstation, prototype, or small single-user deployment. It is not yet safe for multiple web workers or an internet-facing multi-user deployment because scheduled jobs would be duplicated, task state would not be shared, SQLite write contention would grow, filesystem state would require shared storage, and the APIs have no authentication or authorization.
+Operationally, the system has evolved from a simple local prototype into a hardened modular monolith. Background tasks are persisted durably via SQLite (`DatabaseTaskQueue`), scheduler execution across multiple processes/workers is coordinated via distributed lease-based leader election (`SchedulerLeaderElector`), API endpoints are secured with API key authentication and sliding-window rate limiting (with trusted reverse-proxy support), storage lifecycle retention is enforced, and production containerization (`Dockerfile`, `docker-compose.yml`, Gunicorn WSGI) is established. The system remains a modular monolith suited for single-host or containerized operations, with horizontal scaling of compute workers and external object storage as potential future phases.
 
 The end-to-end mission design is coherent: an analyst defines an area of interest (AOI); the system combines N2YO orbital predictions with historical Copernicus acquisition cycles; scheduled monitors collect AIS near a flypast; post-pass jobs poll the Copernicus catalogue; matching imagery is downloaded and tiled, stitched, optionally masked with elevation data, and processed by a deterministic OpenCV detector. The result is useful candidate-vessel intelligence, but it should not be treated as confirmed classification or identity correlation. The detector confidence is a brightness-derived heuristic rather than a calibrated probability, and no explicit SAR-to-AIS association engine is present.
 
-The most important near-term work is operational hardening, not decomposition into microservices. The recommended sequence is to establish an explicit deployment profile and trust boundary, centralize startup/migrations and structured logging, make background work durable and single-owner, correct the post-pass timeout ownership regression, pin dependencies, and add production serving/health guidance. Only after demand exceeds the single-host profile should background processing and persistence be extracted.
+The most important operational hardening milestones have been achieved: durable database-backed task queues, scheduler leadership election, API key authentication and rate limiting, storage retention policies, pinned dependencies, and production Docker containerization. Future priorities include CSRF protection for browser forms, fine-grained role-based access control, centralized structured logging, and extracting background workers to a distributed broker if workload demands exceed single-host capacity.
 
 ### Overall assessment
 
@@ -22,12 +22,12 @@ The most important near-term work is operational hardening, not decomposition in
 |---|---|---|
 | Modularity | Strong | Ports, protocols, use cases, and adapters are clearly separated; dependency direction is tested. |
 | Functional cohesion | Strong | Workflows map cleanly to mission concepts: scans, AOIs, passes, AIS, detection, and post-pass ingestion. |
-| Maintainability | Moderate–strong | Good boundaries and broad tests, offset by several large modules, compatibility branches, duplicated fallback logic, and stale documentation. |
-| Reliability | Moderate | Atomic file writes, transactions, retries, cooldowns, and shutdown coordination exist; task state and scheduler leadership are not durable. |
-| Security | Suitable only for trusted local use | Input/path validation and response headers exist, but there is no authentication, authorization, CSRF protection, or encrypted secret store. |
-| Scalability | Limited | Single-process threads, SQLite, local files, and in-memory tasks constrain multi-user and multi-instance operation. |
-| Observability | Limited–moderate | Scraper execution logs and scheduler status exist, but there is no unified structured telemetry, health model, or persistent job history. |
-| Testability | Strong design; current snapshot not green | The repository contains 261 tests and CI across Python 3.11/3.12; the current local run includes environment-related failures and one reproducible timeout regression. |
+| Maintainability | Moderate–strong | Good boundaries and broad tests, offset by several large modules, compatibility branches, and duplicated fallback logic. |
+| Reliability | Strong | Atomic file writes, transactions, retries, cooldowns, shutdown coordination, durable task queue (SQLite-backed), and scheduler leadership election exist. |
+| Security | Moderate | Input/path validation, response headers, API key authentication (`X-API-Key` and `Bearer`), sliding-window rate limiting, and trusted-proxy validation exist; CSRF protection and an encrypted secret store remain open improvements. |
+| Scalability | Moderate (Single-host) | Multi-worker WSGI supported via scheduler leader election and durable task persistence; scaling beyond a single host would require shared storage and a distributed task broker. |
+| Observability | Moderate | Scraper execution logs, scheduler status, task heartbeats, and health/readiness probes (`/healthz`, `/readyz`, `/livez`) exist. |
+| Testability | Strong | Over 260 tests with Clean Architecture boundary verification; CI covers Python 3.11, 3.12, and 3.13 with pinned dependencies. |
 
 ## Detailed analysis
 
@@ -115,13 +115,13 @@ flowchart TB
 
 Important runtime consequences:
 
-- `create_app()` starts the scheduler as a side effect. Every process that constructs the app therefore becomes a scheduler owner.
-- Asynchronous web scan tasks are stored only in `ThreadedTaskQueue._tasks`; they disappear on restart and are invisible to other processes. A `background_tasks` table exists in migration 003 but is not used by the active queue adapter.
-- APScheduler jobs use `max_instances=1` within a process, but there is no cross-process leader election or distributed lock.
-- SQLite uses short-lived connections, foreign keys, a five-second busy timeout, and transactions. WAL mode is not enabled.
-- Scan imagery and metadata live in per-scan filesystem directories, while relational mission state lives in SQLite. There is no transaction spanning these stores.
+- Schedulers across multiple processes or workers coordinate through `SchedulerLeaderElector` leasing in SQLite/file locks, ensuring only a single active leader executes pass monitoring and scheduled jobs.
+- Asynchronous background tasks are persisted in the SQLite `background_tasks` table via `ThreadedTaskQueue` (`DatabaseTaskQueue`), providing durable state, heartbeat tracking, progress persistence, and restart survivability.
+- APScheduler jobs use `max_instances=1` within a process, reinforced by database lease heartbeats across multi-process deployments.
+- SQLite uses short-lived connections, foreign keys, a five-second busy timeout, and transactions.
+- Scan imagery and metadata live in per-scan filesystem directories, while relational mission state lives in SQLite. Configurable storage retention policies (`ExecuteStorageRetention`) prune expired scans and cache tiles based on age and quota limits.
 
-This is a sound local-first topology. It should be documented and protected as such until durable job infrastructure and a production database/storage strategy are introduced.
+This topology provides a resilient single-host deployment model that safely supports multi-worker WSGI processes.
 
 ### 4. Component analysis
 
@@ -257,7 +257,7 @@ Versioned SQL migrations create the following persistent concerns:
 - AOIs and auto-capture state.
 - Vessels and timestamped vessel positions.
 - Scraper execution logs, configuration, cooldown, tags, and trigger reasons.
-- Background-task schema (currently unused by the runtime queue).
+- Background-task schema backing durable execution in `ThreadedTaskQueue` with state persistence, progress updates, and task resumption.
 - Cached AOI prediction/mission-analysis payloads with expiry.
 - Post-pass ingestion jobs and expected imagery times.
 - General system settings stored as JSON values.
@@ -269,7 +269,7 @@ Concerns:
 - Migrations run independently from the constructors of four repositories, causing repeated startup checks and making schema ownership diffuse.
 - Migration filenames have two separate `005_...` entries; ordering is deterministic by full filename but the numeric prefix is not a unique version.
 - The existing `ARCHITECTURE.md` lists obsolete Python migration names and does not reflect the active SQL migration set.
-- No retention or archival policy limits vessel positions, scraper logs, forecast history, cached tiles, or scan imagery.
+- Storage retention policies (`ExecuteStorageRetention`) manage scan and cache lifecycles via configurable `scan_retention_days` and `cache_retention_days`; archival and retention for high-volume historical AIS vessel positions and scraper logs can be extended further.
 - N2YO's API key can be stored as JSON text in SQLite. It is masked in settings responses but not encrypted at rest.
 
 #### 6.2 Filesystem
@@ -280,21 +280,22 @@ Because imagery and SQLite state are separate stores, a crash can leave an orpha
 
 ### 7. Security and trust model
 
-The current implementation should be treated as a trusted-local application bound to the Flask default loopback interface.
+Existing safeguards include:
+- Input type/range checks, filename/path containment, and parameterized SQL queries.
+- API key authentication protecting `/api/*` routes via `X-API-Key` or `Authorization: Bearer <token>` headers (rejecting query-parameter tokens to prevent leakage in server access logs and browser history).
+- Sliding-window rate limiting (`SlidingWindowRateLimiter`) with configurable requests-per-minute limits.
+- Trusted reverse-proxy IP validation (`get_client_ip`), ensuring `X-Forwarded-For` is only honored from explicitly configured proxy addresses (`trusted_proxies`) to prevent rate-limit spoofing.
+- Secret masking in the settings API and keeping Copernicus credentials out of SQLite.
+- Standard security headers and generic unexpected-error responses.
 
-Existing safeguards include input type/range checks, filename/path containment, parameterized SQL, secret masking in the settings API, keeping Copernicus credentials out of SQLite, generic unexpected-error responses, output-size limits, and basic browser hardening headers.
+Open security considerations and remaining gaps:
 
-Material gaps for any shared or network-exposed deployment:
-
-1. No authentication or authorization protects read, configuration, ingestion, scan, or deletion APIs.
-2. No CSRF protection exists for state-changing browser requests.
-3. There is no explicit Content Security Policy or HTTPS termination configuration.
-4. N2YO credentials stored through the settings UI are plaintext at rest in SQLite.
-5. Operational endpoints can trigger expensive external calls and compute without per-user rate limits or quotas.
-6. Scraping adapters interact with third-party sites through browser-stealth mechanisms; legal, contractual, and source-availability risks should be reviewed separately from software security.
-7. Synthetic AIS providers are enabled by default and should be visually and operationally isolated from production evidence.
-
-If the application remains strictly local, document that boundary and avoid binding to a non-loopback address. If it becomes shared, add an authenticated reverse proxy or application identity layer before exposing it.
+1. **Authorization**: API authentication is uniform across endpoints based on the configured key; fine-grained role-based authorization (e.g., distinguishing read-only analysts from administrators) remains an open enhancement.
+2. **CSRF Protection**: State-changing browser requests in the web UI do not yet use anti-CSRF tokens.
+3. **Transport Security & CSP**: HTTPS termination and Content Security Policy should be managed by the fronting reverse proxy or ingress controller.
+4. **Credential Encryption**: N2YO credentials stored through the settings UI are masked in responses but stored as plaintext JSON in SQLite.
+5. **Scraping Adapter Risks**: Third-party scraping relies on browser-stealth mechanisms; source terms of service and availability should be reviewed independently.
+6. **Synthetic AIS Isolation**: Synthetic AIS providers are enabled by default for local testing and should be visually and operationally flagged when operating against live feeds.
 
 ### 8. Reliability, concurrency, and performance
 
@@ -302,8 +303,8 @@ Strengths include atomic scan metadata/image output, transactional SQLite writes
 
 Key risks:
 
-- Multiple application processes create duplicate schedulers and pass monitors.
-- In-memory tasks are lost on process restart and cannot be resumed.
+- Scheduler coordination across multi-worker deployments is handled via distributed lease election (`SchedulerLeaderElector`), though standby workers must await lease expiration before assuming leadership upon leader failure.
+- Background tasks are persisted in SQLite via `DatabaseTaskQueue` / `ThreadedTaskQueue`, ensuring task progress, metadata, and results survive restarts, though long-running active worker threads still require graceful shutdown.
 - Thread workers can perform long external HTTP downloads of up to 300 seconds per request; shutdown cancels queued futures but cannot forcibly stop running calls.
 - SQLite's default journal mode and five-second busy timeout may surface lock errors under simultaneous ingestion, scheduling, and web writes.
 - The Frost filter uses nested Python loops over every pixel and will scale poorly on large stitched scenes.
@@ -318,7 +319,7 @@ Environment configuration defines project, database, output, cache, Copernicus c
 
 There are two configuration planes with partial overlap. Runtime-critical settings such as port, filesystem roots, debug mode, and the scheduler's initially injected API key are fixed when the process starts, even though similarly named values appear in the settings database. The UI can therefore imply that a change is active when a restart or explicit runtime wiring is required. Settings should be classified as either bootstrap-only or live-reloadable and presented accordingly.
 
-The repository runs Flask's built-in development server and has no Dockerfile, production WSGI configuration, service definition, or deployment manifest. Dependencies in `requirements.txt` are mostly unpinned. CI installs current dependency versions and runs `unittest` on Ubuntu with Python 3.11 and 3.12, which gives useful portability coverage but reduces build reproducibility.
+Production deployment is container-ready via `Dockerfile` (based on `python:3.13-slim`), `docker-compose.yml`, production WSGI configuration (`wsgi.py`, `gunicorn.conf.py`), and operational health probes (`/healthz`, `/readyz`, `/livez`). All dependencies in `requirements.txt` are pinned to exact verified versions. CI runs unit, integration, and Clean Architecture boundary verification tests across Python 3.11, 3.12, and 3.13 on Ubuntu.
 
 ### 10. Maintainability and test posture
 
@@ -340,51 +341,50 @@ Large modules worth splitting by responsibility include `sqlite_ais.py`, `copern
 
 | Priority | Finding | Impact | Recommendation |
 |---|---|---|---|
-| Critical before network exposure | APIs have no identity, authorization, or CSRF control. | Any network client could read data, alter configuration, trigger costly jobs, or delete scans. | Keep loopback-only now; add authentication, role checks, CSRF protection, TLS termination, and request throttling before shared use. |
-| High | Every app process starts its own scheduler. | Duplicate AIS collection, external requests, and post-pass jobs under multi-worker deployment. | Separate scheduler startup from app construction and enforce a single scheduler leader/process. |
-| High | Background task state is in memory while an unused task table exists. | Tasks and status disappear on restart and do not work across processes. | Implement a durable queue adapter or remove the misleading table until durability is supported. |
+| Medium | APIs use API key authentication and sliding rate limits; fine-grained RBAC and CSRF remain open. | Single shared key controls all API access; web forms lack CSRF tokens. | Add role-based authorization scopes and CSRF tokens for state-changing browser routes. |
+| Resolved | Scheduler leader election implemented via `SchedulerLeaderElector`. | Multi-worker deployments no longer duplicate background pass monitoring or ingestion. | Database/file lease election coordinates single-active scheduler leader with heartbeat renewals. |
+| Resolved | Durable task queue implemented via `DatabaseTaskQueue`. | Tasks and status survive restarts and are visible across processes. | SQLite `background_tasks` table persists task state, progress, results, and heartbeats. |
 | High | Post-pass timeout transitions have two owners. | Expired jobs can disappear from use-case results; a focused test currently fails. | Move timeout state transition and result construction entirely into the use case or return transitioned jobs from the repository. |
-| High | Production deployment is unspecified and dependencies are unpinned. | Non-reproducible builds and unsafe use of the development server. | Add a lock/constraints strategy, supported Python matrix, production server instructions, health checks, and backup/restore procedures. |
+| Resolved | Production deployment and pinned dependencies established. | Containerized deployment and reproducible builds across environments. | Provided Dockerfile, docker-compose.yml, Gunicorn WSGI configuration, pinned `requirements.txt`, and Python 3.11–3.13 CI coverage. |
 | Medium | Bootstrap and live settings overlap without consistent activation semantics. | Operators may believe persisted changes are active when components still use startup values. | Classify settings as bootstrap-only/live and provide explicit reload/restart status. |
 | Medium | SQLite and filesystem form a non-transactional aggregate. | Crashes can create orphaned state or broken job-to-scan references. | Add idempotency keys, reconciliation, and periodic integrity checks. |
 | Medium | Detection score looks probabilistic but is heuristic. | Analysts may over-trust candidate confidence and dimensions. | Rename/label the score, calibrate against a labelled validation set, and report uncertainty. |
 | Medium | Broad exception suppression reduces diagnosability. | Partial failure can appear as missing data rather than a clear degraded state. | Emit structured warnings and persist mission partial-success/failure reasons. |
-| Medium | No data lifecycle policy exists. | SQLite, scan imagery, and cache use can grow indefinitely. | Add configurable retention, archive/export, and cache eviction policies. |
+| Resolved | Data lifecycle and storage retention policies implemented. | Scans and cached tiles are prevented from unbounded disk consumption. | `ExecuteStorageRetention` enforces configurable `scan_retention_days`, `cache_retention_days`, and quota limits. |
 | Low | Existing architecture documentation is stale. | Onboarding and operations decisions may use incorrect workflows/schema information. | Replace or link it to this report and generate migration/component inventories from code where practical. |
 
 ### 12. Recommended target evolution
 
-#### Phase 1 — Stabilize the local modular monolith
+#### Phase 1 — Stabilize the local modular monolith (Completed / In Progress)
 
-- Fix the post-pass timeout ownership regression and restore a green, repeatable suite.
-- Move migration execution to one explicit bootstrap step and adopt unique migration versions.
-- Separate scheduler start/stop from Flask app construction.
-- Add structured logs with correlation identifiers for scans, AOIs, jobs, and scraper runs.
-- Pin dependencies through a lock or constraints file and document supported Python versions.
-- Mark synthetic AIS data throughout storage and UI, or disable mock providers outside demo mode.
-- Define backup, restore, retention, and scan/database reconciliation procedures.
-- Clarify which settings require restart and which are applied live.
+- [x] Implement durable background task persistence in SQLite (`DatabaseTaskQueue`).
+- [x] Implement scheduler leader election (`SchedulerLeaderElector`) to coordinate multi-worker pass monitoring.
+- [x] Implement API key authentication (`X-API-Key`, `Authorization: Bearer`), sliding-window rate limiting, and trusted-proxy validation.
+- [x] Implement configurable storage retention policies (`ExecuteStorageRetention`) and disk quota enforcement.
+- [x] Pin all dependencies in `requirements.txt` and expand CI matrix across Python 3.11, 3.12, and 3.13.
+- [x] Provide production containerization (`Dockerfile`, `docker-compose.yml`, `wsgi.py`, `gunicorn.conf.py`) and health probes (`/healthz`, `/readyz`, `/livez`).
+- [ ] Move migration execution to one explicit bootstrap step and adopt unique migration versions.
+- [ ] Fix the post-pass timeout ownership regression.
+- [ ] Add structured logs with correlation identifiers for scans, AOIs, jobs, and scraper runs.
 
-#### Phase 2 — Harden for a shared single-host service
+#### Phase 2 — Harden for a shared service
 
-- Put the app behind a production WSGI server and authenticated TLS reverse proxy.
-- Add authorization roles, CSRF protection, request rate limits, and audit events.
-- Run exactly one dedicated scheduler/worker process.
-- Persist task state and implement idempotent job claims with leases.
+- Add fine-grained authorization roles (RBAC) and CSRF protection for browser forms.
+- Terminate TLS via fronting reverse proxy (Nginx, Caddy, or cloud load balancer) with strict CSP headers.
 - Enable and validate SQLite WAL/backup behavior, or move relational state to PostgreSQL if write concurrency demands it.
-- Add readiness/liveness checks and metrics for queue depth, external latency, job age, SQLite locks, and ingestion outcomes.
+- Add Prometheus-compatible metrics for queue depth, external latency, job age, and ingestion outcomes.
 
 #### Phase 3 — Scale only if workload requires it
 
-- Extract long-running scan and AIS work into durable workers backed by a broker.
-- Store large imagery in managed/shared object storage while retaining metadata in the relational database.
+- Extract long-running scan and AIS work into durable workers backed by an external message broker (e.g. Celery / Redis).
+- Store large imagery in managed/shared object storage (S3 / MinIO) while retaining metadata in the relational database.
 - Introduce distributed job locks, idempotency keys, retry/dead-letter policy, and trace propagation.
 - Consider a dedicated SAR/AIS association service only after a validated correlation model and throughput requirement exist.
 
-The current port/use-case boundaries already provide useful seams for this evolution. A broad microservice rewrite is not required to achieve the first two phases.
+The current port/use-case boundaries already provide useful seams for this evolution. A broad microservice rewrite is not required to achieve the remaining phases.
 
 ### 13. Final assessment
 
-Sentinel Imagery Analysis has a good internal architecture for a local-first analytical tool. Its clean boundaries, rich domain validation, adapter isolation, atomic filesystem operations, and extensive automated tests create a credible base for further development. The main architectural mismatch is between that mature internal modularity and an operational model that is still prototype-grade: one unprotected Flask process owns threads, scheduling, local state, and external orchestration.
+Sentinel Imagery Analysis has a solid internal architecture adhering to Clean Architecture principles. Its clean boundaries, rich domain validation, adapter isolation, atomic filesystem operations, and extensive automated tests create a credible base for further development.
 
-The best next step is to preserve the modular monolith while making its operating assumptions explicit and reliable. Once the scheduler has a single owner, jobs are durable, security boundaries are added, builds are reproducible, and state can be reconciled and observed, the system will be substantially more dependable without the complexity cost of premature service decomposition.
+Recent operational hardening has brought the deployment and runtime architecture up to standard: durable task state, scheduler leadership election, API key authentication, request throttling, trusted-proxy validation, storage retention, pinned dependencies, and production WSGI/Docker containerization now protect and stabilize the modular monolith. Future evolution can focus on fine-grained access control, browser CSRF protection, and distributed worker extraction if scale requires it.

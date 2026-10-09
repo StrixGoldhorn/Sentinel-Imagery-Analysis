@@ -14,7 +14,7 @@ This guide walks you through setting up, configuring, and launching the Sentinel
 | Component | Minimum Requirement | Recommended Specification |
 |---|---|---|
 | **Operating System** | Windows 10/11, Ubuntu 22.04+, macOS 12+ | Ubuntu 22.04 LTS (x86_64) |
-| **Python** | Python 3.11 or 3.12 | Python 3.12 |
+| **Python** | Python 3.11, 3.12, or 3.13 | Python 3.12 or 3.13 |
 | **CPU** | 4 Cores (x86_64 or Apple Silicon) | 8+ Cores (multithreaded tile processing) |
 | **Memory (RAM)** | 8 GB RAM | 16 GB - 32 GB RAM (for large SAR swath mosaics) |
 | **Storage** | 10 GB free disk space | 100+ GB SSD (for local tile and cache storage) |

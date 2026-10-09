@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/strixgoldhorn/Sentinel-Imagery-Analysis/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-Passing-brightgreen.svg?style=flat-square" alt="CI Status"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue.svg?style=flat-square" alt="Python Versions"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue.svg?style=flat-square" alt="Python Versions"></a>
   <a href="ARCHITECTURE.md"><img src="https://img.shields.io/badge/Architecture-Clean%20Architecture-teal.svg?style=flat-square" alt="Architecture"></a>
   <a href="https://strixgoldhorn.github.io/Sentinel-Imagery-Analysis/"><img src="https://img.shields.io/badge/Documentation-GitHub%20Pages-blueviolet.svg?style=flat-square" alt="Docs"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
@@ -104,7 +104,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [SYSTEM_ARCHITECTURE_REPORT.md](SYSTE
 ## 🚀 Quickstart & Installation
 
 ### Prerequisites
-- **Python 3.11** or **3.12**
+- **Python 3.11**, **3.12**, or **3.13**
 - Free account on the [Copernicus Data Space Ecosystem](https://dataspace.copernicus.eu/)
 
 ### Setup

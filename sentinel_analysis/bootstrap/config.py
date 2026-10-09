@@ -27,6 +27,7 @@ class Settings:
     storage_quota_bytes: int = 10 * 1024 * 1024 * 1024
     scan_retention_days: int = 30
     cache_retention_days: int = 7
+    trusted_proxies: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "project_root", Path(self.project_root).resolve())
@@ -47,6 +48,14 @@ class Settings:
             raise ValueError("scan_retention_days must be a positive integer")
         if isinstance(self.cache_retention_days, bool) or not isinstance(self.cache_retention_days, int) or self.cache_retention_days <= 0:
             raise ValueError("cache_retention_days must be a positive integer")
+        if isinstance(self.trusted_proxies, (list, tuple, set)):
+            clean_proxies = tuple(str(p).strip() for p in self.trusted_proxies if str(p).strip())
+            object.__setattr__(self, "trusted_proxies", clean_proxies)
+        elif isinstance(self.trusted_proxies, str):
+            clean_proxies = tuple(p.strip() for p in self.trusted_proxies.split(",") if p.strip())
+            object.__setattr__(self, "trusted_proxies", clean_proxies)
+        else:
+            object.__setattr__(self, "trusted_proxies", ())
 
     @classmethod
     def from_environment(cls, project_root: Path | None = None) -> "Settings":
@@ -106,6 +115,9 @@ class Settings:
         except ValueError:
             cache_retention_days = 7
 
+        trusted_proxies_raw = first_env("SENTINEL_TRUSTED_PROXIES", "TRUSTED_PROXIES", default="") or ""
+        trusted_proxies = tuple(p.strip() for p in trusted_proxies_raw.split(",") if p.strip())
+
         return cls(
             project_root=root,
             database_path=environment_path("SENTINEL_DATABASE_PATH", "DATABASE_PATH", default=root / "data.db"),
@@ -122,4 +134,5 @@ class Settings:
             storage_quota_bytes=storage_quota_bytes,
             scan_retention_days=scan_retention_days,
             cache_retention_days=cache_retention_days,
+            trusted_proxies=trusted_proxies,
         )

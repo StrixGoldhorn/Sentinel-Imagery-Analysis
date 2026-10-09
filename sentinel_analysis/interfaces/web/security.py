@@ -56,8 +56,25 @@ class SlidingWindowRateLimiter:
 rate_limiter = SlidingWindowRateLimiter()
 
 
+def get_client_ip(trusted_proxies: tuple[str, ...] = ()) -> str:
+    """Safely determine the client IP address.
+
+    X-Forwarded-For is only consulted if the immediate peer (request.remote_addr)
+    is in the configured trusted_proxies list. Otherwise, request.remote_addr
+    is returned to prevent IP spoofing and rate-limiting bypass.
+    """
+    remote_addr = (request.remote_addr or "127.0.0.1").strip()
+    if trusted_proxies and remote_addr in trusted_proxies:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded and forwarded.strip():
+            client_ip = forwarded.split(",")[0].strip()
+            if client_ip:
+                return client_ip
+    return remote_addr
+
+
 def get_api_key_from_request() -> Optional[str]:
-    """Extract API key from header or query parameter."""
+    """Extract API key from X-API-Key or Authorization header."""
     # 1. Check X-API-Key header
     key = request.headers.get("X-API-Key")
     if key and key.strip():
@@ -69,11 +86,6 @@ def get_api_key_from_request() -> Optional[str]:
         parts = auth_header.strip().split()
         if len(parts) == 2 and parts[0].lower() == "bearer":
             return parts[1].strip()
-
-    # 3. Check query param
-    query_key = request.args.get("api_key")
-    if query_key and query_key.strip():
-        return query_key.strip()
 
     return None
 
@@ -105,7 +117,7 @@ def require_api_key(fn: Callable[..., Any]) -> Callable[..., Any]:
                 return jsonify({
                     "status": "error",
                     "error": "Unauthorized",
-                    "message": "Invalid or missing API key.",
+                    "message": "Invalid or missing API key. Provide via X-API-Key header or Authorization: Bearer <token>.",
                 }), 401
         return fn(*args, **kwargs)
     return wrapper
@@ -137,8 +149,8 @@ def setup_security(app: Flask, settings: Settings) -> None:
         if not path.startswith("/api/"):
             return None
 
-        client_id = request.headers.get("X-Forwarded-For", request.remote_addr) or "127.0.0.1"
-        client_id = client_id.split(",")[0].strip()
+        trusted_proxies = getattr(settings, "trusted_proxies", ())
+        client_id = get_client_ip(trusted_proxies)
 
         # 1. Global rate limiting for API
         if settings.rate_limiting_enabled:
@@ -168,7 +180,7 @@ def setup_security(app: Flask, settings: Settings) -> None:
                 return jsonify({
                     "status": "error",
                     "error": "Unauthorized",
-                    "message": "Invalid or missing API key. Provide via X-API-Key header, Authorization: Bearer <token>, or ?api_key=<key>.",
+                    "message": "Invalid or missing API key. Provide via X-API-Key header or Authorization: Bearer <token>.",
                 }), 401
 
         return None
