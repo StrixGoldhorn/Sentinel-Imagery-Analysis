@@ -20,3 +20,7 @@ tests/runtime/
 
 *.pdf
 *.md
+!README.md
+!ARCHITECTURE.md
+!SYSTEM_ARCHITECTURE_REPORT.md
+!docs/**
