@@ -255,6 +255,9 @@ class PostAcquisitionPipeline:
             scan_meta["geotiff"] = Path(geotiff_path).name
         if stac_path:
             scan_meta["stac"] = Path(stac_path).name
+        route_img = folder_dir / f"{scan.folder_name}_route_correlation.png"
+        if route_img.is_file():
+            scan_meta["route_correlation_image"] = route_img.name
 
         try:
             self._scan_repository.save(
@@ -318,6 +321,7 @@ class PostAcquisitionPipeline:
             "geojson_url": f"/api/scan/{scan.folder_name}/geojson",
             "gis_bundle_url": f"/api/scan/{scan.folder_name}/gis_bundle",
             "briefing_pdf_url": f"/api/scan/{scan.folder_name}/briefing/pdf",
+            "route_correlation_image_url": f"/api/scan/{scan.folder_name}/route_correlation_image",
             "geotiff_url": f"/api/scan/{scan.folder_name}/geotiff",
             "stac_url": f"/api/scan/{scan.folder_name}/stac",
         }

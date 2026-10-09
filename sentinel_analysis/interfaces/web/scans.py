@@ -968,6 +968,25 @@ def export_scan_briefing_pdf(folder_name: str):
         return jsonify(error=f"Intelligence brief generation failed: {exc}"), 500
 
 
+@blueprint.get("/api/scan/<folder_name>/route_correlation_image")
+@blueprint.get("/api/scan/<folder_name>/route_correlation.png")
+@blueprint.get("/api/scan/<folder_name>/route-correlation.png")
+def get_scan_route_correlation_image(folder_name: str):
+    safe_name = safe_folder_name(folder_name)
+    scan = container().get_scan.execute(safe_name)
+    if scan is None:
+        return jsonify(error="Scan not found"), 404
+    image_path = Path(scan.image_path)
+    route_img = image_path.parent / f"{scan.folder_name}_route_correlation.png"
+    if not route_img.is_file():
+        from sentinel_analysis.application.use_cases.generate_briefing import extract_scan_intelligence
+        from sentinel_analysis.infrastructure.reporting.route_visualizer import RouteVisualizer
+        intel = extract_scan_intelligence(scan)
+        rv = RouteVisualizer()
+        rv.generate_route_image(scan, intel.get("detections", []), output_path=route_img)
+    return send_file(route_img, mimetype="image/png")
+
+
 @blueprint.get("/api/scan/<folder_name>/briefing")
 def get_scan_briefing(folder_name: str):
     safe_name = safe_folder_name(folder_name)

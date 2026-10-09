@@ -214,6 +214,7 @@ def extract_scan_intelligence(scan: Scan) -> dict[str, Any]:
             "vessel_type": vessel_type,
             "dark_vessel_risk": risk_category,
             "dark_vessel_reasons": reasons,
+            "correlated_ais": ais,
             "raw_detection": d,
         })
 
