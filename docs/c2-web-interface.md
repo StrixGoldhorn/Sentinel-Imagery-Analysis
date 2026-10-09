@@ -7,6 +7,10 @@ title: Tactical C2 Web Interface | Sentinel Imagery Analysis
 
 The Sentinel Imagery Analysis Command and Control (C2) web application provides maritime watchstanders, intelligence analysts, and coast guard operators with an interactive operational canvas for monitoring maritime traffic, identifying non-cooperative dark vessels, and reviewing automated intelligence feeds.
 
+![Tactical map with SAR scan drawer, AOI overlays, contact filters, and AIS timeline](assets/images/tactical-map.png)
+
+*The main operator view keeps acquisition controls, geospatial context, contact filtering, and temporal playback visible together.*
+
 ---
 
 ## 🗺️ 1. Tactical Map Canvas
@@ -60,6 +64,14 @@ Positioned directly above the tactical map, the Quick-Filter Bar allows watchsta
 
 Clicking any radar detection on the map or in the detection sidebar slides open the **Contact Telemetry Dossier Drawer**, exposing granular intelligence:
 
+![SAR detection list with confidence, metrology, radar chips, and dossier controls](assets/images/vessel-detection-list.png)
+
+*The detection sidebar provides a rapid triage list for all contacts in the active imagery pass.*
+
+![Selected vessel dossier in the tactical map](assets/images/vessel-dossier.png)
+
+*Selecting a contact opens its full identification, correlation, kinematics, coordinates, source, metrology, and radar-chip record without leaving the map.*
+
 ### A. High-Resolution Radar Chip Inspector
 - Displays a high-contrast zoomed radar chip crop of the vessel.
 - Pixel intensity histogram and radar cross-section (RCS) backscatter metrics.
@@ -104,6 +116,8 @@ Each completed scan card provides:
 - **Detection Summary**: Total detections, dark vessel count, and cooperative vessel count.
 - **Route Corridor Visualizer Link**: Direct button to view high-resolution nautical chart corridor plots.
 - **Export Quick Actions**: One-click download for PDF Briefing, Google Earth KMZ, and Cursor-on-Target XML feeds.
+
+![Populated scan gallery with SAR imagery, dark-vessel metrics, and export controls](assets/images/scan-gallery.png)
 
 ---
 

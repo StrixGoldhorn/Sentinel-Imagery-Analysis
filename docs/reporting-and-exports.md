@@ -7,11 +7,19 @@ title: Reporting & Tactical Exports | Sentinel Imagery Analysis
 
 The Sentinel Imagery Analysis platform transforms raw algorithmic detections into operational products tailored for maritime commanders, interdiction boarding teams, and external Command and Control (C2) situational awareness tools.
 
+![Scan gallery with PDF, route corridor, GeoJSON, KMZ, CoT, GIS bundle, GeoTIFF, and STAC actions](assets/images/scan-gallery.png)
+
+*Each analyzed scene exposes its intelligence summary and export actions from one operational card.*
+
 ---
 
 ## 📑 1. Executive Multi-Page PDF Intelligence Briefings
 
 The automated briefing engine compiles a publication-grade PDF dossier for every analyzed satellite scan.
+
+![Executive summary page from a generated maritime intelligence briefing](assets/images/briefing-executive-summary.png)
+
+*The opening page consolidates acquisition metadata, detection totals, priority findings, confidence distribution, and the target manifest.*
 
 ```
 +---------------------------------------------------------------------------------+
@@ -59,8 +67,16 @@ The automated briefing engine compiles a publication-grade PDF dossier for every
      - **Hydrodynamic Wake Telemetry**: Radon wake-derived velocity and heading.
      - **Compliance & Legal Assessment**: Mandatory SOLAS carriage violations and EEZ boundary status.
 
+![Target dossier page from the generated PDF briefing](assets/images/briefing-target-dossier.png)
+
+*A generated target page combines the source radar chip, local map, physical dimensions, correlation status, and risk assessment.*
+
 5. **Cooperative Shipping Registry Table**:
    - Structured tabular index of all cooperative vessels (MMSI, IMO, Name, Flag, Speed, Destination).
+
+![Standalone route prediction and multi-sensor correlation chart](assets/images/route-correlation.png)
+
+*The route export provides a high-resolution operational view of the corridor, intercept geometry, and contact manifest.*
 
 ---
 

@@ -20,6 +20,32 @@
 
 Whether uncovering illicit sanction-evading Ship-to-Ship (STS) transshipments, tracking AIS spoofing and ghost shipping, or patrolling Marine Protected Areas (MPAs) for illegal fishing (IUU), Sentinel Imagery Analysis transforms complex satellite observations into real-time operational intelligence.
 
+## Application Screenshots
+
+![Tactical map with SAR acquisition controls, maritime areas of interest, and timeline](docs/assets/images/tactical-map.png)
+
+*The tactical map combines SAR acquisition controls, monitored areas of interest, contact filters, and AIS timeline playback.*
+
+![Scan gallery showing Sentinel-1 imagery, detection intelligence, and export actions](docs/assets/images/scan-gallery.png)
+
+*The scan gallery exposes acquisition metadata, dark-vessel counts, imagery inspection, and operational export products.*
+
+![Processed Sentinel-1 scene with detected and AIS-correlated vessels](docs/assets/images/vessel-detections-overview.png)
+
+*The processed scene distinguishes non-cooperative detections from contacts correlated with AIS telemetry.*
+
+![Interactive vessel dossier with identification, telemetry, metrology, and radar chip](docs/assets/images/vessel-dossier.png)
+
+*Operators can open any detection to review the vessel identity, correlation result, coordinates, physical dimensions, confidence, and radar signature.*
+
+![Generated intelligence briefing executive summary](docs/assets/images/briefing-executive-summary.png)
+
+*The generated PDF briefing summarizes the acquisition, target counts, threat assessment, and detection confidence distribution.*
+
+![Generated intelligence briefing target dossier](docs/assets/images/briefing-target-dossier.png)
+
+*Each high-priority contact receives a dedicated PDF dossier page with a SAR chip, local context map, morphometry, and risk assessment.*
+
 ---
 
 ## 🗺️ System Architecture

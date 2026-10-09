@@ -58,6 +58,14 @@ Connected components exceeding $T_{\text{CFAR}}$ undergo convex hull extraction 
 - **Estimated Beam ($W$)**: Minor axis dimension in meters.
 - **Orientation ($\theta_{\text{hull}}$)**: Primary geometric axis relative to True North.
 
+![Detected vessels with labeled bounding boxes in processed SAR imagery](assets/images/vessel-detection.jpg)
+
+*A representative detection output after thresholding, connected-component filtering, and vessel labeling.*
+
+![Complete SAR detection output with confidence-coded vessel annotations](assets/images/vessel-detections-overview.png)
+
+*The operational output preserves scene context while assigning each candidate a target number, confidence score, and correlation class.*
+
 ---
 
 ## 🚤 4. Hydrodynamic Wake Kinematics & Radon Transforms

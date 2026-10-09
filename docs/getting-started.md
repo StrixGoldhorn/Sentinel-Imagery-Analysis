@@ -130,6 +130,10 @@ python app.py
 gunicorn -c gunicorn.conf.py wsgi:app
 ```
 
+After launch, open `http://127.0.0.1:5050` to confirm that the tactical map and SAR scan controls load:
+
+![Tactical map displayed after a successful local launch](assets/images/tactical-map.png)
+
 ---
 
 ## 🧪 Step 5: Verifying the Test Suite

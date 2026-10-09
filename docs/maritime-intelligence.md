@@ -7,6 +7,14 @@ title: Maritime Intelligence Pipeline | Sentinel Imagery Analysis
 
 The Sentinel Imagery Analysis platform bridges raw satellite observations with operational maritime intelligence. By correlating radar detections against terrestrial/satellite AIS feeds, maritime legal frameworks, and physical kinematics, it automatically flags illicit activities at sea.
 
+![Sentinel-1 vessel detections outlined in a processed radar image](assets/images/vessel-detection.jpg)
+
+*Detected radar contacts become the inputs for AIS correlation, compliance assessment, and anomaly classification.*
+
+![Full processed SAR scene with numbered vessel detections and correlated contacts](assets/images/vessel-detections-overview.png)
+
+*The complete detection product labels 51 contacts and visually separates dark-vessel candidates from AIS-correlated shipping.*
+
 ---
 
 ## 🛰️ 1. AIS Telemetry Ingestion & Correlation
@@ -48,6 +56,10 @@ $$\vec{p}(T_{\text{SAR}}) = \vec{p}(T_{\text{AIS}}) + \vec{v}_{\text{SOG}} \cdot
 
 A radar contact is correlated with an AIS track if the distance $\Delta d \le R_{\text{gate}}$, where $R_{\text{gate}}$ accounts for time latency and maximum vessel maneuvering limits.
 
+![Kinematic route prediction and multi-sensor correlation product](assets/images/route-correlation.png)
+
+*The route-correlation product plots the monitored corridor, projected movement, intercept geometry, and correlated contact manifest.*
+
 ---
 
 ## 🚨 2. Dark Vessel Interdiction & SOLAS Compliance
@@ -64,6 +76,10 @@ Under **IMO SOLAS (Safety of Life at Sea) Convention Chapter V, Regulation 19**,
    - **High Threat**: Dark vessel loitering in vicinity of critical undersea infrastructure or sovereign borders.
    - **Medium Threat**: Dark vessel operating at transit speeds in international waters.
    - **Low Threat**: Small craft ($< 30\text{ m}$) exempt from mandatory SOLAS carriage.
+
+The scan gallery surfaces these results beside the source imagery and keeps the resulting tactical products available to operators:
+
+![Scan gallery showing vessel totals, AIS matches, and dark-vessel counts](assets/images/scan-gallery.png)
 
 ---
 

@@ -66,6 +66,10 @@ python -m sentinel_analysis annotate path/to/tiles
 
 The web service runs by default on port `5050` and provides JSON and binary endpoints.
 
+The web gallery uses the same endpoints documented below to expose detected ships, briefings, route corridors, and geospatial packages:
+
+![Gallery actions backed by the REST API export endpoints](assets/images/scan-gallery.png)
+
 ### Scans & Detection Endpoints
 
 | Endpoint | Method | Description |
@@ -78,6 +82,10 @@ The web service runs by default on port `5050` and provides JSON and binary endp
 | `/api/scan/<folder_name>/export/cot` | `GET` | Stream MIL-STD-2525 Cursor-on-Target XML event feed. |
 | `/api/scan/<folder_name>/briefing` | `GET` | Download publication-grade PDF Intelligence Briefing. |
 | `/api/scan/<folder_name>/route_correlation_image`| `GET` | Download standalone high-res nautical route corridor chart. |
+
+![Route-correlation PNG returned by the scan image endpoint](assets/images/route-correlation.png)
+
+*The route-correlation endpoint returns a briefing-ready visualization with corridor geometry, target telemetry, and correlation status.*
 
 ---
 

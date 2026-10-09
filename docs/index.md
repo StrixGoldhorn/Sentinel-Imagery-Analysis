@@ -8,6 +8,10 @@ title: Sentinel Imagery Analysis | User Guide & Operational Manual
 
 Welcome to the **Sentinel Imagery Analysis** User Guide and Technical Documentation. This platform delivers automated, end-to-end maritime intelligence by fusing European Space Agency (ESA) **Copernicus Sentinel-1 Synthetic Aperture Radar (SAR)** imagery, **Sentinel-2 multispectral optical** passes, **Automatic Identification System (AIS)** telemetry, hydrodynamic wake physics, and geospatial compliance boundaries.
 
+![Sentinel Imagery Analysis tactical map](assets/images/tactical-map.png)
+
+*The main workspace places SAR acquisition, monitored areas, contact filters, and temporal AIS controls around a shared maritime map.*
+
 ---
 
 ## 🧭 Documentation Sitemap & Guide Directory
@@ -73,6 +77,10 @@ Welcome to the **Sentinel Imagery Analysis** User Guide and Technical Documentat
 - **Google Earth KMZ**: Packaged `.kmz` bundles with georeferenced radar overlays, vessel polygons, and inspection metadata.
 - **ATAK / WinTAK Cursor-on-Target (CoT)**: Real-time MIL-STD-2525 compliant XML stream for direct tactical integration with field situational awareness systems.
 - **Executive PDF Briefings**: Multi-page intelligence documents with OpenSeaMap nautical chart overlays, dark ship dossiers, and corridor plots.
+
+![Generated intelligence briefing target dossier](assets/images/briefing-target-dossier.png)
+
+*Generated briefings preserve the source radar signature alongside map context, vessel dimensions, and the operational risk assessment.*
 
 ---
 
