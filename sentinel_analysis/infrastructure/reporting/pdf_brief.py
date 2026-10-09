@@ -28,6 +28,7 @@ from PIL import Image
 
 from sentinel_analysis.application.use_cases.generate_briefing import extract_scan_intelligence
 from sentinel_analysis.domain.entities import Scan
+from sentinel_analysis.infrastructure.detection.classifier import get_vessel_hierarchy_label
 from sentinel_analysis.infrastructure.reporting.nautical_chart import (
     build_nautical_basemap,
     render_nautical_chart_overlay,
@@ -111,11 +112,13 @@ class MatplotlibIntelligenceBriefGenerator:
         width_m = float(target.get("width_m", 0) or 0)
         aspect_ratio = length_m / max(width_m, 1.0)
         conf = float(target.get("confidence", 0) or 0)
-        vessel_class = (
-            target.get("vessel_type")
+        base_v_class = (
+            target.get("vessel_class")
+            or target.get("vessel_type")
+            or target.get("raw_detection", {}).get("vessel_class")
             or target.get("raw_detection", {}).get("estimated_class")
-            or ("Large Commercial / Cargo / Tanker" if length_m >= 100 else ("Medium Vessel" if length_m >= 45 else "Small Craft"))
         )
+        vessel_class = get_vessel_hierarchy_label(base_v_class, length_m, width_m)
         reasons = target.get("dark_vessel_reasons") or []
         risk_level = target.get("dark_vessel_risk", "HIGH" if is_solas else "MEDIUM")
         acq = scan.acquisition
@@ -1108,7 +1111,8 @@ class MatplotlibIntelligenceBriefGenerator:
                         v_name = target.get("vessel_name") or ais.get("vessel_name") or "Unknown AIS Vessel"
                         mmsi = str(target.get("mmsi") or ais.get("mmsi") or "N/A")
                         imo = str(ais.get("imo") or "N/A")
-                        v_type = target.get("vessel_type") or ais.get("vessel_type") or "Commercial Vessel"
+                        base_v_type = target.get("vessel_class") or target.get("vessel_type") or ais.get("vessel_type")
+                        v_type = get_vessel_hierarchy_label(base_v_type, length_val, width_val)
                         sog_val = float(ais.get("speed") or 0.0)
                         sog_str = f"{sog_val:.1f} kn" if sog_val > 0 else "Nominal / Anchor"
                         cog_val = float(ais.get("heading") or 0.0)
@@ -1118,7 +1122,7 @@ class MatplotlibIntelligenceBriefGenerator:
                         info_lines = [
                             ("Vessel Name", v_name[:18]),
                             ("MMSI // IMO", f"{mmsi} / {imo[:7]}"),
-                            ("Vessel Type", v_type[:18]),
+                            ("Vessel Type", v_type[:22]),
                             ("Position (SAR)", f"{lat_str}, {lon_str}"),
                             ("Position (AIS)", f"{format_lat(ais.get('latitude'))}, {format_lon(ais.get('longitude'))}"),
                             ("Dimensions", f"L: {length_val:.0f}m, B: {width_val:.0f}m"),

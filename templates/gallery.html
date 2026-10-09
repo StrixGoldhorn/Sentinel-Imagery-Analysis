@@ -98,6 +98,7 @@
                     {% if scan.metadata.latest_cv_results %}
                     <a href="/api/scan/{{ scan.folder }}/detection_image" target="_blank" rel="noopener noreferrer" class="btn btn-outline">Detected Ships</a>
                     <a href="/api/scan/{{ scan.folder }}/briefing/pdf" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="border-color: #3182ce; color: #2b6cb0; font-weight: 600;" title="Download Maritime Intelligence Briefing PDF">📄 Intel Brief (PDF)</a>
+                    <a href="/api/scan/{{ scan.folder }}/route_correlation_image" target="_blank" rel="noopener noreferrer" class="btn btn-outline" style="border-color: #805ad5; color: #6b46c1; font-weight: 600;" title="View High-Resolution Route Corridor & AIS Correlation Map">🌐 Route Corridor</a>
                     <a href="/api/scan/{{ scan.folder }}/geojson?download=1" class="btn btn-outline" download>GeoJSON</a>
                     <a href="/api/scan/{{ scan.folder }}/gis_bundle" class="btn btn-outline" download>GIS Bundle (.zip)</a>
                     <a href="/api/scan/{{ scan.folder }}/export/geotiff?download=1" class="btn btn-outline" download title="Download Georeferenced GeoTIFF (EPSG:4326)">GeoTIFF (.tif)</a>

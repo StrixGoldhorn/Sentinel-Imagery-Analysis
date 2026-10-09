@@ -14,6 +14,7 @@ from sentinel_analysis.infrastructure.detection.cfar import (
     go_cfar_2d,
     so_cfar_2d,
 )
+from sentinel_analysis.infrastructure.detection.classifier import classify_vessel_physical
 from sentinel_analysis.infrastructure.detection.wake import ShipWakeDetector
 from sentinel_analysis.infrastructure.imagery.preprocessing import preprocess_sar
 
@@ -198,7 +199,17 @@ class ClassicalShipDetector:
                     core_contrast = (core_mean - float(threshold)) / denom
                     confidence = float(np.clip(0.5 * peak_contrast + 0.5 * core_contrast, 0.1, 1.0))
                 else:
+                    peak_val = 200.0
+                    core_mean = 100.0
                     confidence = 0.5
+
+                # Physical SAR vessel classification
+                v_class, class_conf = classify_vessel_physical(
+                    length_m=length_m,
+                    beam_m=beam_m,
+                    mean_intensity=core_mean,
+                    peak_intensity=peak_val,
+                )
 
                 wake_detected = None
                 wake_heading = None
@@ -245,6 +256,8 @@ class ClassicalShipDetector:
                         wake_heading=wake_heading,
                         wake_speed_knots=wake_speed,
                         wake_confidence=wake_confidence,
+                        vessel_class=v_class,
+                        classification_confidence=class_conf,
                     )
                 )
 
