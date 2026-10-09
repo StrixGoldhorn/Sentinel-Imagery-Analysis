@@ -183,11 +183,22 @@ class ClassicalShipDetector:
                 box_pts = cv2.boxPoints(((cx, cy), (dim1, dim2), raw_angle))
                 polygon_pts = tuple((float(pt[0]), float(pt[1])) for pt in box_pts)
 
-                # Estimate detection confidence based on peak backscatter intensity
+                # Estimate detection confidence based on peak backscatter and ship core intensity
                 mask = np.zeros(image.shape, dtype=np.uint8)
                 cv2.drawContours(mask, [contour], -1, 255, -1)
-                mean_val = cv2.mean(image, mask=mask)[0]
-                confidence = float(np.clip((mean_val - threshold) / max(1.0, 255.0 - threshold), 0.1, 1.0))
+                vals = image[mask == 255]
+                if len(vals) > 0:
+                    peak_val = float(vals.max())
+                    target_pixels = vals[vals >= threshold]
+                    if len(target_pixels) == 0:
+                        target_pixels = vals[vals >= np.percentile(vals, 80)]
+                    core_mean = float(np.mean(target_pixels)) if len(target_pixels) > 0 else peak_val
+                    denom = max(1.0, 255.0 - float(threshold))
+                    peak_contrast = (peak_val - float(threshold)) / denom
+                    core_contrast = (core_mean - float(threshold)) / denom
+                    confidence = float(np.clip(0.5 * peak_contrast + 0.5 * core_contrast, 0.1, 1.0))
+                else:
+                    confidence = 0.5
 
                 wake_detected = None
                 wake_heading = None

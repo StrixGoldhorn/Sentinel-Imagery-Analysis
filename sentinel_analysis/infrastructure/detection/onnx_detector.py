@@ -417,7 +417,20 @@ class DeepLearningShipDetector:
             mean_val = float(cv2.mean(image, mask=mask)[0])
             min_val, max_val, _, _ = cv2.minMaxLoc(image, mask=mask)
 
-            det_conf = float(np.clip((mean_val - threshold) / max(1.0, 255.0 - threshold), 0.1, 1.0))
+            vals = image[mask == 255]
+            if len(vals) > 0:
+                peak_val = float(max_val)
+                target_pixels = vals[vals >= threshold]
+                if len(target_pixels) == 0:
+                    target_pixels = vals[vals >= np.percentile(vals, 80)]
+                core_mean = float(np.mean(target_pixels)) if len(target_pixels) > 0 else peak_val
+                denom = max(1.0, 255.0 - float(threshold))
+                peak_contrast = (peak_val - float(threshold)) / denom
+                core_contrast = (core_mean - float(threshold)) / denom
+                det_conf = float(np.clip(0.5 * peak_contrast + 0.5 * core_contrast, 0.1, 1.0))
+            else:
+                det_conf = 0.5
+
             if det_conf < conf_thresh:
                 continue
 
