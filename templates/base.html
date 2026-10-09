@@ -50,54 +50,152 @@
                 </a>
 
                 <ul class="nav-links" id="mainNavLinks">
-                    <li class="nav-item">
-                        <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
-                            Map Scan
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/ais" class="{{ 'active' if request.path.startswith('/ais') else '' }}">
-                            AIS Explorer
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/aois" class="{{ 'active' if request.path == '/aois' else '' }}">
-                            Areas of Interest
-                            <span class="nav-badge" id="navAoiBadge" style="display: none;">0</span>
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/schedule" class="{{ 'active' if request.path == '/schedule' else '' }}">
-                            Planned Scrapes
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="/gallery" class="{{ 'active' if request.path == '/gallery' else '' }}">
-                            Gallery
-                        </a>
-                    </li>
-                    <!-- Automations Dropdown -->
-                    <li class="nav-item dropdown" id="navDropdownAutomations">
-                        <button type="button" class="dropdown-trigger {{ 'active' if request.path in ('/post-pass', '/post_pass', '/ingestion', '/scrapers', '/logs') else '' }}" aria-expanded="false" onclick="toggleNavDropdown(event)">
-                            <span>Automations</span>
-                            <span class="dropdown-chevron">▾</span>
-                        </button>
-                        <div class="dropdown-menu" id="automationsDropdownMenu">
-                            <a href="/post-pass" class="dropdown-item {{ 'active' if request.path in ('/post-pass', '/post_pass', '/ingestion') else '' }}">
-                                <span>⚡</span> Post-Pass Ingestion
+                    <!-- 1. Operations -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/" class="nav-link-main {{ 'active' if request.path == '/' else '' }}">
+                                Operations
                             </a>
-                            <a href="/scrapers" class="dropdown-item {{ 'active' if request.path == '/scrapers' else '' }}">
-                                <span>🔌</span> AIS Scrapers
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Operations menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/" class="dropdown-item {{ 'active' if request.path == '/' else '' }}">
+                                <span>🗺️</span> Live Map
                             </a>
-                            <a href="/logs" class="dropdown-item {{ 'active' if request.path == '/logs' else '' }}">
-                                <span>📋</span> Scraper Logs
+                            <a href="/#alerts" class="dropdown-item">
+                                <span>🚨</span> Alerts
+                            </a>
+                            <a href="/#review-queue" class="dropdown-item">
+                                <span>📋</span> Review Queue
                             </a>
                         </div>
                     </li>
-                    <li class="nav-item">
-                        <a href="/settings" class="{{ 'active' if request.path == '/settings' else '' }}" title="Platform & Feature Configuration">
-                            Settings
-                        </a>
+
+                    <!-- 2. Investigations -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/gallery#cases" class="nav-link-main {{ 'active' if request.path.startswith('/investigations') else '' }}">
+                                Investigations
+                            </a>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Investigations menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/gallery#cases" class="dropdown-item">
+                                <span>🗂️</span> Active Cases
+                            </a>
+                            <a href="/gallery#evidence" class="dropdown-item">
+                                <span>🔍</span> Evidence Locker
+                            </a>
+                        </div>
+                    </li>
+
+                    <!-- 3. Imagery -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/gallery" class="nav-link-main {{ 'active' if request.path in ('/gallery', '/post-pass', '/post_pass') else '' }}">
+                                Imagery
+                            </a>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Imagery menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/gallery" class="dropdown-item {{ 'active' if request.path == '/gallery' else '' }}">
+                                <span>🖼️</span> Gallery
+                            </a>
+                            <a href="/gallery#comparison" class="dropdown-item">
+                                <span>🔄</span> Comparison
+                            </a>
+                            <a href="/post-pass" class="dropdown-item {{ 'active' if request.path in ('/post-pass', '/post_pass') else '' }}">
+                                <span>⚙️</span> Processing Pipeline
+                            </a>
+                        </div>
+                    </li>
+
+                    <!-- 4. Vessels -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/ais" class="nav-link-main {{ 'active' if request.path.startswith('/ais') else '' }}">
+                                Vessels
+                            </a>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Vessels menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/ais" class="dropdown-item {{ 'active' if request.path == '/ais' else '' }}">
+                                <span>🌐</span> AIS Explorer
+                            </a>
+                            <a href="/ais/activity" class="dropdown-item {{ 'active' if request.path == '/ais/activity' else '' }}">
+                                <span>📈</span> Ingestion Activity
+                            </a>
+                            <a href="/ais#watchlists" class="dropdown-item">
+                                <span>👁️</span> Watchlists
+                            </a>
+                            <a href="/ais#anomalies" class="dropdown-item">
+                                <span>🟣</span> Identity Anomalies
+                            </a>
+                        </div>
+                    </li>
+
+                    <!-- 5. Collection -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/aois" class="nav-link-main {{ 'active' if request.path in ('/aois', '/schedule') else '' }}">
+                                Collection
+                            </a>
+                            <span class="nav-badge" id="navAoiBadge" style="display: none;">0</span>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Collection menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/aois" class="dropdown-item {{ 'active' if request.path == '/aois' else '' }}">
+                                <span>📍</span> Areas of Interest
+                            </a>
+                            <a href="/schedule" class="dropdown-item {{ 'active' if request.path == '/schedule' else '' }}">
+                                <span>🛰️</span> Pass Planning
+                            </a>
+                            <a href="/post-pass#jobs" class="dropdown-item">
+                                <span>⏳</span> Acquisition Jobs
+                            </a>
+                        </div>
+                    </li>
+
+                    <!-- 6. Reports -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/gallery#reports" class="nav-link-main {{ 'active' if request.path.startswith('/reports') else '' }}">
+                                Reports
+                            </a>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Reports menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/gallery#briefings" class="dropdown-item">
+                                <span>📑</span> Executive Briefings
+                            </a>
+                            <a href="/gallery#exports" class="dropdown-item">
+                                <span>📦</span> Tactical Exports
+                            </a>
+                        </div>
+                    </li>
+
+                    <!-- 7. System -->
+                    <li class="nav-item dropdown">
+                        <div class="nav-item-wrapper">
+                            <a href="/settings" class="nav-link-main {{ 'active' if request.path in ('/scrapers', '/logs', '/settings') else '' }}">
+                                System
+                            </a>
+                            <button type="button" class="dropdown-toggle-btn" aria-label="Toggle System menu" onclick="toggleNavDropdown(event)">▾</button>
+                        </div>
+                        <div class="dropdown-menu">
+                            <a href="/scrapers" class="dropdown-item {{ 'active' if request.path == '/scrapers' else '' }}">
+                                <span>🔌</span> Provider Health
+                            </a>
+                            <a href="/scrapers#tasks" class="dropdown-item">
+                                <span>⚡</span> Tasks & Workers
+                            </a>
+                            <a href="/logs" class="dropdown-item {{ 'active' if request.path == '/logs' else '' }}">
+                                <span>📋</span> Audit Logs
+                            </a>
+                            <a href="/settings" class="dropdown-item {{ 'active' if request.path == '/settings' else '' }}">
+                                <span>⚙️</span> Settings
+                            </a>
+                        </div>
                     </li>
                 </ul>
             </div>
@@ -247,16 +345,23 @@
         }
         setInterval(updateClocks, 1000);
         updateClocks();
-
         // 2. Dropdown & Mobile Handlers
         function toggleNavDropdown(e) {
             e.preventDefault();
             e.stopPropagation();
-            const dd = document.getElementById('navDropdownAutomations');
-            if (dd) {
-                dd.classList.toggle('open');
-                const menu = document.getElementById('automationsDropdownMenu');
-                if (menu) menu.classList.toggle('show');
+            const currentItem = e.currentTarget.closest('.dropdown');
+            const wasOpen = currentItem ? currentItem.classList.contains('open') : false;
+
+            document.querySelectorAll('.nav-item.dropdown').forEach(dd => {
+                dd.classList.remove('open');
+                const menu = dd.querySelector('.dropdown-menu');
+                if (menu) menu.classList.remove('show');
+            });
+
+            if (!wasOpen && currentItem) {
+                currentItem.classList.add('open');
+                const menu = currentItem.querySelector('.dropdown-menu');
+                if (menu) menu.classList.add('show');
             }
         }
 
@@ -266,22 +371,22 @@
         }
 
         document.addEventListener('click', function(e) {
-            const dd = document.getElementById('navDropdownAutomations');
-            if (dd && !dd.contains(e.target)) {
-                dd.classList.remove('open');
-                const menu = document.getElementById('automationsDropdownMenu');
-                if (menu) menu.classList.remove('show');
+            if (!e.target.closest('.dropdown')) {
+                document.querySelectorAll('.nav-item.dropdown').forEach(dd => {
+                    dd.classList.remove('open');
+                    const menu = dd.querySelector('.dropdown-menu');
+                    if (menu) menu.classList.remove('show');
+                });
             }
         });
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
-                const dd = document.getElementById('navDropdownAutomations');
-                if (dd) {
+                document.querySelectorAll('.nav-item.dropdown').forEach(dd => {
                     dd.classList.remove('open');
-                    const menu = document.getElementById('automationsDropdownMenu');
+                    const menu = dd.querySelector('.dropdown-menu');
                     if (menu) menu.classList.remove('show');
-                }
+                });
             }
         });
 

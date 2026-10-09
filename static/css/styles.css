@@ -246,6 +246,7 @@ body {
 .nav-links {
     display: flex;
     align-items: center;
+    gap: 12px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -253,33 +254,68 @@ body {
 
 .nav-item {
     position: relative;
-    margin-left: 18px;
+    margin-left: 0;
 }
 
-.nav-links a, .dropdown-trigger {
+.nav-item-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.nav-link-main,
+.nav-links a,
+.dropdown-trigger {
     color: var(--theme-nav-text);
     text-decoration: none;
     font-weight: 500;
-    font-size: 0.92rem;
+    font-size: 0.90rem;
     padding: 6px 4px;
     transition: color 0.2s, border-color 0.2s;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     background: transparent;
     border: none;
     font-family: inherit;
     cursor: pointer;
 }
 
-.nav-links a:hover, .dropdown-trigger:hover {
+.nav-link-main:hover,
+.nav-links a:hover,
+.dropdown-trigger:hover {
     color: var(--theme-nav-accent);
 }
 
-.nav-links a.active, .dropdown-trigger.active {
+.nav-link-main.active,
+.nav-links a.active,
+.dropdown-trigger.active {
     color: var(--theme-nav-accent);
     border-bottom: 2px solid var(--theme-nav-accent);
     padding-bottom: 4px;
+}
+
+.dropdown-toggle-btn {
+    background: transparent;
+    border: none;
+    color: var(--theme-nav-text);
+    padding: 4px 3px;
+    cursor: pointer;
+    font-size: 0.72rem;
+    transition: color 0.2s, transform 0.2s;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+}
+
+.dropdown-toggle-btn:hover {
+    color: var(--theme-nav-accent);
+}
+
+.dropdown:hover .dropdown-toggle-btn,
+.dropdown.open .dropdown-toggle-btn {
+    transform: rotate(180deg);
+    color: var(--theme-nav-accent);
 }
 
 .nav-badge {
@@ -423,7 +459,13 @@ body {
         display: flex;
     }
     .nav-item {
-        margin: 6px 0;
+        margin: 4px 0;
+        width: 100%;
+    }
+    .nav-item-wrapper {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         width: 100%;
     }
     .dropdown-menu {
