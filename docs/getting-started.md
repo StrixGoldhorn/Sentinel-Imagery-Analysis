@@ -27,7 +27,7 @@ This guide walks you through setting up, configuring, and launching the Sentinel
 ### Windows (PowerShell)
 ```powershell
 # Clone repository
-git clone https://github.com/username/Sentinel-Imagery-Analysis.git
+git clone https://github.com/StrixGoldhorn/Sentinel-Imagery-Analysis.git
 cd "Sentinel-Imagery-Analysis"
 
 # Create and activate virtual environment
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 ### Linux / macOS (Bash / Zsh)
 ```bash
 # Clone repository
-git clone https://github.com/username/Sentinel-Imagery-Analysis.git
+git clone https://github.com/StrixGoldhorn/Sentinel-Imagery-Analysis.git
 cd Sentinel-Imagery-Analysis
 
 # Install system libraries for OpenCV (Ubuntu/Debian)

@@ -5,10 +5,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/username/Sentinel-Imagery-Analysis/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-Passing-brightgreen.svg?style=flat-square" alt="CI Status"></a>
+  <a href="https://github.com/strixgoldhorn/Sentinel-Imagery-Analysis/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-Passing-brightgreen.svg?style=flat-square" alt="CI Status"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue.svg?style=flat-square" alt="Python Versions"></a>
   <a href="ARCHITECTURE.md"><img src="https://img.shields.io/badge/Architecture-Clean%20Architecture-teal.svg?style=flat-square" alt="Architecture"></a>
-  <a href="https://username.github.io/Sentinel-Imagery-Analysis/"><img src="https://img.shields.io/badge/Documentation-GitHub%20Pages-blueviolet.svg?style=flat-square" alt="Docs"></a>
+  <a href="https://strixgoldhorn.github.io/Sentinel-Imagery-Analysis/"><img src="https://img.shields.io/badge/Documentation-GitHub%20Pages-blueviolet.svg?style=flat-square" alt="Docs"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License"></a>
 </p>
 
@@ -85,7 +85,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) and [SYSTEM_ARCHITECTURE_REPORT.md](SYSTE
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/username/Sentinel-Imagery-Analysis.git
+git clone https://github.com/StrixGoldhorn/Sentinel-Imagery-Analysis.git
 cd Sentinel-Imagery-Analysis
 
 # 2. Create virtual environment
@@ -184,25 +184,6 @@ python -m sentinel_analysis annotate path/to/tiles
 
 ---
 
-## 📚 Complete User Guide on GitHub Pages
-
-A comprehensive, multi-section operational manual is published with **GitHub Pages**:
-
-- 🚀 [**Getting Started & Installation**](https://username.github.io/Sentinel-Imagery-Analysis/getting-started.html)
-- 🗺️ [**Tactical C2 Web Interface Guide**](https://username.github.io/Sentinel-Imagery-Analysis/c2-web-interface.html)
-- 🛰️ [**Maritime Intelligence & Anomaly Pipeline**](https://username.github.io/Sentinel-Imagery-Analysis/maritime-intelligence.html)
-- ⚡ [**Sensor Processing, Radar Physics & CV**](https://username.github.io/Sentinel-Imagery-Analysis/sensor-physics-cv.html)
-- 📑 [**Reporting & Interoperability Exports (KMZ/CoT)**](https://username.github.io/Sentinel-Imagery-Analysis/reporting-and-exports.html)
-- 💻 [**CLI & REST API Reference**](https://username.github.io/Sentinel-Imagery-Analysis/cli-and-api.html)
-
-### Deploying the User Guide to GitHub Pages
-
-1. Navigate to your repository on GitHub.
-2. Go to **Settings** > **Pages**.
-3. Under **Build and deployment**:
-   - **Option A (Recommended)**: Set **Source** to **GitHub Actions**. The included `.github/workflows/pages.yml` workflow will automatically build and publish the Jekyll site upon push.
-   - **Option B**: Set **Source** to **Deploy from a branch**, select branch `main`, and folder `/docs`.
-4. Your documentation will be live at `https://<username>.github.io/<repo-name>/`.
 
 ---
 

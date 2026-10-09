@@ -10,7 +10,7 @@ kramdown:
   syntax_highlighter: rouge
 
 # Repository and Project Info
-repository: "username/Sentinel-Imagery-Analysis"
+repository: "StrixGoldhorn/Sentinel-Imagery-Analysis"
 show_downloads: true
 
 # Navigation links for pages
