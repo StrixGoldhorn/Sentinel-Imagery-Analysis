@@ -1,0 +1,36 @@
+# GitHub Pages Configuration
+title: "Sentinel Imagery Analysis"
+description: "Maritime Domain Awareness, SAR Dark Vessel Detection & Multi-Sensor Intelligence Platform"
+theme: jekyll-theme-slate
+
+# Markdown Processing
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+# Repository and Project Info
+repository: "username/Sentinel-Imagery-Analysis"
+show_downloads: true
+
+# Navigation links for pages
+nav_links:
+  - title: "Home"
+    url: "/"
+  - title: "Getting Started"
+    url: "/getting-started"
+  - title: "C2 Tactical Web UI"
+    url: "/c2-web-interface"
+  - title: "Maritime Intelligence"
+    url: "/maritime-intelligence"
+  - title: "Sensor Physics & CV"
+    url: "/sensor-physics-cv"
+  - title: "Reporting & Exports"
+    url: "/reporting-and-exports"
+  - title: "CLI & API Reference"
+    url: "/cli-and-api"
+
+# Plugins supported by GitHub Pages
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
