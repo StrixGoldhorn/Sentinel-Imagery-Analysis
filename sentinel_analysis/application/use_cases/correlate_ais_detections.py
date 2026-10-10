@@ -784,6 +784,13 @@ class CorrelateDetectionsWithAIS:
                 wake_heading = det.get("wake_heading")
                 wake_speed_knots = det.get("wake_speed_knots")
                 wake_confidence = det.get("wake_confidence")
+                v_class = det.get("vessel_class")
+                class_conf = det.get("classification_confidence")
+                det_prov = det.get("provenance")
+                opt_status = det.get("optical_status")
+                opt_conf = det.get("optical_confirmed")
+                opt_conf_score = det.get("optical_confidence")
+                temp_change = det.get("temporal_change_type")
             else:
                 x = float(det.x)
                 y = float(det.y)
@@ -800,6 +807,13 @@ class CorrelateDetectionsWithAIS:
                 wake_heading = getattr(det, "wake_heading", None)
                 wake_speed_knots = getattr(det, "wake_speed_knots", None)
                 wake_confidence = getattr(det, "wake_confidence", None)
+                v_class = getattr(det, "vessel_class", None)
+                class_conf = getattr(det, "classification_confidence", None)
+                det_prov = getattr(det, "provenance", None)
+                opt_status = getattr(det, "optical_status", None)
+                opt_conf = getattr(det, "optical_confirmed", None)
+                opt_conf_score = getattr(det, "optical_confidence", None)
+                temp_change = getattr(det, "temporal_change_type", None)
 
             center_x = float(cx) if cx is not None else (x + w / 2.0)
             center_y = float(cy) if cy is not None else (y + h / 2.0)
@@ -861,6 +875,13 @@ class CorrelateDetectionsWithAIS:
                 "correlation_status": "uncorrelated",
                 "is_correlated": False,
                 "correlated_ais": None,
+                "vessel_class": v_class,
+                "classification_confidence": class_conf,
+                "provenance": det_prov,
+                "optical_status": opt_status,
+                "optical_confirmed": opt_conf,
+                "optical_confidence": opt_conf_score,
+                "temporal_change_type": temp_change,
             })
 
         # 2. Pre-process candidates with kinematic trajectory interpolation / dead-reckoning

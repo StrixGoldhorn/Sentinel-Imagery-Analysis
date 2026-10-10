@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from math import cos, isfinite, radians
-from typing import Optional
+from typing import Any, Optional
 
 from sentinel_analysis.domain.exceptions import DomainValidationError
 
@@ -238,6 +238,7 @@ class ShipDetection:
     optical_confirmed: Optional[bool] = None
     optical_confidence: Optional[float] = None
     temporal_change_type: Optional[str] = None
+    provenance: Optional[dict[str, Any]] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -302,6 +303,10 @@ class ShipDetection:
             object.__setattr__(self, "optical_confidence", opt_conf)
         if self.temporal_change_type is not None:
             object.__setattr__(self, "temporal_change_type", _required_text(self.temporal_change_type, "Temporal change type"))
+        if self.provenance is not None:
+            if not isinstance(self.provenance, dict):
+                raise DomainValidationError("Detection provenance must be a dictionary")
+            object.__setattr__(self, "provenance", dict(self.provenance))
 
 
 @dataclass(frozen=True)

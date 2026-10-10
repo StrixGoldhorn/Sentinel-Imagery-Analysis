@@ -9,18 +9,45 @@ import cv2
 import numpy as np
 
 from sentinel_analysis.domain.entities import ShipDetection
+from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 
 
-def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> dict[str, Any]:
-    """Normalize a ShipDetection entity or dictionary into a serializable dictionary."""
+def _serialize_detection(
+    item: ShipDetection | dict[str, Any],
+    index: int,
+    default_provenance: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Normalize a ShipDetection entity or dictionary into a serializable dictionary with complete provenance."""
     if isinstance(item, dict):
         data = dict(item)
         data.setdefault("index", index)
+        prov_dict = data.get("provenance") or default_provenance or {}
+        normalized_prov = build_preprocessing_provenance(metadata=data, **prov_dict)
+        data["provenance"] = normalized_prov
+        for k in (
+            "orbit",
+            "product_id",
+            "polarization",
+            "processing_baseline",
+            "calibration_method",
+            "terrain_correction",
+            "dem",
+            "speckle_filtering",
+            "pixel_spacing",
+            "model_version",
+            "thresholds",
+            "source_checksum",
+            "source_checksums",
+        ):
+            data.setdefault(k, normalized_prov[k])
         return data
 
     pts = getattr(item, "polygon_points", None)
     if pts is not None:
         pts = [[round(float(p[0]), 2), round(float(p[1]), 2)] for p in pts]
+
+    item_prov = getattr(item, "provenance", None) or default_provenance or {}
+    normalized_prov = build_preprocessing_provenance(**item_prov)
 
     return {
         "index": index,
@@ -50,6 +77,20 @@ def _serialize_detection(item: ShipDetection | dict[str, Any], index: int) -> di
         "correlation_status": "uncorrelated",
         "is_correlated": False,
         "correlated_ais": None,
+        "provenance": normalized_prov,
+        "orbit": normalized_prov["orbit"],
+        "product_id": normalized_prov["product_id"],
+        "polarization": normalized_prov["polarization"],
+        "processing_baseline": normalized_prov["processing_baseline"],
+        "calibration_method": normalized_prov["calibration_method"],
+        "terrain_correction": normalized_prov["terrain_correction"],
+        "dem": normalized_prov["dem"],
+        "speckle_filtering": normalized_prov["speckle_filtering"],
+        "pixel_spacing": normalized_prov["pixel_spacing"],
+        "model_version": normalized_prov["model_version"],
+        "thresholds": normalized_prov["thresholds"],
+        "source_checksum": normalized_prov["source_checksum"],
+        "source_checksums": normalized_prov["source_checksums"],
     }
 
 
@@ -154,6 +195,21 @@ def _build_geojson_feature_collection(
             "optical_confirmed": d.get("optical_confirmed"),
             "optical_confidence": d.get("optical_confidence"),
             "temporal_change_type": d.get("temporal_change_type"),
+            # Preprocessing Provenance
+            "orbit": d.get("orbit"),
+            "product_id": d.get("product_id"),
+            "polarization": d.get("polarization"),
+            "processing_baseline": d.get("processing_baseline"),
+            "calibration_method": d.get("calibration_method"),
+            "terrain_correction": d.get("terrain_correction"),
+            "dem": d.get("dem"),
+            "speckle_filtering": d.get("speckle_filtering"),
+            "pixel_spacing": d.get("pixel_spacing"),
+            "model_version": d.get("model_version"),
+            "thresholds": d.get("thresholds"),
+            "source_checksum": d.get("source_checksum"),
+            "source_checksums": d.get("source_checksums"),
+            "provenance": d.get("provenance"),
         }
 
         features.append({
@@ -224,10 +280,17 @@ def save_detection_results(
     target_dir = target_img.parent
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    default_prov = build_preprocessing_provenance(
+        image_path=target_img,
+        metadata=metadata,
+        dem=metadata.get("dem") if metadata else None,
+        thresholds=metadata if metadata else None,
+    )
+
     # 1. Normalize and structure detections
     serialized_detections: list[dict[str, Any]] = []
     for idx, det in enumerate(detections):
-        serialized_detections.append(_serialize_detection(det, idx))
+        serialized_detections.append(_serialize_detection(det, idx, default_provenance=default_prov))
 
     # 2. Render visual annotations on the image
     img = cv2.imread(str(target_img), cv2.IMREAD_COLOR) if target_img.is_file() else None

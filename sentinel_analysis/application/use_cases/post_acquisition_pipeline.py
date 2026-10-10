@@ -26,6 +26,7 @@ from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
 from sentinel_analysis.application.use_cases.manage_alerts import DispatchMaritimeAlert
 from sentinel_analysis.domain.entities import MaritimeAlert, Scan
+from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,7 @@ class PostAcquisitionPipeline:
                     "is_course_spoofed": getattr(item, "is_course_spoofed", None),
                     "vessel_class": getattr(item, "vessel_class", None),
                     "classification_confidence": getattr(item, "classification_confidence", None),
+                    "provenance": getattr(item, "provenance", None),
                     "correlation_status": "uncorrelated",
                     "is_correlated": False,
                     "is_dark_vessel": False,
@@ -227,6 +229,39 @@ class PostAcquisitionPipeline:
                     "dark_vessel_score": 0.0,
                     "correlated_ais": None,
                 })
+
+        # Enrich all detections with sensor, orbit, product ID, and preprocessing provenance
+        for det_dict in enriched_detections:
+            existing_prov = det_dict.get("provenance") or {}
+            det_prov = build_preprocessing_provenance(
+                scan=scan,
+                image_path=scan.image_path,
+                dem_path=dem_path,
+                vh_path=vh_path,
+                metadata=scan.metadata,
+                thresholds={
+                    "threshold": threshold,
+                    "coastal_buffer_pixels": coastal_buffer,
+                },
+                **existing_prov,
+            )
+            det_dict["provenance"] = det_prov
+            for k in (
+                "orbit",
+                "product_id",
+                "polarization",
+                "processing_baseline",
+                "calibration_method",
+                "terrain_correction",
+                "dem",
+                "speckle_filtering",
+                "pixel_spacing",
+                "model_version",
+                "thresholds",
+                "source_checksum",
+                "source_checksums",
+            ):
+                det_dict[k] = det_prov[k]
 
         # 5. Operational Intelligence: EEZ & MPA Geofencing, STS Transshipment & Anomaly Analysis
         report(65, "Evaluating EEZ & MPA geofencing rules and STS transshipment patterns")

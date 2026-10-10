@@ -8,6 +8,7 @@ import numpy as np
 
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
+from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 from sentinel_analysis.infrastructure.detection.cfar import (
     ca_cfar_2d,
     fuse_dual_polarization,
@@ -135,6 +136,24 @@ class ClassicalShipDetector:
             if vh_image is not None:
                 image = fuse_dual_polarization(image, vh_image, mode=dual_pol_mode)
 
+        det_provenance = build_preprocessing_provenance(
+            image_path=image_path,
+            dem_path=dem_path,
+            vh_path=resolved_vh_path,
+            speckle_filtering=filter_type,
+            pixel_spacing=pixel_spacing,
+            model_version=f"Classical-{method.upper()}-v2.1",
+            thresholds={
+                "threshold": threshold,
+                "coastal_buffer_pixels": buffer_px,
+                "min_area": minimum_area,
+                "max_area": maximum_area,
+                "cfar_factor": cfar_factor if method == "cfar" else None,
+                "cfar_guard_size": cfar_guard if method == "cfar" else None,
+                "cfar_train_size": cfar_train if method == "cfar" else None,
+            },
+        )
+
         if dem_path is not None:
             image = self._mask_land(image, dem_path, coastal_buffer_pixels=buffer_px, morph_close_kernel=morph_close_kernel)
 
@@ -258,6 +277,7 @@ class ClassicalShipDetector:
                         wake_confidence=wake_confidence,
                         vessel_class=v_class,
                         classification_confidence=class_conf,
+                        provenance=det_provenance,
                     )
                 )
 

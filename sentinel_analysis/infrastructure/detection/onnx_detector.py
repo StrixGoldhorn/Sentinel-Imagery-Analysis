@@ -15,6 +15,7 @@ import numpy as np
 
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
+from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 from sentinel_analysis.infrastructure.detection.wake import ShipWakeDetector
 from sentinel_analysis.infrastructure.imagery.preprocessing import preprocess_sar
 
@@ -330,6 +331,20 @@ class DeepLearningShipDetector:
             # High-sensitivity candidate proposal stage followed by SAR-CNN classification
             raw_candidates = self._run_proposal_candidates(image, threshold, conf_thresh, pixel_spacing)
 
+        # Build preprocessing provenance
+        det_provenance = build_preprocessing_provenance(
+            image_path=image_path,
+            dem_path=dem_path,
+            pixel_spacing=pixel_spacing,
+            model_version="DeepLearning-OBB-v2.1",
+            thresholds={
+                "conf_threshold": conf_thresh,
+                "iou_threshold": nms_thresh,
+                "coastal_buffer_pixels": buffer_px,
+                "threshold": threshold,
+            },
+        )
+
         # Apply Rotated Non-Maximum Suppression
         final_detections = self._apply_rotated_nms(
             image,
@@ -338,6 +353,7 @@ class DeepLearningShipDetector:
             nms_thresh=nms_thresh,
             pixel_spacing=pixel_spacing,
             do_wake=do_wake,
+            provenance=det_provenance,
         )
 
         return DetectionResult(final_detections, img_w, img_h)
@@ -527,6 +543,7 @@ class DeepLearningShipDetector:
         nms_thresh: float,
         pixel_spacing: float,
         do_wake: bool,
+        provenance: Optional[dict[str, Any]] = None,
     ) -> list[ShipDetection]:
         """Apply Rotated NMS and build final ShipDetection domain entities."""
         if not candidates:
@@ -630,6 +647,7 @@ class DeepLearningShipDetector:
                     wake_heading=wake_heading,
                     wake_speed_knots=wake_speed,
                     wake_confidence=wake_confidence,
+                    provenance=provenance,
                 )
             )
 
