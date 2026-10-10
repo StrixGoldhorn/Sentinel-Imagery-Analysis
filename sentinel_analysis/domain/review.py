@@ -186,6 +186,11 @@ class ReviewRecord:
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     history: list[ReviewHistoryEntry] = field(default_factory=list)
 
+    lat: float | None = None
+    lng: float | None = None
+    geo_bbox: dict[str, Any] | None = None
+    custom_crop_url: str | None = None
+
     @property
     def is_reviewed(self) -> bool:
         return self.disposition in (
@@ -200,6 +205,46 @@ class ReviewRecord:
         if self.corrected_bbox is not None:
             return self.corrected_bbox
         return self.original_bbox
+
+    @property
+    def effective_lat(self) -> float | None:
+        if self.lat is not None:
+            return self.lat
+        if isinstance(self.original_bbox, dict):
+            val = self.original_bbox.get("lat", self.original_bbox.get("latitude"))
+            if val is not None:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        return None
+
+    @property
+    def effective_lng(self) -> float | None:
+        if self.lng is not None:
+            return self.lng
+        if isinstance(self.original_bbox, dict):
+            val = self.original_bbox.get("lng", self.original_bbox.get("longitude"))
+            if val is not None:
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    pass
+        return None
+
+    @property
+    def effective_geo_bbox(self) -> dict[str, Any] | None:
+        if self.geo_bbox is not None:
+            return self.geo_bbox
+        if isinstance(self.original_bbox, dict) and "geo_bbox" in self.original_bbox:
+            return self.original_bbox["geo_bbox"]
+        return None
+
+    @property
+    def crop_url(self) -> str:
+        if self.custom_crop_url:
+            return self.custom_crop_url
+        return f"/api/scan/{self.scan_id}/crop?detection_idx={self.detection_idx}&padding=80&raw=1"
 
     def to_dict(self) -> dict[str, Any]:
         c_at = self.created_at
@@ -228,6 +273,10 @@ class ReviewRecord:
             "comments": self.comments,
             "reason_codes": list(self.reason_codes),
             "is_reviewed": self.is_reviewed,
+            "crop_url": self.crop_url,
+            "lat": self.effective_lat,
+            "lng": self.effective_lng,
+            "geo_bbox": self.effective_geo_bbox,
             "created_at": c_at.astimezone(timezone.utc).isoformat(),
             "updated_at": u_at.astimezone(timezone.utc).isoformat(),
             "history": [h.to_dict() for h in self.history],

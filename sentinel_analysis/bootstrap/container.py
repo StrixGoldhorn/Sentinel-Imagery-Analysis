@@ -328,7 +328,7 @@ class ApplicationContainer:
 
         self.submit_review = SubmitAnalystReview(self.review_repository, self.scan_repository)
         self.list_review_queue = ListReviewQueue(self.review_repository, self.scan_repository)
-        self.get_review_details = GetReviewDetails(self.review_repository)
+        self.get_review_details = GetReviewDetails(self.review_repository, self.scan_repository)
         self.export_reviewed_dataset = ExportReviewedDataset(
             self.review_repository,
             scan_repo=self.scan_repository,

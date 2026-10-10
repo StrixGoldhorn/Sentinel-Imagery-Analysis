@@ -3,6 +3,7 @@
 {% block title %}Analyst Review Queue - Sentinel Analysis{% endblock %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
 .review-container {
     max-width: 1600px;
@@ -262,34 +263,321 @@
     gap: 1.5rem;
 }
 
-.image-inspection-box {
+/* Tactical Split Inspection Cockpit */
+.inspection-cockpit-toolbar {
     display: flex;
-    gap: 1.5rem;
-    background: #090d16;
-    border-radius: 8px;
-    padding: 1rem;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    min-height: 280px;
-    position: relative;
+    background: #0f172a;
     border: 1px solid #1e293b;
+    border-radius: 8px;
+    padding: 0.6rem 0.9rem;
+    gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
-.crop-canvas-wrapper {
+.view-mode-group, .padding-mode-group {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.toolbar-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-right: 0.25rem;
+    letter-spacing: 0.5px;
+}
+
+.tool-chip-btn {
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 0.28rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.tool-chip-btn:hover {
+    background: #334155;
+    color: #f8fafc;
+}
+
+.tool-chip-btn.active {
+    background: #0284c7;
+    border-color: #38bdf8;
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(2, 132, 199, 0.4);
+}
+
+.inspection-split-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    min-height: 420px;
+}
+
+.inspection-split-grid.sar-only {
+    grid-template-columns: 1fr;
+}
+.inspection-split-grid.sar-only .chart-pane {
+    display: none !important;
+}
+
+.inspection-split-grid.chart-only {
+    grid-template-columns: 1fr;
+}
+.inspection-split-grid.chart-only .sar-pane {
+    display: none !important;
+}
+
+@media (max-width: 1100px) {
+    .inspection-split-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sar-pane, .chart-pane {
+    background: #090d16;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     position: relative;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.pane-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.55rem 0.85rem;
+    background: #0f172a;
+    border-bottom: 1px solid #1e293b;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.pane-badge {
+    background: rgba(2, 132, 199, 0.2);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #38bdf8;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.sar-image-stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 1rem;
+    min-height: 340px;
+    background-image: 
+        linear-gradient(rgba(30, 41, 59, 0.3) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30, 41, 59, 0.3) 1px, transparent 1px);
+    background-size: 20px 20px;
+    background-position: center center;
+    overflow: hidden;
+}
+
+.sar-display-container {
+    position: relative;
+    display: inline-block;
     max-width: 100%;
     max-height: 380px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
-.crop-canvas-wrapper img {
+.sar-display-container img {
+    display: block;
     max-width: 100%;
     max-height: 360px;
     border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     border: 1px solid #334155;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65);
+    transition: filter 0.2s ease;
+}
+
+.sar-display-container img.filter-sar-boost {
+    filter: contrast(170%) brightness(125%);
+}
+
+.sar-display-container img.filter-invert {
+    filter: invert(100%) contrast(140%);
+}
+
+.sar-reticle-box {
+    position: absolute;
+    border: 2px solid #10b981;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.8), inset 0 0 6px rgba(16, 185, 129, 0.35);
+    pointer-events: none;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    border-radius: 2px;
+}
+
+.sar-reticle-box::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    transform: translate(-50%, -50%);
+    background: #10b981;
+    border-radius: 50%;
+    box-shadow: 0 0 5px #10b981;
+}
+
+.sar-reticle-tag {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 3px;
+    background: rgba(16, 185, 129, 0.95);
+    color: #064e3b;
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 2px;
+    white-space: nowrap;
+    text-transform: uppercase;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.sar-metrics-strip {
+    display: flex;
+    justify-content: space-around;
+    background: #0b1120;
+    border-top: 1px solid #1e293b;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+
+.sar-metric-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sar-metric-item .lbl {
+    font-size: 0.62rem;
+    color: #64748b;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.sar-metric-item .val {
+    font-weight: 700;
+    color: #38bdf8;
+}
+
+/* Nautical Map Pane */
+.chart-map-wrapper {
+    flex: 1;
+    min-height: 340px;
+    position: relative;
+    background: #090d16;
+}
+
+#reviewMap {
+    width: 100%;
+    height: 100%;
+    min-height: 340px;
+    background: #0f172a;
+}
+
+.map-layer-slider-bar {
+    background: #0f172a;
+    border-top: 1px solid #1e293b;
+    padding: 0.6rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.74rem;
+    color: #cbd5e1;
+}
+
+.slider-row label {
+    width: 145px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.slider-row input[type="range"] {
+    flex: 1;
+    accent-color: #0284c7;
+    height: 5px;
+    cursor: pointer;
+}
+
+.slider-val-tag {
+    width: 40px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #38bdf8;
+    font-size: 0.75rem;
+}
+
+/* Pulsing Leaflet Target Marker */
+.tactical-target-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.target-pulse-ring {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    border: 2px solid #ef4444;
+    border-radius: 50%;
+    animation: targetBeaconPulse 2s infinite ease-out;
+}
+
+.target-core-dot {
+    width: 11px;
+    height: 11px;
+    background: #ef4444;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 6px #ef4444;
+}
+
+@keyframes targetBeaconPulse {
+    0% { transform: scale(0.6); opacity: 1; }
+    100% { transform: scale(2.0); opacity: 0; }
 }
 
 /* Inspection Meta Grid */
@@ -534,10 +822,107 @@ textarea.form-control {
             </div>
 
             <div class="cockpit-body" id="cockpitContent" style="display: none;">
-                <!-- Image & Overlay Section -->
-                <div class="image-inspection-box">
-                    <div class="crop-canvas-wrapper" id="cropWrapper">
-                        <img id="cropImg" src="" alt="Vessel Detection Crop" />
+                <!-- Inspection Controls Toolbar -->
+                <div class="inspection-cockpit-toolbar">
+                    <div class="view-mode-group">
+                        <span class="toolbar-label">Layout:</span>
+                        <button type="button" class="tool-chip-btn active" id="btnViewSplit" onclick="setViewMode('split')">Split View</button>
+                        <button type="button" class="tool-chip-btn" id="btnViewSar" onclick="setViewMode('sar-only')">SAR Crop</button>
+                        <button type="button" class="tool-chip-btn" id="btnViewChart" onclick="setViewMode('chart-only')">Nautical Chart</button>
+                    </div>
+
+                    <div class="padding-mode-group">
+                        <span class="toolbar-label">Surroundings:</span>
+                        <button type="button" class="tool-chip-btn" data-pad="35" onclick="setContextPadding(35)">Tight (35px)</button>
+                        <button type="button" class="tool-chip-btn active" data-pad="80" onclick="setContextPadding(80)">Standard (80px)</button>
+                        <button type="button" class="tool-chip-btn" data-pad="140" onclick="setContextPadding(140)">Wide (140px)</button>
+                        <button type="button" class="tool-chip-btn" data-pad="220" onclick="setContextPadding(220)">Regional (220px)</button>
+                    </div>
+
+                    <div style="display: flex; gap: 0.65rem; align-items: center;">
+                        <label style="font-size: 0.74rem; color: #cbd5e1; display: flex; align-items: center; gap: 0.35rem; cursor: pointer; user-select: none; margin: 0;">
+                            <input type="checkbox" id="toggleReticleCheckbox" checked onchange="toggleReticle(this.checked)"> Target Reticle
+                        </label>
+                        <select id="contrastSelect" class="form-control" style="padding: 0.15rem 0.4rem; font-size: 0.72rem; height: 26px; background: #1e293b; color: #e2e8f0; border: 1px solid #334155;" onchange="setContrastMode(this.value)">
+                            <option value="normal">Normal SAR</option>
+                            <option value="boost">SAR Boost</option>
+                            <option value="invert">Inverted</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Tactical Split Grid Inspection Area -->
+                <div class="inspection-split-grid" id="inspectionSplitGrid">
+                    <!-- Left: SAR Target & Context Surroundings -->
+                    <div class="sar-pane">
+                        <div class="pane-header-bar">
+                            <span>SAR Radar Backscatter Imagery</span>
+                            <span class="pane-badge" id="sarContextBadge">±80px Context</span>
+                        </div>
+                        <div class="sar-image-stage" id="sarStage">
+                            <div class="sar-display-container" id="sarContainer">
+                                <img id="cropImg" src="" alt="Vessel Detection Crop" />
+                                <div id="sarReticle" class="sar-reticle-box" style="display: none;">
+                                    <span class="sar-reticle-tag" id="reticleTag">TARGET</span>
+                                </div>
+                            </div>
+                            <div id="sarLoading" style="display: none; position: absolute; color: #38bdf8; font-size: 0.8rem; background: rgba(15,23,42,0.85); padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #1e293b;">
+                                Loading Context Imagery…
+                            </div>
+                            <div id="sarErrorMsg" style="display: none; position: absolute; color: #f87171; font-size: 0.8rem; background: rgba(15,23,42,0.9); padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #ef4444;">
+                                Crop imagery unavailable for this contact.
+                            </div>
+                        </div>
+                        <div class="sar-metrics-strip">
+                            <div class="sar-metric-item">
+                                <span class="lbl">Peak SNR</span>
+                                <span class="val" id="metricSnr">-- dB</span>
+                            </div>
+                            <div class="sar-metric-item">
+                                <span class="lbl">Est. RCS</span>
+                                <span class="val" id="metricRcs">-- dBm²</span>
+                            </div>
+                            <div class="sar-metric-item">
+                                <span class="lbl">Dyn Range</span>
+                                <span class="val" id="metricDynRange">-- dB</span>
+                            </div>
+                            <div class="sar-metric-item">
+                                <span class="lbl">Target Dims</span>
+                                <span class="val" id="metricDims">-- × -- px</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Interactive Leaflet Nautical Chart & OSM -->
+                    <div class="chart-pane">
+                        <div class="pane-header-bar">
+                            <span id="chartCoordTitle">Nautical Chart Geolocation</span>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span id="chartCoords" style="font-family: var(--font-mono); font-size: 0.72rem; color: #94a3b8;">--</span>
+                                <button type="button" class="tool-chip-btn" onclick="recenterMap()" title="Recenter on Contact" style="padding: 2px 6px;">⌖ Center</button>
+                            </div>
+                        </div>
+                        <div class="chart-map-wrapper">
+                            <div id="reviewMap"></div>
+                        </div>
+                        <div class="map-layer-slider-bar">
+                            <div class="slider-row">
+                                <label for="nauticalOpacitySlider">
+                                    <input type="checkbox" id="toggleNauticalCheckbox" checked onchange="toggleNauticalLayer(this.checked)">
+                                    ⚓ Nautical Chart
+                                </label>
+                                <input type="range" id="nauticalOpacitySlider" min="0" max="100" value="90" oninput="setNauticalOpacity(this.value)">
+                                <span class="slider-val-tag" id="nauticalOpacityVal">90%</span>
+                            </div>
+                            <div class="slider-row">
+                                <label for="osmOpacitySlider">
+                                    <input type="checkbox" id="toggleOsmCheckbox" checked onchange="toggleOsmLayer(this.checked)">
+                                    🗺️ OpenStreetMap
+                                </label>
+                                <input type="range" id="osmOpacitySlider" min="0" max="100" value="100" oninput="setOsmOpacity(this.value)">
+                                <span class="slider-val-tag" id="osmOpacityVal">100%</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -654,13 +1039,316 @@ textarea.form-control {
                 </p>
             </div>
         </div>
-    </div>
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let currentFilter = 'all';
 let currentReviews = [];
 let selectedReview = null;
+let currentPadding = 80;
+let showReticle = true;
+let currentContrast = 'normal';
+let currentCropData = null;
+
+// Leaflet Map state
+let reviewMap = null;
+let osmLayer = null;
+let nauticalLayer = null;
+let targetMarker = null;
+let targetGeoBox = null;
+
+function initReviewMap() {
+    if (reviewMap) return;
+    const mapEl = document.getElementById('reviewMap');
+    if (!mapEl) return;
+
+    // Use default coordinates (Gibraltar / Malacca fallback)
+    const defaultLat = 35.9874;
+    const defaultLng = -5.4717;
+
+    reviewMap = L.map('reviewMap', {
+        center: [defaultLat, defaultLng],
+        zoom: 14,
+        zoomControl: true,
+        attributionControl: false
+    });
+
+    osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        opacity: 1.0
+    }).addTo(reviewMap);
+
+    nauticalLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        opacity: 0.9
+    }).addTo(reviewMap);
+
+    // Custom tactical marker icon
+    const targetIcon = L.divIcon({
+        className: 'tactical-target-icon',
+        html: '<div class="target-pulse-ring"></div><div class="target-core-dot"></div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+    });
+
+    targetMarker = L.marker([defaultLat, defaultLng], { icon: targetIcon });
+}
+
+function updateMapTarget(lat, lng, geoBbox, reviewInfo) {
+    if (!reviewMap) {
+        initReviewMap();
+    }
+    if (!reviewMap) return;
+
+    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+        reviewMap.setView([lat, lng], 15);
+        if (!reviewMap.hasLayer(targetMarker)) {
+            targetMarker.addTo(reviewMap);
+        }
+        targetMarker.setLatLng([lat, lng]);
+
+        const popupContent = `
+            <div style="font-family: var(--font-sans); font-size: 0.78rem; line-height: 1.4;">
+                <strong style="color: #0284c7;">#${reviewInfo.detection_idx} ${reviewInfo.vessel_class || 'Contact'}</strong><br/>
+                <span>Scan: <code>${reviewInfo.scan_id}</code></span><br/>
+                <span>Coords: ${lat.toFixed(5)}°, ${lng.toFixed(5)}°</span><br/>
+                <span>Status: <b style="text-transform: uppercase;">${reviewInfo.disposition || 'pending'}</b></span>
+            </div>
+        `;
+        targetMarker.bindPopup(popupContent);
+
+        // Update coordinate readout in header
+        const latStr = Math.abs(lat).toFixed(4) + (lat >= 0 ? '°N' : '°S');
+        const lngStr = Math.abs(lng).toFixed(4) + (lng >= 0 ? '°E' : '°W');
+        document.getElementById('chartCoords').textContent = `${latStr}, ${lngStr}`;
+        document.getElementById('chartCoordTitle').textContent = `Nautical Chart (${reviewInfo.scan_id})`;
+
+        // Geo bounding box polygon
+        if (targetGeoBox && reviewMap.hasLayer(targetGeoBox)) {
+            reviewMap.removeLayer(targetGeoBox);
+            targetGeoBox = null;
+        }
+        if (geoBbox && typeof geoBbox === 'object') {
+            const minLat = geoBbox.min_lat ?? geoBbox.min_latitude;
+            const maxLat = geoBbox.max_lat ?? geoBbox.max_latitude;
+            const minLng = geoBbox.min_lng ?? geoBbox.min_longitude;
+            const maxLng = geoBbox.max_lng ?? geoBbox.max_longitude;
+            if (minLat != null && maxLat != null && minLng != null && maxLng != null) {
+                targetGeoBox = L.rectangle([[minLat, minLng], [maxLat, maxLng]], {
+                    color: '#38bdf8',
+                    weight: 2,
+                    fillColor: '#0284c7',
+                    fillOpacity: 0.15
+                }).addTo(reviewMap);
+            }
+        }
+    } else {
+        document.getElementById('chartCoords').textContent = 'Coordinates unprojected';
+        document.getElementById('chartCoordTitle').textContent = 'Nautical Chart (Unprojected AOI)';
+        if (targetMarker && reviewMap.hasLayer(targetMarker)) {
+            reviewMap.removeLayer(targetMarker);
+        }
+        if (targetGeoBox && reviewMap.hasLayer(targetGeoBox)) {
+            reviewMap.removeLayer(targetGeoBox);
+        }
+    }
+
+    setTimeout(() => {
+        if (reviewMap) reviewMap.invalidateSize();
+    }, 120);
+}
+
+function recenterMap() {
+    if (!reviewMap || !selectedReview) return;
+    const lat = selectedReview.lat;
+    const lng = selectedReview.lng;
+    if (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) {
+        reviewMap.setView([lat, lng], 15, { animate: true });
+    }
+}
+
+function setNauticalOpacity(val) {
+    const op = parseFloat(val) / 100.0;
+    if (nauticalLayer) nauticalLayer.setOpacity(op);
+    const tag = document.getElementById('nauticalOpacityVal');
+    if (tag) tag.textContent = `${val}%`;
+}
+
+function setOsmOpacity(val) {
+    const op = parseFloat(val) / 100.0;
+    if (osmLayer) osmLayer.setOpacity(op);
+    const tag = document.getElementById('osmOpacityVal');
+    if (tag) tag.textContent = `${val}%`;
+}
+
+function toggleNauticalLayer(enabled) {
+    if (!reviewMap || !nauticalLayer) return;
+    if (enabled) {
+        if (!reviewMap.hasLayer(nauticalLayer)) reviewMap.addLayer(nauticalLayer);
+    } else {
+        if (reviewMap.hasLayer(nauticalLayer)) reviewMap.removeLayer(nauticalLayer);
+    }
+}
+
+function toggleOsmLayer(enabled) {
+    if (!reviewMap || !osmLayer) return;
+    if (enabled) {
+        if (!reviewMap.hasLayer(osmLayer)) reviewMap.addLayer(osmLayer);
+    } else {
+        if (reviewMap.hasLayer(osmLayer)) reviewMap.removeLayer(osmLayer);
+    }
+}
+
+function setViewMode(mode) {
+    const grid = document.getElementById('inspectionSplitGrid');
+    if (!grid) return;
+    grid.classList.remove('sar-only', 'chart-only');
+    if (mode === 'sar-only') grid.classList.add('sar-only');
+    else if (mode === 'chart-only') grid.classList.add('chart-only');
+
+    document.getElementById('btnViewSplit').classList.toggle('active', mode === 'split');
+    document.getElementById('btnViewSar').classList.toggle('active', mode === 'sar-only');
+    document.getElementById('btnViewChart').classList.toggle('active', mode === 'chart-only');
+
+    if (reviewMap) {
+        setTimeout(() => reviewMap.invalidateSize(), 150);
+    }
+}
+
+function setContextPadding(padding) {
+    currentPadding = padding;
+    document.querySelectorAll('.padding-mode-group .tool-chip-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.pad, 10) === padding);
+    });
+    const badge = document.getElementById('sarContextBadge');
+    if (badge) badge.textContent = `±${padding}px Context`;
+    if (selectedReview) {
+        fetchCropData(selectedReview, currentPadding);
+    }
+}
+
+function toggleReticle(checked) {
+    showReticle = checked;
+    const ret = document.getElementById('sarReticle');
+    if (ret) {
+        ret.style.display = (showReticle && currentCropData && currentCropData.local_box) ? 'block' : 'none';
+    }
+}
+
+function setContrastMode(mode) {
+    currentContrast = mode;
+    const img = document.getElementById('cropImg');
+    if (!img) return;
+    img.classList.remove('filter-sar-boost', 'filter-invert');
+    if (mode === 'boost') img.classList.add('filter-sar-boost');
+    else if (mode === 'invert') img.classList.add('filter-invert');
+}
+
+async function fetchCropData(review, padding) {
+    const cropImg = document.getElementById('cropImg');
+    const loadingEl = document.getElementById('sarLoading');
+    const errorEl = document.getElementById('sarErrorMsg');
+    const reticleEl = document.getElementById('sarReticle');
+
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (errorEl) errorEl.style.display = 'none';
+    if (reticleEl) reticleEl.style.display = 'none';
+
+    try {
+        const url = `/api/scan/${review.scan_id}/crop?detection_idx=${review.detection_idx}&padding=${padding}`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            throw new Error(`HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        currentCropData = data;
+
+        if (data.data_uri) {
+            cropImg.onload = () => {
+                if (loadingEl) loadingEl.style.display = 'none';
+                positionReticle(data.local_box, review);
+            };
+            cropImg.src = data.data_uri;
+            cropImg.style.display = 'block';
+        } else {
+            cropImg.onload = () => {
+                if (loadingEl) loadingEl.style.display = 'none';
+            };
+            cropImg.src = `/api/scan/${review.scan_id}/crop?detection_idx=${review.detection_idx}&padding=${padding}&raw=1`;
+            cropImg.style.display = 'block';
+        }
+
+        // Metrics update
+        document.getElementById('metricSnr').textContent = (data.snr_db != null) ? `${data.snr_db} dB` : '-- dB';
+        document.getElementById('metricRcs').textContent = (data.estimated_rcs_dbsm != null) ? `${data.estimated_rcs_dbsm} dBm²` : '-- dBm²';
+        document.getElementById('metricDynRange').textContent = (data.dynamic_range_db != null) ? `${data.dynamic_range_db} dB` : '-- dB';
+        if (data.local_box) {
+            document.getElementById('metricDims').textContent = `${data.local_box.width} × ${data.local_box.height} px`;
+        } else {
+            document.getElementById('metricDims').textContent = '-- × -- px';
+        }
+    } catch (err) {
+        console.warn("Failed to load JSON crop data, falling back to raw image:", err);
+        cropImg.onload = () => {
+            if (loadingEl) loadingEl.style.display = 'none';
+        };
+        cropImg.onerror = () => {
+            if (loadingEl) loadingEl.style.display = 'none';
+            if (errorEl) errorEl.style.display = 'block';
+            cropImg.style.display = 'none';
+        };
+        cropImg.src = `/api/scan/${review.scan_id}/crop?detection_idx=${review.detection_idx}&padding=${padding}&raw=1`;
+        cropImg.style.display = 'block';
+
+        document.getElementById('metricSnr').textContent = '-- dB';
+        document.getElementById('metricRcs').textContent = '-- dBm²';
+        document.getElementById('metricDynRange').textContent = '-- dB';
+        document.getElementById('metricDims').textContent = '-- × -- px';
+    }
+}
+
+function positionReticle(localBox, review) {
+    const reticleEl = document.getElementById('sarReticle');
+    const cropImg = document.getElementById('cropImg');
+    if (!reticleEl || !cropImg || !localBox || !showReticle) {
+        if (reticleEl) reticleEl.style.display = 'none';
+        return;
+    }
+
+    const naturalW = cropImg.naturalWidth || 1;
+    const naturalH = cropImg.naturalHeight || 1;
+    const clientW = cropImg.clientWidth || naturalW;
+    const clientH = cropImg.clientHeight || naturalH;
+
+    const scaleX = clientW / naturalW;
+    const scaleY = clientH / naturalH;
+
+    const left = Math.round(localBox.x * scaleX);
+    const top = Math.round(localBox.y * scaleY);
+    const width = Math.round(localBox.width * scaleX);
+    const height = Math.round(localBox.height * scaleY);
+
+    reticleEl.style.left = `${left}px`;
+    reticleEl.style.top = `${top}px`;
+    reticleEl.style.width = `${Math.max(14, width)}px`;
+    reticleEl.style.height = `${Math.max(14, height)}px`;
+    reticleEl.style.display = 'block';
+
+    const tag = document.getElementById('reticleTag');
+    if (tag) {
+        tag.textContent = `#${review.detection_idx} ${review.vessel_class || 'TARGET'}`;
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (currentCropData && currentCropData.local_box && selectedReview) {
+        positionReticle(currentCropData.local_box, selectedReview);
+    }
+    if (reviewMap) {
+        reviewMap.invalidateSize();
+    }
+});
 
 async function loadReviewQueue() {
     try {
@@ -706,14 +1394,14 @@ function renderQueueList(items) {
 
     list.innerHTML = items.map(item => {
         const isActive = selectedReview && selectedReview.review_id === item.review_id;
-        const cropUrl = item.crop_url || '';
+        const cropUrl = item.crop_url || `/api/scan/${item.scan_id}/crop?detection_idx=${item.detection_idx}&padding=80&raw=1`;
         const disp = item.disposition || 'pending';
         const confText = item.confidence ? `${Math.round(item.confidence * 100)}%` : '--';
 
         return `
             <div class="queue-item ${isActive ? 'active' : ''}" onclick="selectContactById('${item.review_id}')">
                 <div class="queue-item-crop">
-                    ${cropUrl ? `<img src="${cropUrl}" alt="Crop" onerror="this.parentElement.innerHTML='<span class=\\'queue-item-crop-placeholder\\'>NO CROP</span>'" />` : '<span class="queue-item-crop-placeholder">SAR</span>'}
+                    <img src="${cropUrl}" alt="Crop" loading="lazy" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\\'queue-item-crop-placeholder\\'>SAR</span>';" />
                 </div>
                 <div class="queue-item-body">
                     <div class="queue-item-title">
@@ -772,15 +1460,11 @@ async function selectContact(review) {
         <span class="disposition-pill ${disp}" style="font-size: 0.8rem; padding: 4px 10px;">${disp.toUpperCase()}</span>
     `;
 
-    // Crop image
-    const cropImg = document.getElementById('cropImg');
-    if (selectedReview.crop_url) {
-        cropImg.src = selectedReview.crop_url;
-        cropImg.style.display = 'block';
-    } else {
-        cropImg.src = '';
-        cropImg.style.display = 'none';
-    }
+    // Fetch contextual crop imagery with surroundings
+    fetchCropData(selectedReview, currentPadding);
+
+    // Update Nautical Chart & OSM Leaflet Map
+    updateMapTarget(selectedReview.lat, selectedReview.lng, selectedReview.geo_bbox, selectedReview);
 
     // Metadata
     document.getElementById('metaScanId').textContent = selectedReview.scan_id;

@@ -54,6 +54,17 @@ def get_review_by_id(review_id: str):
     })
 
 
+@blueprint.route("/api/review/<review_id>/crop", methods=["GET"])
+def get_review_crop(review_id: str):
+    """Retrieve cropped radar imagery for a review record with surroundings context."""
+    app_container = container()
+    record = app_container.get_review_details.execute(review_id=review_id)
+    if record is None:
+        return jsonify({"success": False, "error": f"Review not found: {review_id}"}), 404
+    from sentinel_analysis.interfaces.web.scans import get_detection_crop
+    return get_detection_crop(record.scan_id, requested_idx=record.detection_idx)
+
+
 @blueprint.route("/api/review/scan/<scan_id>/detection/<int:detection_idx>", methods=["GET"])
 def get_review_by_scan_and_index(scan_id: str, detection_idx: int):
     """Retrieve review record for a specific contact detection in a scan."""

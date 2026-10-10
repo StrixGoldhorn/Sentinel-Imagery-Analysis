@@ -135,6 +135,52 @@ class SubmitAnalystReview:
         return updated or record
 
 
+def enrich_review_geo(record: ReviewRecord, scan_repo: ScanRepository | None) -> ReviewRecord:
+    """Enrich review record with latitude, longitude, and geo bounding box from scan data if missing."""
+    if record.effective_lat is not None and record.effective_lng is not None:
+        return record
+    if scan_repo is None:
+        return record
+    try:
+        scan = scan_repo.get(record.scan_id)
+        if not scan:
+            return record
+        det_path = None
+        if hasattr(scan, "image_path") and scan.image_path:
+            img_p = Path(scan.image_path)
+            for cp in [
+                img_p.parent / "detection_results.json",
+                img_p.parent.parent / "detection_results.json",
+                img_p.parent / "images" / "detection_results.json",
+            ]:
+                if cp.is_file():
+                    det_path = cp
+                    break
+        if det_path is None and hasattr(scan_repo, "root"):
+            cp = Path(scan_repo.root) / record.scan_id / "detection_results.json"
+            if cp.is_file():
+                det_path = cp
+
+        if det_path is not None and det_path.is_file():
+            data = json.loads(det_path.read_text(encoding="utf-8"))
+            dets = data.get("detections", [])
+            if 0 <= record.detection_idx < len(dets):
+                d = dets[record.detection_idx]
+                record.lat = d.get("lat") if d.get("lat") is not None else d.get("latitude")
+                record.lng = d.get("lng") if d.get("lng") is not None else d.get("longitude")
+                record.geo_bbox = d.get("geo_bbox")
+                return record
+
+        # Fallback to scan bbox interpolation if lat/lng not in detection json
+        if record.lat is None and hasattr(scan, "bbox") and scan.bbox:
+            b = scan.bbox
+            record.lat = (b.min_latitude + b.max_latitude) / 2.0
+            record.lng = (b.min_longitude + b.max_longitude) / 2.0
+    except Exception:
+        pass
+    return record
+
+
 class ListReviewQueue:
     """Lists contact reviews with filtering, pagination, summary stats, and auto-discovery of unreviewed scans."""
 
@@ -160,6 +206,7 @@ class ListReviewQueue:
             candidate_paths = [
                 img_p.parent / "detection_results.json",
                 img_p.parent.parent / "detection_results.json",
+                img_p.parent / "images" / "detection_results.json",
             ]
             if hasattr(self.scan_repo, "root"):
                 candidate_paths.append(Path(self.scan_repo.root) / scan_id / "detection_results.json")
@@ -176,11 +223,17 @@ class ListReviewQueue:
                 for idx, det in enumerate(detections):
                     existing = self.review_repo.get_by_scan_and_index(scan_id, idx)
                     if existing is None:
+                        lat = det.get("lat") if det.get("lat") is not None else det.get("latitude")
+                        lng = det.get("lng") if det.get("lng") is not None else det.get("longitude")
+                        geo_bbox = det.get("geo_bbox")
                         orig_box = {
                             "x": float(det.get("x", 0)),
                             "y": float(det.get("y", 0)),
                             "width": float(det.get("width", 50)),
                             "height": float(det.get("height", 50)),
+                            "lat": lat,
+                            "lng": lng,
+                            "geo_bbox": geo_bbox,
                         }
                         record = ReviewRecord(
                             review_id=f"{scan_id}_{idx}",
@@ -194,6 +247,9 @@ class ListReviewQueue:
                             vessel_class=det.get("vessel_class"),
                             comments=None,
                             reason_codes=list(det.get("reason_codes", [])),
+                            lat=lat,
+                            lng=lng,
+                            geo_bbox=geo_bbox,
                         )
                         self.review_repo.save(record)
                         added += 1
@@ -221,10 +277,11 @@ class ListReviewQueue:
             limit=limit,
             offset=offset,
         )
+        enriched = [enrich_review_geo(r, self.scan_repo) for r in reviews]
         stats = self.review_repo.count_by_disposition()
 
         return {
-            "reviews": [r.to_dict() for r in reviews],
+            "reviews": [r.to_dict() for r in enriched],
             "total": stats.get("total", 0),
             "stats": stats,
             "limit": limit,
@@ -235,15 +292,20 @@ class ListReviewQueue:
 class GetReviewDetails:
     """Fetches a review record along with its immutable audit history trail."""
 
-    def __init__(self, review_repo: ReviewRepository) -> None:
+    def __init__(self, review_repo: ReviewRepository, scan_repo: ScanRepository | None = None) -> None:
         self.review_repo = review_repo
+        self.scan_repo = scan_repo
 
     def execute(self, review_id: str | None = None, scan_id: str | None = None, detection_idx: int | None = None) -> ReviewRecord | None:
+        rec = None
         if review_id:
-            return self.review_repo.get(review_id)
-        if scan_id is not None and detection_idx is not None:
-            return self.review_repo.get_by_scan_and_index(scan_id, detection_idx)
-        return None
+            rec = self.review_repo.get(review_id)
+        elif scan_id is not None and detection_idx is not None:
+            rec = self.review_repo.get_by_scan_and_index(scan_id, detection_idx)
+
+        if rec is not None:
+            enrich_review_geo(rec, self.scan_repo)
+        return rec
 
 
 class ExportReviewedDataset:

@@ -407,6 +407,7 @@ def get_detection_chip_by_index(folder_name: str, detection_idx: int):
     return get_detection_crop(folder_name, requested_idx=detection_idx)
 
 
+@blueprint.get("/scan/<folder_name>/crop")
 @blueprint.get("/api/scan/<folder_name>/crop")
 def get_detection_crop(folder_name: str, requested_idx: int | None = None):
     scan = container().get_scan.execute(safe_folder_name(folder_name))
@@ -446,7 +447,7 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
         y = int(round(float(target_detection.get("y", 0))))
         w = int(round(float(target_detection.get("width", 50))))
         h = int(round(float(target_detection.get("height", 50))))
-        padding = max(0, int(request.args.get("padding", 35)))
+        padding = max(0, int(request.args.get("padding", 80)))
     elif bbox:
         try:
             parts = [int(float(p.strip())) for p in bbox.split(",")]
@@ -454,7 +455,7 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
                 x, y, w, h = parts
             else:
                 x, y, w, h = 0, 0, 50, 50
-            padding = max(0, int(request.args.get("padding", 25)))
+            padding = max(0, int(request.args.get("padding", 80)))
         except (TypeError, ValueError) as exc:
             raise RequestValidationError("Coordinates and dimensions must be valid numbers") from exc
     else:
@@ -463,7 +464,7 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
             y = int(request.args.get("y", 0))
             w = int(request.args.get("width", 50))
             h = int(request.args.get("height", 50))
-            padding = max(0, int(request.args.get("padding", 25)))
+            padding = max(0, int(request.args.get("padding", 80)))
         except (TypeError, ValueError) as exc:
             raise RequestValidationError("Coordinates and dimensions must be valid integers") from exc
 
