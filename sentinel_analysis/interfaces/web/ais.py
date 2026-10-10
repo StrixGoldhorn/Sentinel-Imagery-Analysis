@@ -487,3 +487,46 @@ def get_ais_heatmap():
     )
     return jsonify(result)
 
+
+@blueprint.route("/api/ais/anomalies", methods=["GET", "POST"])
+def get_ais_anomalies() -> Response:
+    payload = _get_request_payload()
+    bbox = _parse_bbox_value(payload.get("bbox"))
+    if bbox is None:
+        min_lon = payload.get("min_lon", payload.get("min_longitude"))
+        min_lat = payload.get("min_lat", payload.get("min_latitude"))
+        max_lon = payload.get("max_lon", payload.get("max_longitude"))
+        max_lat = payload.get("max_lat", payload.get("max_latitude"))
+        if None not in (min_lon, min_lat, max_lon, max_lat):
+            try:
+                bbox = BoundingBox(float(min_lon), float(min_lat), float(max_lon), float(max_lat))
+            except (ValueError, TypeError):
+                bbox = None
+
+    scan_id = payload.get("scan_id") or payload.get("folder_name")
+    records = payload.get("records") or payload.get("ais_records")
+
+    max_spd = 55.0
+    if payload.get("max_speed_knots"):
+        try:
+            max_spd = float(payload.get("max_speed_knots"))
+        except (ValueError, TypeError):
+            pass
+
+    gap_hrs = 2.0
+    if payload.get("gap_hours") or payload.get("gap_threshold_hours"):
+        try:
+            gap_hrs = float(payload.get("gap_hours") or payload.get("gap_threshold_hours"))
+        except (ValueError, TypeError):
+            pass
+
+    res = container().detect_identity_anomalies.execute(
+        ais_records=records,
+        scan_id=scan_id,
+        aoi_bbox=bbox,
+        max_speed_knots=max_spd,
+        gap_threshold_hours=gap_hrs,
+    )
+    return jsonify(res)
+
+

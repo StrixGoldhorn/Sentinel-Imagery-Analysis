@@ -9,6 +9,7 @@ from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
+from sentinel_analysis.application.use_cases.detect_identity_anomalies import DetectIdentityAnomalies
 from sentinel_analysis.application.use_cases.detect_sar_changes import ComputeSARChangeDetection
 from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
 from sentinel_analysis.application.use_cases.manage_alerts import (
@@ -95,6 +96,7 @@ __all__ = [
     "DeleteScan",
     "DetectShips",
     "DetectTransshipmentAnomalies",
+    "DetectIdentityAnomalies",
     "ComputeSARChangeDetection",
     "DispatchMaritimeAlert",
     "ExecuteStorageRetention",

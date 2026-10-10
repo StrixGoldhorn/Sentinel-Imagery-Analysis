@@ -17,6 +17,7 @@ from sentinel_analysis.application.use_cases import (
     DetectShips,
     ComputeSARChangeDetection,
     DetectTransshipmentAnomalies,
+    DetectIdentityAnomalies,
     DispatchMaritimeAlert,
     ExecuteStorageRetention,
     ExportGeospatial,
@@ -169,6 +170,7 @@ class ApplicationContainer:
         self.brief_generator = MatplotlibIntelligenceBriefGenerator()
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
+        self.detect_identity_anomalies = DetectIdentityAnomalies(self.ais_repository, self.scan_repository)
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)
