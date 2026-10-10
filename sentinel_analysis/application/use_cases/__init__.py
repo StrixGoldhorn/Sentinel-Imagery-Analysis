@@ -5,6 +5,7 @@ from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     assess_dark_vessel,
     extract_ghost_vessels,
 )
+from sentinel_analysis.application.use_cases.compare_detection_algorithms import CompareDetectionAlgorithms
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
@@ -88,6 +89,7 @@ __all__ = [
     "ArchiveScan",
     "BatchAnnotateTiles",
     "CheckAndScheduleAOIs",
+    "CompareDetectionAlgorithms",
     "CorrelateDetectionsWithAIS",
     "assess_dark_vessel",
     "extract_ghost_vessels",

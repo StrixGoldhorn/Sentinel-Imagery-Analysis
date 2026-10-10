@@ -1162,6 +1162,32 @@ def scan_environmental_context(folder_name: str) -> Response:
     return jsonify(result)
 
 
+@blueprint.route("/api/scan/<folder_name>/algorithm_comparison", methods=["GET", "POST"])
+def scan_algorithm_comparison(folder_name: str) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    iou_thresh = 0.25
+    det_thresh = 40
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if "iou_threshold" in payload:
+            try:
+                iou_thresh = float(payload["iou_threshold"])
+            except (ValueError, TypeError):
+                pass
+        if "detection_threshold" in payload:
+            try:
+                det_thresh = int(payload["detection_threshold"])
+            except (ValueError, TypeError):
+                pass
+
+    result = container().compare_detection_algorithms.execute(
+        scan_id=safe_name,
+        iou_threshold=iou_thresh,
+        detection_threshold=det_thresh,
+    )
+    return jsonify(result.to_dict())
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

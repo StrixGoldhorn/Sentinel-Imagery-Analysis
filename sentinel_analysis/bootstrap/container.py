@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
     AnalyzeMissionPasses,
     CheckAndScheduleAOIs,
+    CompareDetectionAlgorithms,
     CorrelateDetectionsWithAIS,
     CreateScan,
     CrossValidateOptical,
@@ -176,6 +177,15 @@ class ApplicationContainer:
         self.marine_context_provider = MarineContextProvider()
         self.enrich_environmental_context = EnrichMarineEnvironmentalContext(
             self.marine_context_provider, self.scan_repository
+        )
+        self.cfar_detector = ClassicalShipDetector(detection_method="cfar_ca", settings_repo=self.settings_repository)
+        self.classical_cv_detector = ClassicalShipDetector(detection_method="threshold", settings_repo=self.settings_repository)
+        self.onnx_detector = DeepLearningShipDetector(settings_repo=self.settings_repository)
+        self.compare_detection_algorithms = CompareDetectionAlgorithms(
+            scan_repository=self.scan_repository,
+            cfar_detector=self.cfar_detector,
+            classical_detector=self.classical_cv_detector,
+            onnx_detector=self.onnx_detector,
         )
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
