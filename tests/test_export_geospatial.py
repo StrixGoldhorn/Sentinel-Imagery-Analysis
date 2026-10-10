@@ -147,6 +147,82 @@ class TestExportGeospatial(unittest.TestCase):
         self.assertEqual(feat1["properties"]["length_m"], 220.0)
         self.assertFalse(feat1["properties"]["is_dark"])
 
+    def test_export_geojson_converts_pixels_via_affine_when_lat_lon_missing(self):
+        # Create scan where detections only have pixel coordinates (no lat/lon)
+        scan_folder_affine = "test_scan_affine_coords"
+        scan_dir = self.output_root / scan_folder_affine / "images"
+        scan_dir.mkdir(parents=True, exist_ok=True)
+        img_path = scan_dir / f"{scan_folder_affine}_stitched.png"
+        img_arr = np.full((100, 200), 128, dtype=np.uint8)
+        Image.fromarray(img_arr).save(img_path)
+
+        metadata = {
+            "detections": [
+                {
+                    "pixel_x": 50,
+                    "pixel_y": 30,
+                    "confidence": 0.9,
+                },
+                {
+                    "pixel_x": 120,
+                    "pixel_y": 70,
+                    "confidence": 0.85,
+                },
+            ],
+        }
+        scan = Scan(scan_folder_affine, self.bbox, self.acq, str(img_path), metadata)
+        self.scan_repo.save(scan)
+
+        fc = self.exporter.export_geojson(scan_folder_affine)
+        self.assertEqual(len(fc["features"]), 2)
+
+        feat0 = fc["features"][0]
+        # (50, 30) on 200x100 raster with bbox [12.0, 42.0, 14.0, 43.0]
+        # lon = 12.0 + 50 * (2.0 / 200) = 12.5
+        # lat = 43.0 - 30 * (1.0 / 100) = 42.7
+        # Must NOT be AOI center (13.0, 42.5)
+        self.assertAlmostEqual(feat0["geometry"]["coordinates"][0], 12.5)
+        self.assertAlmostEqual(feat0["geometry"]["coordinates"][1], 42.7)
+        self.assertAlmostEqual(feat0["properties"]["longitude"], 12.5)
+        self.assertAlmostEqual(feat0["properties"]["latitude"], 42.7)
+
+        feat1 = fc["features"][1]
+        # lon = 12.0 + 120 * 0.01 = 13.2
+        # lat = 43.0 - 70 * 0.01 = 42.3
+        self.assertAlmostEqual(feat1["geometry"]["coordinates"][0], 13.2)
+        self.assertAlmostEqual(feat1["geometry"]["coordinates"][1], 42.3)
+
+    def test_export_geojson_transforms_polygon_points_via_affine(self):
+        scan_folder_poly = "test_scan_affine_polygon"
+        scan_dir = self.output_root / scan_folder_poly / "images"
+        scan_dir.mkdir(parents=True, exist_ok=True)
+        img_path = scan_dir / f"{scan_folder_poly}_stitched.png"
+        img_arr = np.full((100, 200), 128, dtype=np.uint8)
+        Image.fromarray(img_arr).save(img_path)
+
+        metadata = {
+            "detections": [
+                {
+                    "pixel_x": 50,
+                    "pixel_y": 30,
+                    "polygon_points": [(40, 20), (60, 20), (60, 40), (40, 40)],
+                    "confidence": 0.92,
+                },
+            ],
+        }
+        scan = Scan(scan_folder_poly, self.bbox, self.acq, str(img_path), metadata)
+        self.scan_repo.save(scan)
+
+        fc = self.exporter.export_geojson(scan_folder_poly)
+        feat = fc["features"][0]
+        self.assertEqual(feat["geometry"]["type"], "Polygon")
+        ring = feat["geometry"]["coordinates"][0]
+        self.assertEqual(len(ring), 5)  # 4 vertices + 1 closed
+        self.assertEqual(ring[0], ring[-1])
+        # (40, 20) -> lon = 12.0 + 40*0.01 = 12.4, lat = 43.0 - 20*0.01 = 42.8
+        self.assertAlmostEqual(ring[0][0], 12.4)
+        self.assertAlmostEqual(ring[0][1], 42.8)
+
     def test_export_kmz(self):
         import zipfile
         kmz_path = self.exporter.export_kmz(self.scan_folder)

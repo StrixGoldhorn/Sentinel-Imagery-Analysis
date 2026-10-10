@@ -4,7 +4,7 @@ from datetime import timezone
 import json
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from sentinel_analysis.application.ports.imagery import GeoTIFFWriter
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
@@ -147,6 +147,138 @@ class ExportGeospatial:
 
         return stac_item
 
+    def _resolve_raster_affine_transform(
+        self,
+        scan: Scan,
+    ) -> Callable[[float, float], tuple[float, float]]:
+        """Resolve an affine transform mapping (pixel_x, pixel_y) -> (longitude, latitude)."""
+        image_path = Path(scan.image_path)
+        folder_dir = image_path.parent
+        bbox = scan.bbox
+
+        # 1. Try opening associated GeoTIFF via rasterio if available
+        try:
+            import rasterio
+            import rasterio.warp
+            from rasterio.transform import xy
+
+            meta = scan.metadata or {}
+            geotiff_name = meta.get("geotiff")
+            candidates: list[Path] = [
+                image_path,
+                folder_dir / f"{scan.folder_name}.tif",
+                folder_dir / f"{image_path.stem}.tif",
+            ]
+            if geotiff_name:
+                candidates.insert(0, folder_dir / str(geotiff_name))
+
+            for candidate in candidates:
+                if candidate and candidate.is_file() and candidate.suffix.lower() in (".tif", ".tiff"):
+                    try:
+                        with rasterio.open(candidate) as src:
+                            transform = src.transform
+                            crs = src.crs
+                            if transform is not None:
+                                def _affine_fn(px: float, py: float, t=transform, c=crs) -> tuple[float, float]:
+                                    x_c, y_c = xy(t, py, px)
+                                    if c and not c.is_geographic:
+                                        lons, lats = rasterio.warp.transform(c, "EPSG:4326", [x_c], [y_c])
+                                        return float(lons[0]), float(lats[0])
+                                    return float(x_c), float(y_c)
+                                return _affine_fn
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug("Rasterio transform lookup skipped or failed: %s", e)
+
+        # 2. Derive linear affine scale/offset from bounding box and raster dimensions
+        img_w: Optional[float] = None
+        img_h: Optional[float] = None
+
+        if image_path.is_file():
+            try:
+                with open(image_path, "rb") as f:
+                    header = f.read(32)
+                    if header.startswith(b"\x89PNG\r\n\x1a\n") and len(header) >= 24:
+                        import struct
+                        w, h = struct.unpack(">II", header[16:24])
+                        img_w, img_h = float(w), float(h)
+                    elif (header.startswith(b"II*\x00") or header.startswith(b"MM\x00*")) and len(header) >= 8:
+                        import struct
+                        is_le = header[:2] == b"II"
+                        endian = "<" if is_le else ">"
+                        ifd_offset = struct.unpack(f"{endian}I", header[4:8])[0]
+                        f.seek(ifd_offset)
+                        num_entries = struct.unpack(f"{endian}H", f.read(2))[0]
+                        for _ in range(num_entries):
+                            entry = f.read(12)
+                            if len(entry) < 12:
+                                break
+                            tag, typ = struct.unpack(f"{endian}HH", entry[:4])
+                            if tag == 256:  # ImageWidth
+                                val = struct.unpack(f"{endian}I", entry[8:12])[0] if typ == 4 else struct.unpack(f"{endian}H", entry[8:10])[0]
+                                img_w = float(val)
+                            elif tag == 257:  # ImageLength / Height
+                                val = struct.unpack(f"{endian}I", entry[8:12])[0] if typ == 4 else struct.unpack(f"{endian}H", entry[8:10])[0]
+                                img_h = float(val)
+            except Exception:
+                pass
+
+        if not img_w or not img_h:
+            meta = scan.metadata or {}
+            w_val = meta.get("image_width") or meta.get("width")
+            h_val = meta.get("image_height") or meta.get("height")
+            if w_val and h_val:
+                try:
+                    img_w, img_h = float(w_val), float(h_val)
+                except (TypeError, ValueError):
+                    pass
+
+        if not img_w or not img_h:
+            meta = scan.metadata or {}
+            shape = meta.get("image_shape") or meta.get("shape")
+            if isinstance(shape, (list, tuple)) and len(shape) >= 2:
+                try:
+                    img_h, img_w = float(shape[0]), float(shape[1])
+                except (TypeError, ValueError):
+                    pass
+
+        if (not img_w or not img_h) and scan.metadata:
+            max_px = 0.0
+            max_py = 0.0
+            for d in scan.metadata.get("detections", []):
+                if isinstance(d, dict):
+                    x_c = d.get("pixel_x") or d.get("center_x") or d.get("x") or 0.0
+                    y_c = d.get("pixel_y") or d.get("center_y") or d.get("y") or 0.0
+                    try:
+                        max_px = max(max_px, float(x_c))
+                        max_py = max(max_py, float(y_c))
+                    except (TypeError, ValueError):
+                        pass
+            if max_px > 0 and max_py > 0:
+                img_w = max_px * 1.2
+                img_h = max_py * 1.2
+
+        if img_w and img_h and img_w > 0 and img_h > 0 and bbox:
+            scale_x = (bbox.max_longitude - bbox.min_longitude) / float(img_w)
+            scale_y = (bbox.max_latitude - bbox.min_latitude) / float(img_h)
+
+            def _linear_affine(px: float, py: float, sx=scale_x, sy=scale_y, b=bbox) -> tuple[float, float]:
+                calc_lon = b.min_longitude + float(px) * sx
+                calc_lat = b.max_latitude - float(py) * sy
+                return float(calc_lon), float(calc_lat)
+
+            return _linear_affine
+
+        # Fallback to AOI center if image extents cannot be determined
+        mid_lon = bbox.min_longitude + (bbox.max_longitude - bbox.min_longitude) * 0.5 if bbox else 0.0
+        mid_lat = bbox.min_latitude + (bbox.max_latitude - bbox.min_latitude) * 0.5 if bbox else 0.0
+
+        def _fallback(px: float, py: float) -> tuple[float, float]:
+            return float(mid_lon), float(mid_lat)
+
+        return _fallback
+
     def export_geojson(self, folder_name: str) -> dict[str, Any]:
         """Generate GeoJSON FeatureCollection of all detected vessels and OBBs."""
         scan = self._scan_repository.get(folder_name)
@@ -176,27 +308,88 @@ class ExportGeospatial:
         features: list[dict[str, Any]] = []
 
         bbox = scan.bbox
+        transform_fn = self._resolve_raster_affine_transform(scan)
+
         for idx, det in enumerate(raw_detections):
             if not isinstance(det, dict):
                 continue
 
-            lat = det.get("latitude")
-            lon = det.get("longitude")
+            lat = det.get("latitude") if det.get("latitude") is not None else det.get("lat")
+            lon = (
+                det.get("longitude")
+                if det.get("longitude") is not None
+                else (det.get("lon") if det.get("lon") is not None else det.get("lng"))
+            )
             if lat is None or lon is None:
-                # Estimate from pixel coordinates if lat/lon not present
-                px = det.get("pixel_x") or det.get("center_x") or 0.0
-                py = det.get("pixel_y") or det.get("center_y") or 0.0
-                # Fallback to bbox center if missing
-                lon = bbox.min_longitude + (bbox.max_longitude - bbox.min_longitude) * 0.5
-                lat = bbox.min_latitude + (bbox.max_latitude - bbox.min_latitude) * 0.5
+                # Estimate from pixel coordinates via raster affine transform
+                px = (
+                    det.get("pixel_x")
+                    if det.get("pixel_x") is not None
+                    else (
+                        det.get("center_x")
+                        if det.get("center_x") is not None
+                        else (
+                            det.get("centroid_x")
+                            if det.get("centroid_x") is not None
+                            else det.get("x")
+                        )
+                    )
+                )
+                py = (
+                    det.get("pixel_y")
+                    if det.get("pixel_y") is not None
+                    else (
+                        det.get("center_y")
+                        if det.get("center_y") is not None
+                        else (
+                            det.get("centroid_y")
+                            if det.get("centroid_y") is not None
+                            else det.get("y")
+                        )
+                    )
+                )
+                if px is not None and py is not None:
+                    calc_lon, calc_lat = transform_fn(float(px), float(py))
+                    if lon is None:
+                        lon = calc_lon
+                    if lat is None:
+                        lat = calc_lat
+                elif bbox:
+                    lon = bbox.min_longitude + (bbox.max_longitude - bbox.min_longitude) * 0.5
+                    lat = bbox.min_latitude + (bbox.max_latitude - bbox.min_latitude) * 0.5
+                else:
+                    lon = 0.0
+                    lat = 0.0
 
             props = dict(det)
             props["feature_id"] = idx + 1
             props["scan_folder"] = scan.folder_name
+            props["latitude"] = float(lat)
+            props["longitude"] = float(lon)
 
             # Check if polygon coordinates exist for OBB
             polygon_coords = det.get("polygon_geo") or det.get("obb_coordinates")
+            if not polygon_coords and det.get("geo_polygon"):
+                raw_gp = det.get("geo_polygon")
+                if isinstance(raw_gp, (list, tuple)) and len(raw_gp) >= 3:
+                    ring = [[round(float(p[1]), 7), round(float(p[0]), 7)] for p in raw_gp]
+                    if ring[0] != ring[-1]:
+                        ring.append(ring[0])
+                    polygon_coords = ring
+            elif not polygon_coords and det.get("polygon_points"):
+                raw_pp = det.get("polygon_points")
+                if isinstance(raw_pp, (list, tuple)) and len(raw_pp) >= 3:
+                    ring = []
+                    for pt in raw_pp:
+                        p_lon, p_lat = transform_fn(float(pt[0]), float(pt[1]))
+                        ring.append([round(float(p_lon), 7), round(float(p_lat), 7)])
+                    if ring[0] != ring[-1]:
+                        ring.append(ring[0])
+                    polygon_coords = ring
+
             if polygon_coords and isinstance(polygon_coords, list) and len(polygon_coords) >= 4:
+                if polygon_coords[0] != polygon_coords[-1]:
+                    polygon_coords = list(polygon_coords) + [polygon_coords[0]]
                 geometry = {
                     "type": "Polygon",
                     "coordinates": [polygon_coords],
