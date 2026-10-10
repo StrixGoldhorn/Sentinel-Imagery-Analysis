@@ -14,7 +14,7 @@ BACKGROUND_TASK_STATUSES = frozenset({
 })
 
 
-def _number(value: object, field_name: str) -> float:
+def _number(value: Any, field_name: str) -> float:
     try:
         normalized = float(value)
     except (TypeError, ValueError) as exc:
@@ -99,7 +99,7 @@ class BoundingBox:
 
     def split_into_zones(self, zone_size_nm: float = 10.0) -> list["BoundingBox"]:
         """Subdivide bounding box into smaller geographic zones based on nautical miles.
-        
+
         Matches SeaSentry's multi-zone scraping grid strategy to handle scraping sites
         with viewport / API response limits.
         """
@@ -152,7 +152,8 @@ class Acquisition:
         object.__setattr__(self, "product_type", _required_text(self.product_type, "Product type"))
         object.__setattr__(self, "product_id", _optional_text(self.product_id, "Product ID"))
         if self.orbit_direction is not None:
-            object.__setattr__(self, "orbit_direction", _optional_text(self.orbit_direction, "Orbit direction").upper())
+            norm_od = _optional_text(self.orbit_direction, "Orbit direction")
+            object.__setattr__(self, "orbit_direction", norm_od.upper() if norm_od else None)
         if self.relative_orbit is not None:
             if isinstance(self.relative_orbit, bool) or not isinstance(self.relative_orbit, int) or self.relative_orbit <= 0:
                 raise DomainValidationError("Relative orbit must be a positive integer")
@@ -471,6 +472,7 @@ class PostPassIngestionJob:
     aoi_name: Optional[str] = None
     expected_imagery_time: Optional[datetime] = None
     correlation_id: Optional[str] = None
+    id: Optional[int] = None
 
     def __post_init__(self) -> None:
         if isinstance(self.aoi_id, bool) or not isinstance(self.aoi_id, int) or self.aoi_id <= 0:

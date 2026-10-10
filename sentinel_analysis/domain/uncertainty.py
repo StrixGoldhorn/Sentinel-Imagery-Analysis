@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from sentinel_analysis.domain.exceptions import DomainValidationError
 
@@ -220,10 +220,6 @@ def calibrate_spatial_uncertainty(
     # Bivariate normal CEP approximation (50% circular radius)
     cep = 0.562 * major + 0.589 * minor
 
-    conf_lvl = 0.95
-    if confidence is not None:
-        conf_lvl = max(0.50, min(0.99, float(confidence)))
-
     return SpatialUncertainty(
         cep_meters=round(cep, 1),
         semi_major_axis_meters=round(major, 1),
@@ -419,12 +415,8 @@ def generate_contact_reason_codes(
 
     if is_inside_box is not None:
         match_type = "inside_box" if is_inside_box else ("outside_box" if is_correlated else "uncorrelated")
-    if is_dark_suspect is not None:
-        is_dark = is_dark_suspect
     if solas_carriage_expected is not None:
         is_solas = solas_carriage_expected
-    if is_speed_spoofed or is_course_spoofed:
-        is_spoofed = True
 
     def get_val(key: str, default: Any = None) -> Any:
         if detection_data is None:
@@ -479,6 +471,8 @@ def generate_contact_reason_codes(
         if is_solas or (length is not None and float(length) >= 45.0):
             codes.append(REASON_SOLAS_TRANSPONDER_OFF)
         codes.append(REASON_NO_AIS_BROADCAST)
+    if is_dark_suspect and REASON_DARK_VESSEL_SUSPECT not in codes:
+        codes.append(REASON_DARK_VESSEL_SUSPECT)
 
     # Spoofing
     spd_spf = is_speed_spoofed if is_speed_spoofed is not None else get_val("is_speed_spoofed")

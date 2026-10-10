@@ -1,0 +1,5 @@
+# Development, linting, type-checking, and security tooling
+-c constraints.txt
+ruff==0.17.0
+mypy==2.4.0
+bandit==1.9.4

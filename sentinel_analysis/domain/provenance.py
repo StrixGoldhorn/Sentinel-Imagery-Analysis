@@ -11,8 +11,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
-from sentinel_analysis.domain.exceptions import DomainValidationError
-
 
 def compute_source_checksum(file_path: Path | str | None) -> str:
     """Compute SHA-256 checksum of a raster or data file. Returns empty string if file is missing."""

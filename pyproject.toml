@@ -1,0 +1,43 @@
+[project]
+name = "sentinel-imagery-analysis"
+version = "1.2.0"
+description = "Near-real-time satellite surveillance system for dark vessel interdiction and SAR/AIS fusion"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Sentinel Imagery Analysis Contributors" }
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "tmp",
+    "tests/runtime",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+files = ["sentinel_analysis/domain"]
+
+[tool.bandit]
+targets = ["sentinel_analysis"]
+skips = ["B101", "B104", "B310", "B314", "B608"]
+exclude_dirs = ["tests", ".venv", "tmp", "tests/runtime"]

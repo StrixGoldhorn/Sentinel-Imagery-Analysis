@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -210,10 +209,10 @@ class ReviewRecord:
         if u_at.utcoffset() is None:
             u_at = u_at.replace(tzinfo=timezone.utc)
 
-        orig_d = self.original_bbox.to_dict() if hasattr(self.original_bbox, "to_dict") else self.original_bbox
-        corr_d = self.corrected_bbox.to_dict() if hasattr(self.corrected_bbox, "to_dict") else self.corrected_bbox
+        orig_d = self.original_bbox.to_dict() if isinstance(self.original_bbox, ReviewBox) else self.original_bbox
+        corr_d = self.corrected_bbox.to_dict() if isinstance(self.corrected_bbox, ReviewBox) else self.corrected_bbox
         eff = self.effective_bbox
-        eff_d = eff.to_dict() if hasattr(eff, "to_dict") else eff
+        eff_d = eff.to_dict() if isinstance(eff, ReviewBox) else eff
 
         return {
             "review_id": self.review_id,

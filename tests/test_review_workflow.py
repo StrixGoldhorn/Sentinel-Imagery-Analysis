@@ -1,5 +1,4 @@
 import json
-import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -12,7 +11,6 @@ from sentinel_analysis.domain.review import (
     ReviewAction,
     ReviewBox,
     ReviewDisposition,
-    ReviewHistoryEntry,
     ReviewRecord,
     calculate_iou,
 )

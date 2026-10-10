@@ -10,6 +10,9 @@ notes.md
 *.tiff
 *.png
 *.txt
+!requirements.txt
+!requirements*.txt
+!constraints.txt
 progress.json
 *.db
 *.db-wal
@@ -23,4 +26,5 @@ tests/runtime/
 !README.md
 !ARCHITECTURE.md
 !SYSTEM_ARCHITECTURE_REPORT.md
+!CHANGELOG.md
 !docs/**

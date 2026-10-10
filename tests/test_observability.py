@@ -1,5 +1,3 @@
-import json
-import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -24,7 +22,6 @@ from sentinel_analysis.domain.observability import (
     SchedulerLeadershipMetrics,
     ScanLatencyMetrics,
 )
-from sentinel_analysis.infrastructure.monitoring.operational_metrics import OperationalMetricsCollector
 from sentinel_analysis.interfaces.web.application import create_app
 
 
@@ -39,7 +36,7 @@ class TestCorrelationDomain(unittest.TestCase):
         self.assertNotEqual(cid1, cid2)
 
     def test_context_var_flow(self):
-        token = set_current_correlation_id("test-corr-42")
+        set_current_correlation_id("test-corr-42")
         try:
             self.assertEqual(get_current_correlation_id(), "test-corr-42")
             self.assertEqual(ensure_correlation_id(), "test-corr-42")
