@@ -9,6 +9,7 @@ from typing import Any
 
 from sentinel_analysis.application.ports.review_repository import ReviewRepository
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
+from sentinel_analysis.domain.coordinates import project_detection_coordinates
 from sentinel_analysis.domain.review import (
     ReviewAction,
     ReviewBox,
@@ -169,6 +170,11 @@ def enrich_review_geo(record: ReviewRecord, scan_repo: ScanRepository | None) ->
                 record.lat = d.get("lat") if d.get("lat") is not None else d.get("latitude")
                 record.lng = d.get("lng") if d.get("lng") is not None else d.get("longitude")
                 record.geo_bbox = d.get("geo_bbox")
+                if (record.lat is None or record.lng is None) and hasattr(scan, "bbox") and scan.bbox:
+                    coords = project_detection_coordinates(d, bbox=scan.bbox)
+                    record.lat = coords.get("lat")
+                    record.lng = coords.get("lng")
+                    record.geo_bbox = coords.get("geo_bbox")
                 return record
 
         # Fallback to scan bbox interpolation if lat/lng not in detection json
@@ -226,6 +232,11 @@ class ListReviewQueue:
                         lat = det.get("lat") if det.get("lat") is not None else det.get("latitude")
                         lng = det.get("lng") if det.get("lng") is not None else det.get("longitude")
                         geo_bbox = det.get("geo_bbox")
+                        if (lat is None or lng is None) and hasattr(scan, "bbox") and scan.bbox:
+                            coords = project_detection_coordinates(det, bbox=scan.bbox)
+                            lat = coords.get("lat")
+                            lng = coords.get("lng")
+                            geo_bbox = coords.get("geo_bbox")
                         orig_box = {
                             "x": float(det.get("x", 0)),
                             "y": float(det.get("y", 0)),

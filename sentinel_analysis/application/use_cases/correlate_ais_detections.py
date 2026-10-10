@@ -902,8 +902,10 @@ class CorrelateDetectionsWithAIS:
                 "beam": beam,
                 "polygon_points": polygon_points,
                 "geo_polygon": geo_polygon,
-                "lat": round(center_lat, 5),
-                "lng": round(center_lon, 5),
+                "lat": round(center_lat, 6),
+                "lng": round(center_lon, 6),
+                "latitude": round(center_lat, 7),
+                "longitude": round(center_lon, 7),
                 "geo_bbox": {
                     "min_lat": det_min_lat,
                     "max_lat": det_max_lat,

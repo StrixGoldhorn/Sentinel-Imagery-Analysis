@@ -15,6 +15,11 @@ from flask import Blueprint, Response, jsonify, render_template, request, send_f
 from PIL import Image
 
 from sentinel_analysis.application.use_cases.correlate_ais_detections import interpolate_kinematic_track
+from sentinel_analysis.domain.coordinates import (
+    pixel_to_geo,
+    project_detection_coordinates,
+    resolve_image_transform,
+)
 from sentinel_analysis.domain.entities import BoundingBox, Scan
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.interfaces.web.dependencies import container
@@ -292,8 +297,9 @@ def run_cv(folder_name: str):
             pass
 
     if not enriched_detections and result.detections:
+        transform_fn = resolve_image_transform(image_path, scan.bbox, result.image_width, result.image_height)
         for idx, item in enumerate(result.detections):
-            enriched_detections.append({
+            raw_dict = {
                 "index": idx,
                 "x": item.x,
                 "y": item.y,
@@ -312,7 +318,16 @@ def run_cv(folder_name: str):
                 "dark_vessel_risk": "NOMINAL",
                 "dark_vessel_score": 0.0,
                 "correlated_ais": None,
-            })
+            }
+            coords = project_detection_coordinates(
+                raw_dict,
+                scan.bbox,
+                result.image_width,
+                result.image_height,
+                transform_fn=transform_fn,
+            )
+            raw_dict.update(coords)
+            enriched_detections.append(raw_dict)
 
     inside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "inside_box")
     outside_box_count = sum(1 for d in enriched_detections if d.get("correlation_status") == "outside_box")
@@ -607,6 +622,39 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
     correlation_info = target_detection.get("correlated_ais") if target_detection else None
     correlation_status = target_detection.get("correlation_status") if target_detection else None
 
+    # Calculate geographic bounds of crop and target
+    transform_fn = resolve_image_transform(image_path, scan.bbox, img_w, img_h)
+    crop_corners = [
+        pixel_to_geo(x1, y1, scan.bbox, img_w, img_h, transform_fn),
+        pixel_to_geo(x2, y1, scan.bbox, img_w, img_h, transform_fn),
+        pixel_to_geo(x2, y2, scan.bbox, img_w, img_h, transform_fn),
+        pixel_to_geo(x1, y2, scan.bbox, img_w, img_h, transform_fn),
+    ]
+    crop_lats = [pt[0] for pt in crop_corners]
+    crop_lons = [pt[1] for pt in crop_corners]
+    geo_bounds = {
+        "min_lat": round(min(crop_lats), 7),
+        "max_lat": round(max(crop_lats), 7),
+        "min_lon": round(min(crop_lons), 7),
+        "max_lon": round(max(crop_lons), 7),
+    }
+
+    target_lat = target_detection.get("latitude") if target_detection and target_detection.get("latitude") is not None else (target_detection.get("lat") if target_detection else None)
+    target_lon = target_detection.get("longitude") if target_detection and target_detection.get("longitude") is not None else (target_detection.get("lng") if target_detection and target_detection.get("lng") is not None else (target_detection.get("lon") if target_detection else None))
+    if target_lat is None or target_lon is None:
+        target_cx = x + w / 2.0
+        target_cy = y + h / 2.0
+        t_lat, t_lon = pixel_to_geo(target_cx, target_cy, scan.bbox, img_w, img_h, transform_fn)
+        target_lat = t_lat
+        target_lon = t_lon
+
+    target_geo = {
+        "latitude": round(float(target_lat), 7),
+        "longitude": round(float(target_lon), 7),
+        "lat": round(float(target_lat), 6),
+        "lng": round(float(target_lon), 6),
+    }
+
     return jsonify({
         "data_uri": data_uri,
         "crop_width": crop.shape[1],
@@ -620,6 +668,8 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
         "classification": classification_info,
         "correlation": correlation_info,
         "correlation_status": correlation_status,
+        "geo_bounds": geo_bounds,
+        "target_geo": target_geo,
         "stats": {
             "mean_intensity": round(mean_intensity, 2),
             "max_intensity": round(max_intensity, 2),

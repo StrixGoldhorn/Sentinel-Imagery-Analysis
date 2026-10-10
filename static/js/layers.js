@@ -345,18 +345,37 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
     layerObj.cvThreshold = thresholdVal;
 
     detectionsList.forEach((item, idx) => {
-        const cx = item.center_x !== undefined ? item.center_x : (item.x + item.width / 2);
-        const cy = item.center_y !== undefined ? item.center_y : (item.y + item.height / 2);
-        item.lat = Number((maxLat - cy * latScale).toFixed(5));
-        item.lng = Number((minLon + cx * lonScale).toFixed(5));
+        const serverLat = item.latitude != null ? item.latitude : item.lat;
+        const serverLng = item.longitude != null ? item.longitude : (item.lng != null ? item.lng : item.lon);
+        if (serverLat != null && serverLng != null) {
+            item.lat = Number(Number(serverLat).toFixed(6));
+            item.lng = Number(Number(serverLng).toFixed(6));
+            item.latitude = Number(serverLat);
+            item.longitude = Number(serverLng);
+        } else {
+            const cx = item.center_x !== undefined ? item.center_x : (item.x + item.width / 2);
+            const cy = item.center_y !== undefined ? item.center_y : (item.y + item.height / 2);
+            item.lat = Number((maxLat - cy * latScale).toFixed(6));
+            item.lng = Number((minLon + cx * lonScale).toFixed(6));
+            item.latitude = item.lat;
+            item.longitude = item.lng;
+        }
         item.id = idx + 1;
 
-        const b_minLon = minLon + item.x * lonScale;
-        const b_maxLon = minLon + (item.x + item.width) * lonScale;
-        const b_maxLat = maxLat - item.y * latScale;
-        const b_minLat = maxLat - (item.y + item.height) * latScale;
-
-        const cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
+        let cvBounds;
+        if (item.geo_bbox && (item.geo_bbox.min_lat != null || item.geo_bbox.min_latitude != null)) {
+            const minLat = item.geo_bbox.min_lat ?? item.geo_bbox.min_latitude;
+            const maxLat = item.geo_bbox.max_lat ?? item.geo_bbox.max_latitude;
+            const minLon = item.geo_bbox.min_lon ?? item.geo_bbox.min_longitude;
+            const maxLon = item.geo_bbox.max_lon ?? item.geo_bbox.max_longitude;
+            cvBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
+        } else {
+            const b_minLon = minLon + item.x * lonScale;
+            const b_maxLon = minLon + (item.x + item.width) * lonScale;
+            const b_maxLat = maxLat - item.y * latScale;
+            const b_minLat = maxLat - (item.y + item.height) * latScale;
+            cvBounds = L.latLngBounds([[b_minLat, b_minLon], [b_maxLat, b_maxLon]]);
+        }
 
         // Determine 3-tier bounding box / polygon color based on AIS correlation state
         let strokeColor;
@@ -365,14 +384,23 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
         } else if (item.correlation_status === 'outside_box') {
             strokeColor = CONFIG.COLOR_OUTSIDE_BOX_DETECTION || '#06b6d4';
         } else {
-            strokeColor = (item.polygon_points && item.polygon_points.length === 4)
+            strokeColor = ((item.geo_polygon && item.geo_polygon.length >= 3) || (item.polygon_points && item.polygon_points.length === 4))
                 ? (CONFIG.COLOR_OBB_DETECTION || '#e67e22')
                 : (CONFIG.COLOR_CV_DETECTION || '#ff3333');
         }
 
         // If Oriented Bounding Box polygon vertices exist, draw polygon, else rectangle
         let shapeLayer;
-        if (item.polygon_points && item.polygon_points.length === 4) {
+        if (item.geo_polygon && item.geo_polygon.length >= 3) {
+            const geoPoints = item.geo_polygon.map(pt => [pt[0], pt[1]]);
+            shapeLayer = L.polygon(geoPoints, {
+                color: strokeColor,
+                weight: 2,
+                fillColor: strokeColor,
+                fillOpacity: 0.15,
+                interactive: true
+            });
+        } else if (item.polygon_points && item.polygon_points.length === 4) {
             const geoPoints = item.polygon_points.map(pt => [
                 maxLat - pt[1] * latScale,
                 minLon + pt[0] * lonScale
@@ -869,8 +897,10 @@ function renderSarDetectionsList() {
         if (confNum < 0.6) confBadgeClass += ' low';
         else if (confNum < 0.8) confBadgeClass += ' medium';
 
-        const shipLat = (maxLat - (item.center_y || (item.y + item.height/2)) * latScale).toFixed(5);
-        const shipLon = (minLon + (item.center_x || (item.x + item.width/2)) * lonScale).toFixed(5);
+        const serverLat = item.latitude != null ? item.latitude : item.lat;
+        const serverLng = item.longitude != null ? item.longitude : (item.lng != null ? item.lng : item.lon);
+        const shipLat = serverLat != null ? Number(serverLat).toFixed(5) : (maxLat - (item.center_y || (item.y + item.height/2)) * latScale).toFixed(5);
+        const shipLon = serverLng != null ? Number(serverLng).toFixed(5) : (minLon + (item.center_x || (item.x + item.width/2)) * lonScale).toFixed(5);
 
         const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
         const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
@@ -1064,8 +1094,10 @@ function zoomToShipDetection(uiId, detectionIndex) {
     const latScale = (maxLat - minLat) / imgHeight;
     const lonScale = (maxLon - minLon) / imgWidth;
 
-    const shipLat = maxLat - (item.center_y || (item.y + item.height/2)) * latScale;
-    const shipLon = minLon + (item.center_x || (item.x + item.width/2)) * lonScale;
+    const serverLat = item.latitude != null ? item.latitude : item.lat;
+    const serverLng = item.longitude != null ? item.longitude : (item.lng != null ? item.lng : item.lon);
+    const shipLat = serverLat != null ? Number(serverLat) : (maxLat - (item.center_y || (item.y + item.height/2)) * latScale);
+    const shipLon = serverLng != null ? Number(serverLng) : (minLon + (item.center_x || (item.x + item.width/2)) * lonScale);
 
     closeSarShipDetectionsModal();
     map.setView([shipLat, shipLon], Math.max(map.getZoom(), 14), { animate: true });

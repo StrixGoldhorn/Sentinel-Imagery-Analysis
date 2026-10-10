@@ -255,6 +255,10 @@ class ShipDetection:
     association_likelihood: Optional[float] = None
     association_probability: Optional[float] = None
     reason_codes: Optional[tuple[str, ...] | list[str]] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    geo_bbox: Optional[dict[str, float]] = None
+    geo_polygon: Optional[tuple[tuple[float, float], ...]] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -351,6 +355,37 @@ class ShipDetection:
             if not isinstance(self.reason_codes, (list, tuple)):
                 raise DomainValidationError("Detection reason codes must be a sequence of strings")
             object.__setattr__(self, "reason_codes", tuple(str(code).strip() for code in self.reason_codes if str(code).strip()))
+        if self.latitude is not None:
+            lat = _number(self.latitude, "Detection latitude")
+            if not -90.0 <= lat <= 90.0:
+                raise DomainValidationError("Detection latitude must be between -90 and 90")
+            object.__setattr__(self, "latitude", lat)
+        if self.longitude is not None:
+            lon = _number(self.longitude, "Detection longitude")
+            if not -180.0 <= lon <= 180.0:
+                raise DomainValidationError("Detection longitude must be between -180 and 180")
+            object.__setattr__(self, "longitude", lon)
+        if self.geo_bbox is not None:
+            if not isinstance(self.geo_bbox, dict):
+                raise DomainValidationError("Detection geo_bbox must be a dictionary")
+            object.__setattr__(self, "geo_bbox", dict(self.geo_bbox))
+        if self.geo_polygon is not None:
+            if not isinstance(self.geo_polygon, (list, tuple)) or len(self.geo_polygon) < 3:
+                raise DomainValidationError("Detection geo_polygon must contain at least 3 vertices")
+            pts_geo = tuple((float(pt[0]), float(pt[1])) for pt in self.geo_polygon)
+            object.__setattr__(self, "geo_polygon", pts_geo)
+
+    @property
+    def lat(self) -> Optional[float]:
+        return self.latitude
+
+    @property
+    def lng(self) -> Optional[float]:
+        return self.longitude
+
+    @property
+    def lon(self) -> Optional[float]:
+        return self.longitude
 
 
 @dataclass(frozen=True)

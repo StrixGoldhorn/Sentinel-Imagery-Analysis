@@ -421,8 +421,8 @@ function renderSarDetectionsInSidebar() {
         if (confNum < 0.6) confColor = '#ef4444';
         else if (confNum < 0.8) confColor = '#f59e0b';
 
-        let lat = item.lat || item.center_lat;
-        let lng = item.lng || item.center_lng;
+        let lat = item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat !== undefined && item.lat !== null ? item.lat : item.center_lat);
+        let lng = item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng !== undefined && item.lng !== null ? item.lng : (item.lon !== undefined && item.lon !== null ? item.lon : item.center_lng));
 
         if ((lat === undefined || lng === undefined) && layer.bounds && layer.imgWidth && layer.imgHeight) {
             const bounds = layer.bounds;
@@ -438,8 +438,10 @@ function renderSarDetectionsInSidebar() {
             lng = minLon + cx * lonScale;
         }
 
-        const latStr = lat !== undefined ? `${Number(lat).toFixed(4)}° N` : 'N/A';
-        const lngStr = lng !== undefined ? `${Number(lng).toFixed(4)}° E` : 'N/A';
+        const latVal = (lat !== undefined && lat !== null && !isNaN(lat)) ? Number(lat) : null;
+        const lngVal = (lng !== undefined && lng !== null && !isNaN(lng)) ? Number(lng) : null;
+        const latStr = latVal !== null ? `${Math.abs(latVal).toFixed(4)}° ${latVal >= 0 ? 'N' : 'S'}` : 'N/A';
+        const lngStr = lngVal !== null ? `${Math.abs(lngVal).toFixed(4)}° ${lngVal >= 0 ? 'E' : 'W'}` : 'N/A';
 
         const lengthStr = item.length_meters ? `${item.length_meters.toFixed(1)} m` : (item.length ? `${item.length} m` : 'N/A');
         const beamStr = item.width_meters ? `${item.width_meters.toFixed(1)} m` : (item.beam ? `${item.beam} m` : 'N/A');
@@ -529,8 +531,8 @@ function panToSarDetection(uiId, index) {
     if (!layer || !layer.detections || !layer.detections[index]) return;
 
     const item = layer.detections[index];
-    let lat = item.lat || item.center_lat;
-    let lng = item.lng || item.center_lng;
+    let lat = item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat !== undefined ? item.lat : item.center_lat);
+    let lng = item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng !== undefined ? item.lng : item.center_lng);
 
     if ((lat === undefined || lng === undefined) && layer.bounds && layer.imgWidth && layer.imgHeight) {
         const bounds = layer.bounds;
@@ -651,7 +653,7 @@ function openShipDetailsSidebar(vessel) {
         const latitude = Number(vessel.latitude);
         const longitude = Number(vessel.longitude);
         coordsEl.textContent = Number.isFinite(latitude) && Number.isFinite(longitude)
-            ? `${latitude.toFixed(5)}° N, ${longitude.toFixed(5)}° E`
+            ? `${Math.abs(latitude).toFixed(5)}° ${latitude >= 0 ? 'N' : 'S'}, ${Math.abs(longitude).toFixed(5)}° ${longitude >= 0 ? 'E' : 'W'}`
             : 'N/A';
     }
 
@@ -697,8 +699,8 @@ function openShipDetailsSidebar(vessel) {
 
 function openSarDetectionInShipSidebar(folderName, item) {
     if (!item) return;
-    const lat = item.lat || item.center_lat;
-    const lng = item.lng || item.center_lng;
+    const lat = item.latitude !== undefined && item.latitude !== null ? item.latitude : (item.lat !== undefined ? item.lat : item.center_lat);
+    const lng = item.longitude !== undefined && item.longitude !== null ? item.longitude : (item.lng !== undefined ? item.lng : item.center_lng);
 
     currentSelectedShip = {
         latitude: lat,
@@ -797,7 +799,11 @@ function openSarDetectionInShipSidebar(folderName, item) {
     }
 
     if (coordsEl && lat !== undefined && lng !== undefined) {
-        coordsEl.textContent = `${Number(lat).toFixed(5)}° N, ${Number(lng).toFixed(5)}° E`;
+        const numLat = Number(lat);
+        const numLng = Number(lng);
+        coordsEl.textContent = Number.isFinite(numLat) && Number.isFinite(numLng)
+            ? `${Math.abs(numLat).toFixed(5)}° ${numLat >= 0 ? 'N' : 'S'}, ${Math.abs(numLng).toFixed(5)}° ${numLng >= 0 ? 'E' : 'W'}`
+            : 'N/A';
     }
 
     if (timeEl) timeEl.textContent = isCorrelated && correlatedAis.timestamp ? `AIS Ping: ${correlatedAis.timestamp}` : 'Satellite Radar Flyby';

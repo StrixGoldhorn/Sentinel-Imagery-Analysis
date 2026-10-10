@@ -1264,6 +1264,23 @@ async function fetchCropData(review, padding) {
         const data = await resp.json();
         currentCropData = data;
 
+        // If review lacked geographic coordinates but crop returned target_geo, update map and review
+        if ((review.lat == null || review.lng == null || isNaN(review.lat) || isNaN(review.lng)) && data.target_geo) {
+            const newLat = data.target_geo.lat ?? data.target_geo.latitude;
+            const newLng = data.target_geo.lng ?? data.target_geo.longitude;
+            if (newLat != null && newLng != null) {
+                review.lat = newLat;
+                review.lng = newLng;
+                review.geo_bbox = data.geo_bounds || data.target_geo.geo_bbox || review.geo_bbox;
+                if (selectedReview && selectedReview.review_id === review.review_id) {
+                    selectedReview.lat = newLat;
+                    selectedReview.lng = newLng;
+                    selectedReview.geo_bbox = review.geo_bbox;
+                    updateMapTarget(review.lat, review.lng, review.geo_bbox, review);
+                }
+            }
+        }
+
         if (data.data_uri) {
             cropImg.onload = () => {
                 if (loadingEl) loadingEl.style.display = 'none';

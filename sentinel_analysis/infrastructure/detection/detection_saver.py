@@ -8,6 +8,11 @@ from typing import Any
 import cv2
 import numpy as np
 
+from sentinel_analysis.domain.coordinates import (
+    build_geojson_geometry,
+    project_detection_coordinates,
+    resolve_image_transform,
+)
 from sentinel_analysis.domain.entities import ShipDetection
 from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 
@@ -21,6 +26,16 @@ def _serialize_detection(
     if isinstance(item, dict):
         data = dict(item)
         data.setdefault("index", index)
+        # Harmonize coordinate representations
+        if data.get("lat") is None and data.get("latitude") is not None:
+            data["lat"] = round(float(data["latitude"]), 6)
+        if data.get("lng") is None and data.get("longitude") is not None:
+            data["lng"] = round(float(data["longitude"]), 6)
+        if data.get("latitude") is None and data.get("lat") is not None:
+            data["latitude"] = round(float(data["lat"]), 7)
+        if data.get("longitude") is None and data.get("lng") is not None:
+            data["longitude"] = round(float(data["lng"]), 7)
+
         prov_dict = data.get("provenance") or default_provenance or {}
         normalized_prov = build_preprocessing_provenance(base_provenance=prov_dict, metadata=data)
         data["provenance"] = normalized_prov
@@ -46,6 +61,16 @@ def _serialize_detection(
     if pts is not None:
         pts = [[round(float(p[0]), 2), round(float(p[1]), 2)] for p in pts]
 
+    geo_poly = getattr(item, "geo_polygon", None)
+    if geo_poly is not None:
+        geo_poly = [[round(float(p[0]), 7), round(float(p[1]), 7)] for p in geo_poly]
+
+    lat_val = getattr(item, "latitude", None)
+    lon_val = getattr(item, "longitude", None)
+    geo_box = getattr(item, "geo_bbox", None)
+    if geo_box and isinstance(geo_box, dict):
+        geo_box = dict(geo_box)
+
     item_prov = getattr(item, "provenance", None) or default_provenance or {}
     normalized_prov = build_preprocessing_provenance(base_provenance=item_prov)
 
@@ -62,6 +87,12 @@ def _serialize_detection(
         "center_x": item.center_x,
         "center_y": item.center_y,
         "polygon_points": pts,
+        "lat": round(float(lat_val), 6) if lat_val is not None else None,
+        "lng": round(float(lon_val), 6) if lon_val is not None else None,
+        "latitude": round(float(lat_val), 7) if lat_val is not None else None,
+        "longitude": round(float(lon_val), 7) if lon_val is not None else None,
+        "geo_bbox": geo_box,
+        "geo_polygon": geo_poly,
         "wake_detected": getattr(item, "wake_detected", None),
         "wake_heading": getattr(item, "wake_heading", None),
         "wake_speed_knots": getattr(item, "wake_speed_knots", None),
@@ -130,47 +161,24 @@ def _build_geojson_feature_collection(
     detections: list[dict[str, Any]],
     image_name: str | None = None,
     ghost_vessels: list[dict[str, Any]] | None = None,
+    bbox: Any | None = None,
+    image_width: int = 1,
+    image_height: int = 1,
+    transform_fn: Any | None = None,
 ) -> dict[str, Any]:
     """Generate RFC 7946 GeoJSON FeatureCollection from serialized detections and ghost vessels."""
     features = []
     for d in detections:
-        geo_poly = d.get("geo_polygon")
-        geo_box = d.get("geo_bbox")
-        lat = d.get("lat")
-        lng = d.get("lng")
+        geometry = build_geojson_geometry(
+            d,
+            bbox=bbox,
+            image_width=image_width,
+            image_height=image_height,
+            transform_fn=transform_fn,
+        )
 
-        geometry = None
-        if geo_poly and len(geo_poly) >= 3:
-            # geo_poly is list of (lat, lon) -> GeoJSON requires [lon, lat]
-            ring = [[round(float(p[1]), 6), round(float(p[0]), 6)] for p in geo_poly]
-            if ring[0] != ring[-1]:
-                ring.append(ring[0])
-            geometry = {
-                "type": "Polygon",
-                "coordinates": [ring],
-            }
-        elif geo_box and isinstance(geo_box, dict):
-            min_lat = geo_box.get("min_lat")
-            max_lat = geo_box.get("max_lat")
-            min_lon = geo_box.get("min_lon")
-            max_lon = geo_box.get("max_lon")
-            if None not in (min_lat, max_lat, min_lon, max_lon):
-                ring = [
-                    [round(float(min_lon), 6), round(float(min_lat), 6)],
-                    [round(float(max_lon), 6), round(float(min_lat), 6)],
-                    [round(float(max_lon), 6), round(float(max_lat), 6)],
-                    [round(float(min_lon), 6), round(float(max_lat), 6)],
-                    [round(float(min_lon), 6), round(float(min_lat), 6)],
-                ]
-                geometry = {
-                    "type": "Polygon",
-                    "coordinates": [ring],
-                }
-        elif lat is not None and lng is not None:
-            geometry = {
-                "type": "Point",
-                "coordinates": [round(float(lng), 6), round(float(lat), 6)],
-            }
+        lat = d.get("latitude") if d.get("latitude") is not None else d.get("lat")
+        lng = d.get("longitude") if d.get("longitude") is not None else d.get("lng")
 
         ais = d.get("correlated_ais") or {}
         properties = {
@@ -180,6 +188,12 @@ def _build_geojson_feature_collection(
             "beam_m": d.get("beam"),
             "angle_deg": d.get("angle"),
             "center_pixel": [d.get("center_x"), d.get("center_y")],
+            "lat": round(float(lat), 6) if lat is not None else None,
+            "lng": round(float(lng), 6) if lng is not None else None,
+            "latitude": round(float(lat), 7) if lat is not None else None,
+            "longitude": round(float(lng), 7) if lng is not None else None,
+            "geo_bbox": d.get("geo_bbox"),
+            "geo_polygon": d.get("geo_polygon"),
             "correlation_status": d.get("correlation_status", "uncorrelated"),
             "is_correlated": bool(d.get("is_correlated", False)),
             "is_dark_vessel": bool(d.get("is_dark_vessel", False)),
@@ -311,6 +325,27 @@ def save_detection_results(
     img = cv2.imread(str(target_img), cv2.IMREAD_COLOR) if target_img.is_file() else None
     actual_h, actual_w = (img.shape[0], img.shape[1]) if img is not None else (image_height or 0, image_width or 0)
 
+    # 3. Resolve projection coordinates for detections if missing
+    effective_bbox = bbox or (metadata.get("bbox") if metadata else None)
+    transform_fn = resolve_image_transform(target_img, bbox=effective_bbox, image_width=actual_w, image_height=actual_h)
+    for det_dict in serialized_detections:
+        if (det_dict.get("lat") is None or det_dict.get("geo_bbox") is None) and (effective_bbox is not None or transform_fn is not None) and actual_w > 0 and actual_h > 0:
+            coords = project_detection_coordinates(
+                det_dict,
+                bbox=effective_bbox,
+                image_width=actual_w,
+                image_height=actual_h,
+                transform_fn=transform_fn,
+            )
+            if coords.get("lat") is not None:
+                det_dict["lat"] = coords["lat"]
+                det_dict["lng"] = coords["lng"]
+                det_dict["latitude"] = coords["latitude"]
+                det_dict["longitude"] = coords["longitude"]
+                det_dict["geo_bbox"] = coords["geo_bbox"]
+                if coords.get("geo_polygon") is not None:
+                    det_dict["geo_polygon"] = coords["geo_polygon"]
+
     if img is not None:
         annotated = img.copy()
 
@@ -437,6 +472,10 @@ def save_detection_results(
         serialized_detections,
         target_img.name,
         ghost_vessels=ghost_vessels,
+        bbox=effective_bbox,
+        image_width=actual_w,
+        image_height=actual_h,
+        transform_fn=transform_fn,
     )
     geojson_str = json.dumps(geojson_payload, indent=2)
     detections_geojson_path = target_dir / f"{target_img.stem}_detections.geojson"

@@ -25,6 +25,10 @@ from sentinel_analysis.application.use_cases.generate_briefing import GenerateIn
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
 from sentinel_analysis.application.use_cases.manage_alerts import DispatchMaritimeAlert
+from sentinel_analysis.domain.coordinates import (
+    project_detection_coordinates,
+    resolve_image_transform,
+)
 from sentinel_analysis.domain.entities import MaritimeAlert, Scan
 from sentinel_analysis.domain.provenance import build_preprocessing_provenance
 
@@ -199,7 +203,15 @@ class PostAcquisitionPipeline:
                 logger.warning("AIS correlation failed for scan %s: %s", scan.folder_name, exc, exc_info=True)
 
         if not enriched_detections and raw_detections:
+            transform_fn = resolve_image_transform(scan.image_path, bbox=scan.bbox, image_width=img_width, image_height=img_height)
             for idx, item in enumerate(raw_detections):
+                coords = project_detection_coordinates(
+                    item,
+                    bbox=scan.bbox,
+                    image_width=img_width,
+                    image_height=img_height,
+                    transform_fn=transform_fn,
+                )
                 enriched_detections.append({
                     "index": idx,
                     "x": item.x,
@@ -213,6 +225,12 @@ class PostAcquisitionPipeline:
                     "center_x": item.center_x,
                     "center_y": item.center_y,
                     "polygon_points": getattr(item, "polygon_points", None),
+                    "lat": coords.get("lat"),
+                    "lng": coords.get("lng"),
+                    "latitude": coords.get("latitude"),
+                    "longitude": coords.get("longitude"),
+                    "geo_bbox": coords.get("geo_bbox"),
+                    "geo_polygon": coords.get("geo_polygon"),
                     "wake_detected": getattr(item, "wake_detected", None),
                     "wake_heading": getattr(item, "wake_heading", None),
                     "wake_speed_knots": getattr(item, "wake_speed_knots", None),
