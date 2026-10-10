@@ -4,10 +4,6 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-_TMP_DIR = Path(__file__).resolve().parent / "runtime" / "tmp"
-_TMP_DIR.mkdir(parents=True, exist_ok=True)
-tempfile.tempdir = str(_TMP_DIR)
-
 from sentinel_analysis.application.exceptions import VesselNotFoundError
 from sentinel_analysis.application.use_cases.manage_vessels import (
     GetVesselDetails,
@@ -115,7 +111,7 @@ class ManageVesselsUseCaseTests(unittest.TestCase):
 
 class SQLiteVesselRepositoryTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory(dir=str(_TMP_DIR))
+        self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "test.db"
         self.repo = SQLiteAISRepository(self.db_path)
 

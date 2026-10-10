@@ -211,15 +211,10 @@ python -m sentinel_analysis annotate path/to/tiles
 
 ## 🧪 Verification & Test Suite
 
-The project includes a comprehensive unit and integration test suite with 100% test pass rate across all domains and ports:
+The project includes a comprehensive unit and integration test suite covering all domains, use cases, and infrastructure adapters. Test suites run continuously across Linux and Windows matrices on Python 3.11, 3.12, and 3.13 in GitHub Actions CI:
 
 ```bash
 python -m unittest discover tests -v
-```
-
-```text
-Ran 538 tests in 84.317s
-OK (failures=0, errors=0)
 ```
 
 ---

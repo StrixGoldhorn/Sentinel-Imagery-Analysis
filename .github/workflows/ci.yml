@@ -8,9 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
@@ -23,7 +26,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: Install system dependencies for OpenCV
+      - name: Install system dependencies for OpenCV (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
@@ -36,6 +40,5 @@ jobs:
       - name: Check Clean Architecture boundaries & run test suite
         env:
           PYTHONPATH: .
-          MPLCONFIGDIR: /tmp/matplotlib
         run: |
           python -m unittest discover -s tests -v
