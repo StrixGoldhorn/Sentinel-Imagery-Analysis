@@ -20,10 +20,12 @@ from sentinel_analysis.application.use_cases import (
     DispatchMaritimeAlert,
     ExecuteStorageRetention,
     ExportGeospatial,
+    ExportReviewedDataset,
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
     GeofenceMonitor,
+    GetReviewDetails,
     GetScan,
     GetStorageQuota,
     GetScraperDetail,
@@ -35,6 +37,7 @@ from sentinel_analysis.application.use_cases import (
     IngestAIS,
     IngestPostPassImagery,
     ListAreasOfInterest,
+    ListReviewQueue,
     ListScans,
     ListScrapers,
     ManageWebhooks,
@@ -44,6 +47,7 @@ from sentinel_analysis.application.use_cases import (
     ResetScraperCooldown,
     ResetSettings,
     ScrapeAreaOfInterestAIS,
+    SubmitAnalystReview,
     TagRouteDetections,
     ToggleScraper,
     TriggerAutomaticAISScrape,
@@ -68,6 +72,7 @@ from sentinel_analysis.infrastructure.persistence.filesystem_scans import Filesy
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_review import SQLiteReviewRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_webhooks import SQLiteWebhookRepository
 from sentinel_analysis.infrastructure.reporting import MatplotlibIntelligenceBriefGenerator
@@ -100,6 +105,7 @@ class ApplicationContainer:
         self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
         self.webhook_repository = SQLiteWebhookRepository(settings.database_path)
+        self.review_repository = SQLiteReviewRepository(settings.database_path)
         self.webhook_dispatcher = HTTPWebhookDispatcher()
         self.tile_cache = FilesystemTileCache(settings.cache_root)
         self.task_queue = ThreadedTaskQueue(database_path=settings.database_path)
@@ -291,6 +297,15 @@ class ApplicationContainer:
             self.storage_manager,
             default_scan_retention_days=settings.scan_retention_days,
             default_cache_retention_days=settings.cache_retention_days,
+        )
+
+        self.submit_review = SubmitAnalystReview(self.review_repository, self.scan_repository)
+        self.list_review_queue = ListReviewQueue(self.review_repository, self.scan_repository)
+        self.get_review_details = GetReviewDetails(self.review_repository)
+        self.export_reviewed_dataset = ExportReviewedDataset(
+            self.review_repository,
+            scan_repo=self.scan_repository,
+            output_root=settings.output_root,
         )
 
     def shutdown(self, timeout: float = 2.0) -> None:

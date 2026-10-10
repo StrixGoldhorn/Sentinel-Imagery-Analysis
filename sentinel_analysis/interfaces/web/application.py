@@ -5,7 +5,7 @@ from flask import Flask
 
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.bootstrap.container import ApplicationContainer
-from sentinel_analysis.interfaces.web import ais, alerts, aois, probes, scans, schedule, scrapers, storage, tasks
+from sentinel_analysis.interfaces.web import ais, alerts, aois, probes, review, scans, schedule, scrapers, storage, tasks
 from sentinel_analysis.interfaces.web.errors import register_error_handlers
 from sentinel_analysis.interfaces.web.security import setup_security
 from sentinel_analysis.interfaces.web.settings import blueprint as settings_blueprint
@@ -44,6 +44,7 @@ def create_app(
     app.register_blueprint(tasks.blueprint)
     app.register_blueprint(alerts.blueprint)
     app.register_blueprint(storage.blueprint)
+    app.register_blueprint(review.blueprint)
     app.register_blueprint(settings_blueprint)
 
 

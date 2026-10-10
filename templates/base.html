@@ -53,7 +53,7 @@
                     <!-- 1. Operations -->
                     <li class="nav-item dropdown">
                         <div class="nav-item-wrapper">
-                            <a href="/" class="nav-link-main {{ 'active' if request.path == '/' else '' }}">
+                            <a href="/" class="nav-link-main {{ 'active' if request.path in ('/', '/review') else '' }}">
                                 Operations
                             </a>
                             <button type="button" class="dropdown-toggle-btn" aria-label="Toggle Operations menu" onclick="toggleNavDropdown(event)">▾</button>
@@ -61,6 +61,9 @@
                         <div class="dropdown-menu">
                             <a href="/" class="dropdown-item {{ 'active' if request.path == '/' else '' }}">
                                 <span>🗺️</span> Live Map
+                            </a>
+                            <a href="/review" class="dropdown-item {{ 'active' if request.path == '/review' else '' }}">
+                                <span>📋</span> Review Queue
                             </a>
                         </div>
                     </li>

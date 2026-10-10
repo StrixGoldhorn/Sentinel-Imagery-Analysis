@@ -1,0 +1,920 @@
+{% extends "base.html" %}
+
+{% block title %}Analyst Review Queue - Sentinel Analysis{% endblock %}
+
+{% block extra_head %}
+<style>
+.review-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem 3rem 2rem;
+}
+
+.review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.review-titles h1 {
+    font-size: 1.6rem;
+    color: var(--text-primary);
+    margin: 0 0 0.35rem 0;
+    font-weight: 700;
+}
+
+.review-subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.header-badge-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(2, 132, 199, 0.1);
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary-border);
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.4rem;
+}
+
+/* Stat Cards */
+.review-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 1rem 1.25rem;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.stat-val {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.stat-val.pending { color: var(--color-primary); }
+.stat-val.accepted { color: var(--color-success); }
+.stat-val.rejected { color: var(--color-danger); }
+.stat-val.uncertain { color: var(--color-warning); }
+
+/* Main Layout */
+.review-layout {
+    display: grid;
+    grid-template-columns: 460px 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 1024px) {
+    .review-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Queue List Panel */
+.queue-panel {
+    background: var(--bg-card);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 250px);
+}
+
+.queue-panel-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card-header);
+    border-top-left-radius: var(--card-radius);
+    border-top-right-radius: var(--card-radius);
+}
+
+.filter-controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    padding: 0.35rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-btn:hover, .filter-btn.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+.queue-items-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 0.5rem;
+}
+
+.queue-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color-subtle);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    background: white;
+    transition: all 0.15s ease;
+}
+
+.queue-item:hover {
+    border-color: var(--color-primary-border);
+    background: var(--color-primary-light);
+}
+
+.queue-item.active {
+    border-color: var(--color-primary);
+    background: rgba(2, 132, 199, 0.08);
+    box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.queue-item-crop {
+    width: 60px;
+    height: 60px;
+    border-radius: 4px;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+}
+
+.queue-item-crop img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.queue-item-crop-placeholder {
+    color: #64748b;
+    font-size: 0.65rem;
+    text-align: center;
+}
+
+.queue-item-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-item-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.2rem;
+}
+
+.queue-item-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.disposition-pill {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.disposition-pill.pending { background: #e0f2fe; color: #0369a1; }
+.disposition-pill.accepted { background: #d1fae5; color: #047857; }
+.disposition-pill.rejected { background: #fee2e2; color: #b91c1c; }
+.disposition-pill.uncertain { background: #fef3c7; color: #b45309; }
+
+/* Cockpit Panel */
+.cockpit-panel {
+    background: var(--bg-card);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    flex-direction: column;
+}
+
+.cockpit-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card-header);
+    border-top-left-radius: var(--card-radius);
+    border-top-right-radius: var(--card-radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cockpit-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.image-inspection-box {
+    display: flex;
+    gap: 1.5rem;
+    background: #090d16;
+    border-radius: 8px;
+    padding: 1rem;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+    position: relative;
+    border: 1px solid #1e293b;
+}
+
+.crop-canvas-wrapper {
+    position: relative;
+    max-width: 100%;
+    max-height: 380px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.crop-canvas-wrapper img {
+    max-width: 100%;
+    max-height: 360px;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    border: 1px solid #334155;
+}
+
+/* Inspection Meta Grid */
+.meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.meta-field label {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.2rem;
+}
+
+.meta-field span, .meta-field strong {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+/* Bounding Box Inputs */
+.bbox-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.bbox-editor-grid input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border-color-strong);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+/* Decision Action Bar */
+.action-decision-bar {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.btn-disposition {
+    flex: 1;
+    min-width: 140px;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.88rem;
+    cursor: pointer;
+    border: 2px solid transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.15s ease;
+}
+
+.btn-disposition.accept {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #10b981;
+}
+.btn-disposition.accept:hover, .btn-disposition.accept.selected {
+    background: #10b981;
+    color: white;
+}
+
+.btn-disposition.reject {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #ef4444;
+}
+.btn-disposition.reject:hover, .btn-disposition.reject.selected {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-disposition.uncertain {
+    background: #fffbeb;
+    color: #92400e;
+    border-color: #f59e0b;
+}
+.btn-disposition.uncertain:hover, .btn-disposition.uncertain.selected {
+    background: #f59e0b;
+    color: white;
+}
+
+/* Form inputs */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.form-group label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.form-control {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color-strong);
+    border-radius: 6px;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+}
+
+textarea.form-control {
+    min-height: 60px;
+    resize: vertical;
+}
+
+/* Audit History Timeline */
+.timeline-section {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
+}
+
+.timeline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.timeline-entry {
+    border-left: 3px solid var(--color-primary);
+    padding-left: 0.75rem;
+    font-size: 0.8rem;
+}
+
+.timeline-entry-header {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.2rem;
+}
+
+.timeline-entry-notes {
+    color: var(--text-muted);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="review-container">
+    <!-- Header -->
+    <div class="review-header">
+        <div class="review-titles">
+            <span class="header-badge-tag">MARITIME DOMAIN AWARENESS</span>
+            <h1>Analyst Review Queue</h1>
+            <p class="review-subtitle">
+                Validate computer vision detections, record ground-truth corrected bounding boxes, and generate benchmark & ML retraining datasets.
+            </p>
+        </div>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <button type="button" class="btn btn-secondary" onclick="exportBenchmarkMetrics()">
+                📊 Benchmark Metrics
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="downloadDatasetBundle()">
+                📥 Export JSON Bundle
+            </button>
+            <button type="button" class="btn btn-primary" onclick="compileDatasets()">
+                🔄 Compile Retraining
+            </button>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="review-stats-grid" id="statsGrid">
+        <div class="stat-card">
+            <span class="stat-label">Total Contacts</span>
+            <span class="stat-val" id="statTotal">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Pending Review</span>
+            <span class="stat-val pending" id="statPending">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Accepted (TP)</span>
+            <span class="stat-val accepted" id="statAccepted">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Rejected (FP)</span>
+            <span class="stat-val rejected" id="statRejected">--</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-label">Uncertain (?)</span>
+            <span class="stat-val uncertain" id="statUncertain">--</span>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="review-layout">
+        <!-- Left: Queue List -->
+        <div class="queue-panel">
+            <div class="queue-panel-header">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 0.95rem; color: var(--text-primary);">Contacts Queue</strong>
+                    <span id="queueCounter" style="font-size: 0.75rem; color: var(--text-muted);">Loading…</span>
+                </div>
+                <div class="filter-controls">
+                    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">All</button>
+                    <button class="filter-btn" data-filter="pending" onclick="setFilter('pending')">Pending</button>
+                    <button class="filter-btn" data-filter="accepted" onclick="setFilter('accepted')">Accepted</button>
+                    <button class="filter-btn" data-filter="rejected" onclick="setFilter('rejected')">Rejected</button>
+                    <button class="filter-btn" data-filter="uncertain" onclick="setFilter('uncertain')">Uncertain</button>
+                </div>
+            </div>
+            <div class="queue-items-list" id="queueList">
+                <div style="padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                    Loading review queue…
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Verification Cockpit -->
+        <div class="cockpit-panel" id="cockpitPanel">
+            <div class="cockpit-header">
+                <div>
+                    <h2 id="cockpitTitle" style="font-size: 1.1rem; margin: 0; color: var(--text-primary);">Contact Details</h2>
+                    <span id="cockpitSubtitle" style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
+                        Select a contact from the queue to review
+                    </span>
+                </div>
+                <div id="cockpitPillContainer"></div>
+            </div>
+
+            <div class="cockpit-body" id="cockpitContent" style="display: none;">
+                <!-- Image & Overlay Section -->
+                <div class="image-inspection-box">
+                    <div class="crop-canvas-wrapper" id="cropWrapper">
+                        <img id="cropImg" src="" alt="Vessel Detection Crop" />
+                    </div>
+                </div>
+
+                <!-- Metadata Grid -->
+                <div class="meta-grid">
+                    <div class="meta-field">
+                        <label>Scan ID</label>
+                        <span id="metaScanId">--</span>
+                    </div>
+                    <div class="meta-field">
+                        <label>Detection Index</label>
+                        <span id="metaDetectionIdx">--</span>
+                    </div>
+                    <div class="meta-field">
+                        <label>Confidence</label>
+                        <span id="metaConfidence">--</span>
+                    </div>
+                    <div class="meta-field">
+                        <label>Vessel Class</label>
+                        <span id="metaVesselClass">--</span>
+                    </div>
+                </div>
+
+                <!-- Corrected Bounding Box -->
+                <div class="form-group">
+                    <label>Bounding Box Coordinates [min_x, min_y, max_x, max_y]</label>
+                    <div class="bbox-editor-grid">
+                        <div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">Min X</span>
+                            <input type="number" id="bboxMinX" placeholder="0" />
+                        </div>
+                        <div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">Min Y</span>
+                            <input type="number" id="bboxMinY" placeholder="0" />
+                        </div>
+                        <div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">Max X</span>
+                            <input type="number" id="bboxMaxX" placeholder="0" />
+                        </div>
+                        <div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">Max Y</span>
+                            <input type="number" id="bboxMaxY" placeholder="0" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analyst Identity & Reason Codes -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="reviewerIdInput">Reviewer Callsign / ID</label>
+                        <input type="text" id="reviewerIdInput" class="form-control" value="analyst-1" placeholder="e.g. analyst-1" />
+                    </div>
+                    <div class="form-group">
+                        <label for="reasonCodesInput">Reason Codes (comma-separated)</label>
+                        <input type="text" id="reasonCodesInput" class="form-control" placeholder="e.g. CONFIRMED_WAKE, HARD_NEGATIVE_WAVE" />
+                    </div>
+                </div>
+
+                <!-- Comments -->
+                <div class="form-group">
+                    <label for="commentsInput">Analyst Notes / Ground-Truth Comments</label>
+                    <textarea id="commentsInput" class="form-control" placeholder="Add rationale or observations regarding this contact..."></textarea>
+                </div>
+
+                <!-- Disposition Actions -->
+                <div class="form-group">
+                    <label>Set Disposition Decision</label>
+                    <div class="action-decision-bar">
+                        <button type="button" class="btn-disposition accept" onclick="submitDecision('accepted')">
+                            <span>✓</span> Accept (TP)
+                        </button>
+                        <button type="button" class="btn-disposition reject" onclick="submitDecision('rejected')">
+                            <span>✗</span> Reject (FP)
+                        </button>
+                        <button type="button" class="btn-disposition uncertain" onclick="submitDecision('uncertain')">
+                            <span>?</span> Mark Uncertain
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Immutable Audit Trail -->
+                <div class="timeline-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <strong style="font-size: 0.9rem; color: var(--text-primary);">Immutable Audit History</strong>
+                        <span style="font-size: 0.72rem; color: var(--text-muted);">Append-only log</span>
+                    </div>
+                    <div class="timeline-list" id="timelineList">
+                        <!-- History items injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Empty state when no contact selected -->
+            <div id="cockpitEmpty" style="padding: 4rem 2rem; text-align: center; color: var(--text-muted);">
+                <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎯</div>
+                <h3>No Contact Selected</h3>
+                <p style="font-size: 0.85rem; max-width: 320px; margin: 0 auto;">
+                    Select any contact detection from the queue on the left to inspect imagery, verify coordinates, and log review dispositions.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentFilter = 'all';
+let currentReviews = [];
+let selectedReview = null;
+
+async function loadReviewQueue() {
+    try {
+        const resp = await fetch(`/api/review/queue?disposition=${currentFilter}&limit=200`);
+        const data = await resp.json();
+        if (data.success) {
+            currentReviews = data.reviews || [];
+            updateStats(data.stats || {});
+            renderQueueList(currentReviews);
+
+            // Keep selected item active if it still exists
+            if (selectedReview) {
+                const found = currentReviews.find(r => r.review_id === selectedReview.review_id);
+                if (found) {
+                    selectContact(found);
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load review queue:", e);
+    }
+}
+
+function updateStats(stats) {
+    document.getElementById('statTotal').textContent = stats.total || 0;
+    document.getElementById('statPending').textContent = stats.pending || 0;
+    document.getElementById('statAccepted').textContent = stats.accepted || 0;
+    document.getElementById('statRejected').textContent = stats.rejected || 0;
+    document.getElementById('statUncertain').textContent = stats.uncertain || 0;
+    document.getElementById('queueCounter').textContent = `${currentReviews.length} contact(s)`;
+}
+
+function renderQueueList(items) {
+    const list = document.getElementById('queueList');
+    if (!items.length) {
+        list.innerHTML = `
+            <div style="padding: 2.5rem 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+                No contacts found matching filter "${currentFilter}".
+            </div>
+        `;
+        return;
+    }
+
+    list.innerHTML = items.map(item => {
+        const isActive = selectedReview && selectedReview.review_id === item.review_id;
+        const cropUrl = item.crop_url || '';
+        const disp = item.disposition || 'pending';
+        const confText = item.confidence ? `${Math.round(item.confidence * 100)}%` : '--';
+
+        return `
+            <div class="queue-item ${isActive ? 'active' : ''}" onclick="selectContactById('${item.review_id}')">
+                <div class="queue-item-crop">
+                    ${cropUrl ? `<img src="${cropUrl}" alt="Crop" onerror="this.parentElement.innerHTML='<span class=\\'queue-item-crop-placeholder\\'>NO CROP</span>'" />` : '<span class="queue-item-crop-placeholder">SAR</span>'}
+                </div>
+                <div class="queue-item-body">
+                    <div class="queue-item-title">
+                        <span>#${item.detection_idx} ${item.vessel_class || 'Contact'}</span>
+                        <span class="disposition-pill ${disp}">${disp}</span>
+                    </div>
+                    <div class="queue-item-sub">Scan: ${item.scan_id}</div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-top: 0.2rem;">
+                        <span>Conf: ${confText}</span>
+                        <span>${item.reviewer_id ? '@' + item.reviewer_id : 'unassigned'}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function setFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    loadReviewQueue();
+}
+
+function selectContactById(reviewId) {
+    const item = currentReviews.find(r => r.review_id === reviewId);
+    if (item) {
+        selectContact(item);
+    }
+}
+
+async function selectContact(review) {
+    selectedReview = review;
+    renderQueueList(currentReviews);
+
+    // Fetch full detail and audit history
+    try {
+        const resp = await fetch(`/api/review/${review.review_id}`);
+        const data = await resp.json();
+        if (data.success && data.review) {
+            selectedReview = data.review;
+        }
+    } catch (e) {
+        console.warn("Could not fetch detailed history:", e);
+    }
+
+    document.getElementById('cockpitEmpty').style.display = 'none';
+    document.getElementById('cockpitContent').style.display = 'flex';
+
+    document.getElementById('cockpitTitle').textContent = `Contact #${selectedReview.detection_idx} — ${selectedReview.scan_id}`;
+    document.getElementById('cockpitSubtitle').textContent = `Review ID: ${selectedReview.review_id}`;
+
+    const disp = selectedReview.disposition || 'pending';
+    document.getElementById('cockpitPillContainer').innerHTML = `
+        <span class="disposition-pill ${disp}" style="font-size: 0.8rem; padding: 4px 10px;">${disp.toUpperCase()}</span>
+    `;
+
+    // Crop image
+    const cropImg = document.getElementById('cropImg');
+    if (selectedReview.crop_url) {
+        cropImg.src = selectedReview.crop_url;
+        cropImg.style.display = 'block';
+    } else {
+        cropImg.src = '';
+        cropImg.style.display = 'none';
+    }
+
+    // Metadata
+    document.getElementById('metaScanId').textContent = selectedReview.scan_id;
+    document.getElementById('metaDetectionIdx').textContent = `#${selectedReview.detection_idx}`;
+    document.getElementById('metaConfidence').textContent = selectedReview.confidence ? `${Math.round(selectedReview.confidence * 100)}%` : 'N/A';
+    document.getElementById('metaVesselClass').textContent = selectedReview.vessel_class || 'Vessel';
+
+    // Bounding Box
+    const bbox = selectedReview.corrected_bbox || selectedReview.original_bbox || {};
+    document.getElementById('bboxMinX').value = bbox.min_x ?? '';
+    document.getElementById('bboxMinY').value = bbox.min_y ?? '';
+    document.getElementById('bboxMaxX').value = bbox.max_x ?? '';
+    document.getElementById('bboxMaxY').value = bbox.max_y ?? '';
+
+    // Inputs
+    document.getElementById('commentsInput').value = selectedReview.comments || '';
+    if (Array.isArray(selectedReview.reason_codes)) {
+        document.getElementById('reasonCodesInput').value = selectedReview.reason_codes.join(', ');
+    } else {
+        document.getElementById('reasonCodesInput').value = '';
+    }
+
+    renderAuditHistory(selectedReview.history || []);
+}
+
+function renderAuditHistory(history) {
+    const list = document.getElementById('timelineList');
+    if (!history || !history.length) {
+        list.innerHTML = `<span style="font-size: 0.75rem; color: var(--text-muted);">No history recorded yet.</span>`;
+        return;
+    }
+
+    list.innerHTML = history.slice().reverse().map(h => {
+        const timeStr = h.timestamp ? new Date(h.timestamp).toLocaleString() : 'Recent';
+        return `
+            <div class="timeline-entry">
+                <div class="timeline-entry-header">
+                    <span>${h.action || 'UPDATED'} (${h.disposition || 'pending'})</span>
+                    <span style="font-weight: 400; color: var(--text-muted);">${timeStr}</span>
+                </div>
+                <div class="timeline-entry-notes">
+                    <strong>@${h.reviewer_id || 'system'}:</strong> ${h.comments || 'No comment provided.'}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function submitDecision(disposition) {
+    if (!selectedReview) return;
+
+    const minX = parseFloat(document.getElementById('bboxMinX').value);
+    const minY = parseFloat(document.getElementById('bboxMinY').value);
+    const maxX = parseFloat(document.getElementById('bboxMaxX').value);
+    const maxY = parseFloat(document.getElementById('bboxMaxY').value);
+
+    let correctedBox = null;
+    if (!isNaN(minX) && !isNaN(minY) && !isNaN(maxX) && !isNaN(maxY)) {
+        correctedBox = { min_x: minX, min_y: minY, max_x: maxX, max_y: maxY };
+    }
+
+    const reviewerId = document.getElementById('reviewerIdInput').value.trim() || 'analyst-1';
+    const comments = document.getElementById('commentsInput').value.trim();
+    const reasonCodesRaw = document.getElementById('reasonCodesInput').value.trim();
+    const reasonCodes = reasonCodesRaw ? reasonCodesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+    const payload = {
+        scan_id: selectedReview.scan_id,
+        detection_idx: selectedReview.detection_idx,
+        disposition: disposition,
+        reviewer_id: reviewerId,
+        corrected_bbox: correctedBox,
+        comments: comments,
+        confidence: selectedReview.confidence,
+        original_bbox: selectedReview.original_bbox,
+        vessel_class: selectedReview.vessel_class,
+        reason_codes: reasonCodes,
+    };
+
+    try {
+        const resp = await fetch('/api/review/submit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Analyst-ID': reviewerId,
+            },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (data.success && data.review) {
+            selectedReview = data.review;
+            await loadReviewQueue();
+            selectContact(selectedReview);
+        } else {
+            alert('Failed to save review: ' + (data.error || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Network error submitting review: ' + e.message);
+    }
+}
+
+async function exportBenchmarkMetrics() {
+    try {
+        const resp = await fetch('/api/review/datasets/benchmark?iou_threshold=0.5');
+        const data = await resp.json();
+        if (data.success) {
+            const metrics = data.benchmark.metrics;
+            alert(
+                `Benchmark Evaluation (IoU threshold 0.5):\n\n` +
+                `Total Evaluated: ${data.benchmark.total_evaluated}\n` +
+                `True Positives: ${metrics.true_positives}\n` +
+                `False Positives: ${metrics.false_positives}\n` +
+                `False Negatives: ${metrics.false_negatives}\n` +
+                `Precision: ${(metrics.precision * 100).toFixed(1)}%\n` +
+                `Recall: ${(metrics.recall * 100).toFixed(1)}%\n` +
+                `F1 Score: ${(metrics.f1_score * 100).toFixed(1)}%`
+            );
+        }
+    } catch (e) {
+        alert('Failed to calculate benchmark metrics: ' + e.message);
+    }
+}
+
+function downloadDatasetBundle() {
+    window.location.href = '/api/review/datasets/export';
+}
+
+async function compileDatasets() {
+    try {
+        const resp = await fetch('/api/review/datasets/build', { method: 'POST' });
+        const data = await resp.json();
+        if (data.success) {
+            const ret = data.retraining_summary || {};
+            alert(
+                `Retraining Dataset Compiled!\n\n` +
+                `Positive Annotations: ${ret.positive_samples || 0}\n` +
+                `Hard Negatives: ${ret.hard_negatives || 0}\n` +
+                `Total Samples: ${ret.total_samples || 0}`
+            );
+        } else {
+            alert('Compile error: ' + (data.error || 'Unknown'));
+        }
+    } catch (e) {
+        alert('Compile request failed: ' + e.message);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadReviewQueue();
+});
+</script>
+{% endblock %}

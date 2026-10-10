@@ -70,6 +70,12 @@ from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
 )
 from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
 from sentinel_analysis.application.use_cases.post_acquisition_pipeline import PostAcquisitionPipeline
+from sentinel_analysis.application.use_cases.review_cases import (
+    ExportReviewedDataset,
+    GetReviewDetails,
+    ListReviewQueue,
+    SubmitAnalystReview,
+)
 
 
 __all__ = [
@@ -92,10 +98,12 @@ __all__ = [
     "DispatchMaritimeAlert",
     "ExecuteStorageRetention",
     "ExportGeospatial",
+    "ExportReviewedDataset",
     "GenerateDEM",
     "GenerateHistoricalTrafficHeatmap",
     "GenerateIntelligenceBrief",
     "GeofenceMonitor",
+    "GetReviewDetails",
     "GetScan",
     "GetScraperDetail",
     "GetScraperLogsUseCase",
@@ -107,6 +115,7 @@ __all__ = [
     "IngestAIS",
     "IngestPostPassImagery",
     "ListAreasOfInterest",
+    "ListReviewQueue",
     "ListScans",
     "ListScrapers",
     "ManageWebhooks",
@@ -117,6 +126,7 @@ __all__ = [
     "ResetScraperCooldown",
     "ResetSettings",
     "ScrapeAreaOfInterestAIS",
+    "SubmitAnalystReview",
     "TagRouteDetections",
     "ToggleScraper",
     "TriggerAutomaticAISScrape",
