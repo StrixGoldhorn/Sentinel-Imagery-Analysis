@@ -27,6 +27,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
+    GenerateTacticalExplainability,
     GeofenceMonitor,
     GetOperationalMetrics,
     GetReviewDetails,
@@ -187,6 +188,7 @@ class ApplicationContainer:
             classical_detector=self.classical_cv_detector,
             onnx_detector=self.onnx_detector,
         )
+        self.generate_tactical_explainability = GenerateTacticalExplainability(self.scan_repository)
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)

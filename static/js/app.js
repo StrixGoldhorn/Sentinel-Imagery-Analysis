@@ -883,6 +883,93 @@ function openSarDetectionInShipSidebar(folderName, item) {
         alertsCard.style.display = 'block';
     }
 
+    // Tactical Explainability & Rationales Card
+    const expCard = document.getElementById('shipSidebarExplainabilityCard');
+    const expBadge = document.getElementById('explainabilityBadge');
+    const expThreat = document.getElementById('explainabilityThreat');
+    const expSummary = document.getElementById('explainabilitySummary');
+    const expEvidence = document.getElementById('explainabilityEvidenceList');
+
+    if (expCard) {
+        let classification = 'COOPERATIVE_VESSEL';
+        let threatLevel = 'INFO';
+        let summary = 'Vessel telemetry is compliant and consistent with radar observations.';
+        let evidence = [];
+
+        const isDark = Boolean(item.is_dark || item.is_dark_vessel || !item.is_correlated || item.correlation_status === 'no_ais');
+        const lengthM = Number(item.length || item.estimated_length || item.length_meters || 0);
+
+        if (item.is_infrastructure || item.offshore_infrastructure) {
+            classification = 'OFFSHORE_INFRASTRUCTURE';
+            threatLevel = 'LOW';
+            summary = 'Contact is co-located with charted offshore infrastructure (platform or wind turbine), suppressing false vessel detection.';
+            evidence.push({ title: 'Infrastructure Chart Match', desc: 'Co-located within charted platform perimeter.', weight: 'HIGH' });
+        } else if (item.is_speed_spoofed || item.is_course_spoofed || item.spoofing_warning) {
+            classification = 'SPOOFED_AIS';
+            threatLevel = 'CRITICAL';
+            summary = item.spoofing_warning || 'Discrepancy detected between broadcast AIS kinematics and radar-derived Doppler/wake vectors.';
+            evidence.push({ title: 'Kinematic Vector Divergence', desc: 'AIS speed/course diverges from SAR wake analysis.', weight: 'HIGH' });
+            if (item.wake_speed_knots !== undefined) evidence.push({ title: 'SAR Wake Speed', desc: `${Number(item.wake_speed_knots).toFixed(1)} kn estimated from radar wake.`, weight: 'MEDIUM' });
+        } else if (item.transshipment_suspect || item.is_transshipment_suspect || (item.transshipment_events && item.transshipment_events.length > 0)) {
+            classification = 'TRANSSHIPMENT_SUSPECT';
+            threatLevel = 'HIGH';
+            summary = 'Contact engaged in close-proximity slow-speed encounter (<500m) with secondary vessel outside authorized anchorage.';
+            evidence.push({ title: 'Proximity Threshold (<500m)', desc: 'Two vessels operating in close lateral separation.', weight: 'HIGH' });
+            evidence.push({ title: 'Unsanctioned Water', desc: 'Encounter located outside designated anchorage polygon.', weight: 'MEDIUM' });
+        } else if (item.is_solAS_suspect || item.is_solas_suspect || (isDark && lengthM >= 45.0)) {
+            classification = 'SOLAS_SUSPECT';
+            threatLevel = 'HIGH';
+            summary = `Non-broadcasting radar contact with estimated length of ${lengthM > 0 ? `${lengthM.toFixed(0)}m` : '>45m'} exceeds international SOLAS AIS carriage mandate.`;
+            evidence.push({ title: 'Mandatory SOLAS Threshold', desc: `Estimated length (${lengthM > 0 ? `${lengthM.toFixed(0)}m` : '>45m'}) exceeds 300 GT / 45m carriage threshold.`, weight: 'HIGH' });
+            evidence.push({ title: 'Transponder Silence', desc: 'No correlated AIS broadcast within spatial search buffer.', weight: 'HIGH' });
+        } else if (isDark) {
+            classification = 'DARK_VESSEL';
+            threatLevel = 'MEDIUM';
+            summary = 'Uncorrelated radar target with strong metallic backscatter and zero AIS transmission in local area.';
+            evidence.push({ title: 'Unassociated Radar Return', desc: 'Definite SAR backscatter cluster with no nearby AIS candidates.', weight: 'HIGH' });
+            if (lengthM > 0) evidence.push({ title: 'Dimension Profile', desc: `Est. length ${lengthM.toFixed(0)}m, beam ${Number(item.width_meters || item.beam || 0).toFixed(0)}m.`, weight: 'LOW' });
+        } else {
+            classification = 'COOPERATIVE_VESSEL';
+            threatLevel = 'LOW';
+            summary = 'Contact correlated with valid AIS broadcast within confidence ellipse.';
+            evidence.push({ title: 'Correlated AIS Beacon', desc: `MMSI ${item.correlated_ais?.mmsi || 'verified'} matched position and kinematic track.`, weight: 'HIGH' });
+        }
+
+        let badgeBg = '#10b981';
+        let threatColor = '#10b981';
+        if (classification === 'DARK_VESSEL') { badgeBg = '#f59e0b'; threatColor = '#f59e0b'; }
+        else if (classification === 'SOLAS_SUSPECT') { badgeBg = '#ef4444'; threatColor = '#ef4444'; }
+        else if (classification === 'SPOOFED_AIS') { badgeBg = '#dc2626'; threatColor = '#dc2626'; }
+        else if (classification === 'TRANSSHIPMENT_SUSPECT') { badgeBg = '#8b5cf6'; threatColor = '#8b5cf6'; }
+        else if (classification === 'OFFSHORE_INFRASTRUCTURE') { badgeBg = '#64748b'; threatColor = '#64748b'; }
+
+        if (expBadge) {
+            expBadge.textContent = classification.replace(/_/g, ' ');
+            expBadge.style.background = badgeBg;
+            expBadge.style.color = '#ffffff';
+        }
+        if (expThreat) {
+            expThreat.textContent = `Threat: ${threatLevel}`;
+            expThreat.style.color = threatColor;
+        }
+        if (expSummary) {
+            expSummary.textContent = summary;
+        }
+        if (expEvidence) {
+            expEvidence.innerHTML = evidence.map(ev => `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; background: #fff; padding: 4px 6px; border-radius: 4px; border: 1px solid #e2e8f0; font-size: 0.72rem;">
+                    <div>
+                        <strong style="color: #1e293b;">${escapeHtml(ev.title || '')}:</strong>
+                        <span style="color: #475569;"> ${escapeHtml(ev.desc || '')}</span>
+                    </div>
+                    <span style="font-size: 0.65rem; font-weight: 600; padding: 1px 4px; border-radius: 3px; background: ${ev.weight === 'HIGH' ? '#fee2e2; color: #991b1b;' : '#f1f5f9; color: #475569;'}">${ev.weight || 'EVID'}</span>
+                </div>
+            `).join('');
+        }
+
+        expCard.style.display = 'block';
+    }
+
     // Multi-Sensor & Temporal Analytics Card
     const multiSensorCard = document.getElementById('shipSidebarMultiSensorCard');
     const opticalStatusEl = document.getElementById('shipSidebarOpticalStatus');

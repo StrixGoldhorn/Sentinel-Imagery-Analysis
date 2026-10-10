@@ -21,6 +21,7 @@ from sentinel_analysis.application.use_cases.export_geospatial import ExportGeos
 from sentinel_analysis.application.use_cases.enrich_environmental_context import EnrichMarineEnvironmentalContext
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
+from sentinel_analysis.application.use_cases.generate_tactical_explainability import GenerateTacticalExplainability
 from sentinel_analysis.application.use_cases.generate_traffic_heatmap import GenerateHistoricalTrafficHeatmap
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
@@ -109,6 +110,7 @@ __all__ = [
     "GenerateDEM",
     "GenerateHistoricalTrafficHeatmap",
     "GenerateIntelligenceBrief",
+    "GenerateTacticalExplainability",
     "GeofenceMonitor",
     "GetOperationalMetrics",
     "GetReviewDetails",

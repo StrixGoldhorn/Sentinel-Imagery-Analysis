@@ -561,6 +561,21 @@ textarea.form-control {
                     </div>
                 </div>
 
+                <!-- Tactical Explainability Rationale Panel -->
+                <div class="explainability-box" id="reviewExplainabilityBox" style="background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">Tactical Classification Rationale</span>
+                        <span id="reviewExplainTag" class="disposition-pill pending">EVALUATING</span>
+                    </div>
+                    <div id="reviewExplainSummary" style="font-size: 0.85rem; color: var(--text-primary); margin-bottom: 0.75rem; line-height: 1.4; font-weight: 500;">
+                        Evaluating contact evidence...
+                    </div>
+                    <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem;">Supporting Evidence & Indicators</div>
+                    <div id="reviewExplainEvidence" style="display: flex; flex-direction: column; gap: 0.35rem;">
+                        <!-- Evidence list -->
+                    </div>
+                </div>
+
                 <!-- Corrected Bounding Box -->
                 <div class="form-group">
                     <label>Bounding Box Coordinates [min_x, min_y, max_x, max_y]</label>
@@ -788,7 +803,71 @@ async function selectContact(review) {
         document.getElementById('reasonCodesInput').value = '';
     }
 
+    renderExplainability(selectedReview);
     renderAuditHistory(selectedReview.history || []);
+}
+
+function renderExplainability(review) {
+    const summaryEl = document.getElementById('reviewExplainSummary');
+    const tagEl = document.getElementById('reviewExplainTag');
+    const evList = document.getElementById('reviewExplainEvidence');
+    if (!summaryEl || !tagEl || !evList) return;
+
+    const rCodes = review.reason_codes || [];
+    const isDark = rCodes.some(c => c.includes('DARK')) || review.is_dark || (review.raw_detection && review.raw_detection.is_dark);
+    const isSpoofed = rCodes.some(c => c.includes('SPOOF')) || review.is_spoofed;
+    const isSolas = rCodes.some(c => c.includes('SOLAS')) || review.is_solas_suspect;
+    const isSts = rCodes.some(c => c.includes('STS') || c.includes('TRANSSHIPMENT'));
+    const isInfra = rCodes.some(c => c.includes('INFRASTRUCTURE') || c.includes('PLATFORM'));
+
+    let classification = 'COOPERATIVE_VESSEL';
+    let summary = 'Target exhibits consistent radar backscatter and cooperative transponder telemetry.';
+    let evidence = [];
+    let pillClass = 'accepted';
+
+    if (isInfra) {
+        classification = 'OFFSHORE_INFRASTRUCTURE';
+        pillClass = 'uncertain';
+        summary = 'Contact co-located with known offshore structure/platform, suppressing vessel false alarm.';
+        evidence.push({ title: 'Fixed Infrastructure Match', desc: 'Stationary radar return within charted platform perimeter.' });
+    } else if (isSpoofed) {
+        classification = 'SPOOFED_AIS';
+        pillClass = 'rejected';
+        summary = 'Kinematic wake or course vector conflicts with broadcast AIS parameters.';
+        evidence.push({ title: 'Trajectory Discrepancy', desc: 'Reported course/speed violates radar-derived observations.' });
+    } else if (isSts) {
+        classification = 'TRANSSHIPMENT_SUSPECT';
+        pillClass = 'uncertain';
+        summary = 'Proximity encounter (<500m) detected outside designated anchorage.';
+        evidence.push({ title: 'Proximity Threshold', desc: 'Vessels in close lateral rendezvous separation.' });
+    } else if (isSolas) {
+        classification = 'SOLAS_SUSPECT';
+        pillClass = 'rejected';
+        summary = 'Non-broadcasting vessel exceeds international SOLAS AIS carriage mandate (>45m length).';
+        evidence.push({ title: 'SOLAS Carriage Threshold', desc: 'Vessel dimensions mandate AIS broadcast under Chapter V.' });
+        evidence.push({ title: 'Transponder Silence', desc: 'No correlated AIS signals within search ellipse.' });
+    } else if (isDark) {
+        classification = 'DARK_VESSEL';
+        pillClass = 'rejected';
+        summary = 'Definite radar contact with high reflectivity and zero corresponding AIS transponder signal.';
+        evidence.push({ title: 'Unassociated Radar Return', desc: 'Strong metallic SAR signature without cooperative beacon.' });
+    } else {
+        classification = 'COOPERATIVE_VESSEL';
+        pillClass = 'accepted';
+        summary = 'Contact is correlated with active AIS transponder and kinematic track.';
+        evidence.push({ title: 'Correlated AIS Beacon', desc: 'Transponder position and track match radar detection.' });
+    }
+
+    tagEl.className = `disposition-pill ${pillClass}`;
+    tagEl.textContent = classification.replace(/_/g, ' ');
+    summaryEl.textContent = summary;
+
+    evList.innerHTML = evidence.map(ev => `
+        <div style="background: var(--bg-card); padding: 0.35rem 0.6rem; border-radius: 4px; border: 1px solid var(--border-color);">
+            <strong style="color: var(--text-primary);">${ev.title}:</strong>
+            <span style="color: var(--text-muted);">${ev.desc}</span>
+        </div>
+    `).join('');
 }
 
 function renderAuditHistory(history) {

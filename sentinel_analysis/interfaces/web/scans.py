@@ -1188,6 +1188,42 @@ def scan_algorithm_comparison(folder_name: str) -> Response:
     return jsonify(result.to_dict())
 
 
+@blueprint.route("/api/scan/<folder_name>/explainability", methods=["GET", "POST"])
+def scan_explainability_report(folder_name: str) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    payload = request.get_json(silent=True) or {}
+    detections = payload.get("detections")
+    transshipment_events = payload.get("transshipment_events")
+    identity_anomalies = payload.get("identity_anomalies")
+    environmental_context = payload.get("environmental_context")
+    result = container().generate_tactical_explainability.execute(
+        scan_id=safe_name,
+        detections=detections,
+        transshipment_events=transshipment_events,
+        identity_anomalies=identity_anomalies,
+        environmental_context=environmental_context,
+    )
+    return jsonify(result.to_dict())
+
+
+@blueprint.route("/api/explainability", methods=["POST"])
+def on_demand_explainability() -> Response:
+    payload = request.get_json(silent=True) or {}
+    detections = payload.get("detections")
+    transshipment_events = payload.get("transshipment_events")
+    identity_anomalies = payload.get("identity_anomalies")
+    environmental_context = payload.get("environmental_context")
+    scan_id = payload.get("scan_id")
+    result = container().generate_tactical_explainability.execute(
+        scan_id=scan_id,
+        detections=detections,
+        transshipment_events=transshipment_events,
+        identity_anomalies=identity_anomalies,
+        environmental_context=environmental_context,
+    )
+    return jsonify(result.to_dict())
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":
