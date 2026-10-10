@@ -77,6 +77,11 @@ def _serialize_detection(
         "correlation_status": "uncorrelated",
         "is_correlated": False,
         "correlated_ais": None,
+        "spatial_uncertainty": getattr(item, "spatial_uncertainty", None),
+        "dimension_uncertainty": getattr(item, "dimension_uncertainty", None),
+        "association_likelihood": getattr(item, "association_likelihood", None),
+        "reason_codes": list(getattr(item, "reason_codes", None)) if getattr(item, "reason_codes", None) is not None else [],
+        "cep_meters": (getattr(item, "spatial_uncertainty", None) or {}).get("cep_meters") if isinstance(getattr(item, "spatial_uncertainty", None), dict) else None,
         "provenance": normalized_prov,
         "orbit": normalized_prov["orbit"],
         "product_id": normalized_prov["product_id"],
@@ -210,6 +215,16 @@ def _build_geojson_feature_collection(
             "source_checksum": d.get("source_checksum"),
             "source_checksums": d.get("source_checksums"),
             "provenance": d.get("provenance"),
+            # Calibrated Contact Uncertainty & Reason Codes
+            "spatial_uncertainty": d.get("spatial_uncertainty"),
+            "cep_meters": (
+                (d.get("spatial_uncertainty") or {}).get("cep_meters")
+                if isinstance(d.get("spatial_uncertainty"), dict)
+                else d.get("cep_meters")
+            ),
+            "dimension_uncertainty": d.get("dimension_uncertainty"),
+            "association_likelihood": d.get("association_likelihood"),
+            "reason_codes": d.get("reason_codes", []),
         }
 
         features.append({

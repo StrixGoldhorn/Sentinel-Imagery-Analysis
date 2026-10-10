@@ -540,6 +540,33 @@
                     </div>
                 </div>
 
+                <!-- Calibrated Uncertainty & Reason Codes Card -->
+                <div class="c2-ship-card" id="shipSidebarUncertaintyCard" style="display: none;">
+                    <h4 class="c2-card-title">🎯 Calibrated Uncertainty & Surveillance Codes</h4>
+                    <div class="c2-ship-grid-2">
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Spatial CEP (95%)</span>
+                            <span class="c2-value" id="shipSidebarSpatialCep">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Assoc Likelihood</span>
+                            <span class="c2-value" id="shipSidebarAssocLikelihood">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Dimension Bounds</span>
+                            <span class="c2-value" id="shipSidebarDimBounds">-</span>
+                        </div>
+                        <div class="c2-ship-field">
+                            <span class="c2-label">Heading Uncertainty</span>
+                            <span class="c2-value" id="shipSidebarHeadingUnc">-</span>
+                        </div>
+                    </div>
+                    <div id="shipSidebarReasonCodesRow" style="margin-top: 8px; display: none;">
+                        <span class="c2-label" style="display: block; margin-bottom: 4px;">Surveillance Reason Codes</span>
+                        <div id="shipSidebarReasonCodesList" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+                    </div>
+                </div>
+
                 <!-- Actions -->
                 <div class="c2-ship-actions" style="flex-wrap: wrap;">
                     <button type="button" class="btn btn-primary" id="shipSidebarCenterBtn" onclick="centerOnSelectedShip()" style="flex: 1 1 45%;">
@@ -737,6 +764,38 @@
             <div class="sig-row">
                 <span class="sig-lbl">Radar Pixel Extents:</span>
                 <span id="inspectorCoords" class="sig-val" style="color: #64748b; font-family: monospace;">-</span>
+            </div>
+        </div>
+
+        <!-- Calibrated Uncertainty & Reason Codes -->
+        <div class="uncertainty-grid" style="margin-top: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <strong style="font-size: 0.80rem; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px;">🎯 Calibrated Uncertainty & Surveillance Codes</strong>
+                <span id="inspectorAssocLikelihoodBadge" class="badge" style="background: #e2e8f0; color: #475569; font-size: 0.72rem; padding: 2px 8px; border-radius: 12px;">Assoc Likelihood: -</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.78rem;">
+                <div>
+                    <span style="color: #64748b; font-weight: 600;">Spatial CEP (95%):</span>
+                    <span id="inspectorSpatialCep" style="font-family: monospace; font-weight: 600; color: #0f172a; margin-left: 4px;">-</span>
+                </div>
+                <div>
+                    <span style="color: #64748b; font-weight: 600;">Error Ellipse:</span>
+                    <span id="inspectorSpatialEllipse" style="font-family: monospace; color: #0f172a; margin-left: 4px;">-</span>
+                </div>
+                <div>
+                    <span style="color: #64748b; font-weight: 600;">Dimension Bounds:</span>
+                    <span id="inspectorDimBounds" style="font-family: monospace; color: #0f172a; margin-left: 4px;">-</span>
+                </div>
+                <div>
+                    <span style="color: #64748b; font-weight: 600;">Heading Uncertainty:</span>
+                    <span id="inspectorHeadingBounds" style="font-family: monospace; color: #0f172a; margin-left: 4px;">-</span>
+                </div>
+            </div>
+            <div style="margin-top: 8px; display: flex; align-items: flex-start; gap: 6px;">
+                <span style="font-size: 0.74rem; color: #64748b; font-weight: 600; white-space: nowrap;">Reason Codes:</span>
+                <div id="inspectorReasonCodes" style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    <span style="color: #94a3b8; font-size: 0.74rem; font-style: italic;">None</span>
+                </div>
             </div>
         </div>
 

@@ -8,6 +8,14 @@ from typing import Any, Optional
 
 from sentinel_analysis.application.ports.ais_repository import AISRepository
 from sentinel_analysis.domain.entities import BoundingBox, Scan, ShipDetection
+from sentinel_analysis.domain.uncertainty import (
+    DimensionUncertainty,
+    SpatialUncertainty,
+    calculate_association_likelihood,
+    calibrate_dimension_uncertainty,
+    calibrate_spatial_uncertainty,
+    generate_contact_reason_codes,
+)
 
 
 def haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -791,6 +799,10 @@ class CorrelateDetectionsWithAIS:
                 opt_conf = det.get("optical_confirmed")
                 opt_conf_score = det.get("optical_confidence")
                 temp_change = det.get("temporal_change_type")
+                sp_unc = det.get("spatial_uncertainty")
+                dim_unc = det.get("dimension_uncertainty")
+                assoc_lh = det.get("association_likelihood")
+                r_codes = det.get("reason_codes")
             else:
                 x = float(det.x)
                 y = float(det.y)
@@ -814,6 +826,37 @@ class CorrelateDetectionsWithAIS:
                 opt_conf = getattr(det, "optical_confirmed", None)
                 opt_conf_score = getattr(det, "optical_confidence", None)
                 temp_change = getattr(det, "temporal_change_type", None)
+                sp_unc = getattr(det, "spatial_uncertainty", None)
+                dim_unc = getattr(det, "dimension_uncertainty", None)
+                assoc_lh = getattr(det, "association_likelihood", None)
+                r_codes = getattr(det, "reason_codes", None)
+
+            if sp_unc is not None and hasattr(sp_unc, "to_dict"):
+                sp_unc_dict = sp_unc.to_dict()
+            elif isinstance(sp_unc, dict):
+                sp_unc_dict = dict(sp_unc)
+            else:
+                sp_unc_dict = calibrate_spatial_uncertainty().to_dict()
+
+            if dim_unc is not None and hasattr(dim_unc, "to_dict"):
+                dim_unc_dict = dim_unc.to_dict()
+            elif isinstance(dim_unc, dict):
+                dim_unc_dict = dict(dim_unc)
+            else:
+                dim_unc_dict = calibrate_dimension_uncertainty(
+                    length_m=length, beam_m=beam, heading_deg=angle
+                ).to_dict()
+
+            if r_codes is not None:
+                r_codes_list = list(r_codes)
+            else:
+                r_codes_list = generate_contact_reason_codes(
+                    is_correlated=False,
+                    is_inside_box=False,
+                    association_likelihood=0.0,
+                    wake_detected=bool(wake_detected),
+                    confidence=conf,
+                )
 
             center_x = float(cx) if cx is not None else (x + w / 2.0)
             center_y = float(cy) if cy is not None else (y + h / 2.0)
@@ -882,6 +925,10 @@ class CorrelateDetectionsWithAIS:
                 "optical_confirmed": opt_conf,
                 "optical_confidence": opt_conf_score,
                 "temporal_change_type": temp_change,
+                "spatial_uncertainty": sp_unc_dict,
+                "dimension_uncertainty": dim_unc_dict,
+                "association_likelihood": assoc_lh,
+                "reason_codes": r_codes_list,
             })
 
         # 2. Pre-process candidates with kinematic trajectory interpolation / dead-reckoning
@@ -1053,6 +1100,51 @@ class CorrelateDetectionsWithAIS:
 
             projected_detections[det_idx]["correlation_status"] = match_status
             projected_detections[det_idx]["is_correlated"] = True
+
+            ais_ellipse = cand.get("uncertainty_ellipse") or {}
+            joint_spatial = calibrate_spatial_uncertainty(
+                ais_semi_major_m=ais_ellipse.get("semi_major_m"),
+                ais_semi_minor_m=ais_ellipse.get("semi_minor_m"),
+                ais_orientation_deg=ais_ellipse.get("orientation_deg"),
+            )
+
+            ais_len = vessel.get("length")
+            if ais_len is None:
+                to_b = vessel.get("to_bow") or vessel.get("dimension_to_bow")
+                to_s = vessel.get("to_stern") or vessel.get("dimension_to_stern")
+                if to_b is not None and to_s is not None:
+                    try:
+                        ais_len = float(to_b) + float(to_s)
+                    except (ValueError, TypeError):
+                        pass
+
+            assoc_likelihood = calculate_association_likelihood(
+                dist_to_box_meters=dist_to_box,
+                tolerance_meters=tolerance_meters,
+                is_inside_box=(match_status == "inside_box"),
+                sar_speed_knots=projected_detections[det_idx].get("wake_speed_knots"),
+                ais_speed_knots=ais_spd,
+                sar_heading_deg=projected_detections[det_idx].get("wake_heading") or projected_detections[det_idx].get("angle"),
+                ais_heading_deg=ais_hdg,
+                sar_length_m=projected_detections[det_idx].get("length"),
+                ais_length_m=ais_len,
+            )
+
+            matched_reason_codes = generate_contact_reason_codes(
+                is_correlated=True,
+                is_inside_box=(match_status == "inside_box"),
+                association_likelihood=assoc_likelihood,
+                wake_detected=bool(projected_detections[det_idx].get("wake_detected")),
+                is_speed_spoofed=bool(is_speed_spoofed),
+                is_course_spoofed=bool(is_course_spoofed),
+                is_dark_suspect=False,
+                confidence=projected_detections[det_idx].get("confidence"),
+            )
+
+            projected_detections[det_idx]["spatial_uncertainty"] = joint_spatial.to_dict()
+            projected_detections[det_idx]["association_likelihood"] = assoc_likelihood
+            projected_detections[det_idx]["reason_codes"] = matched_reason_codes
+
             projected_detections[det_idx]["correlated_ais"] = {
                 "mmsi": vessel.get("mmsi"),
                 "vessel_name": vessel.get("vessel_name") or vessel.get("name"),
@@ -1077,6 +1169,9 @@ class CorrelateDetectionsWithAIS:
                 "is_course_spoofed": is_course_spoofed,
                 "speed_discrepancy_knots": speed_discrepancy_knots,
                 "heading_discrepancy_deg": heading_discrepancy_deg,
+                "spatial_uncertainty": joint_spatial.to_dict(),
+                "association_likelihood": assoc_likelihood,
+                "reason_codes": matched_reason_codes,
                 "timestamp": (
                     vessel["timestamp"].isoformat()
                     if isinstance(vessel.get("timestamp"), datetime)
@@ -1098,6 +1193,19 @@ class CorrelateDetectionsWithAIS:
                 critical_threshold=crit_thresh,
             )
             p_det.update(dv_assessment)
+            if not p_det.get("is_correlated"):
+                p_det["association_likelihood"] = 0.0
+                p_det["reason_codes"] = generate_contact_reason_codes(
+                    is_correlated=False,
+                    is_inside_box=False,
+                    association_likelihood=0.0,
+                    wake_detected=bool(p_det.get("wake_detected")),
+                    is_speed_spoofed=False,
+                    is_course_spoofed=False,
+                    is_dark_suspect=bool(p_det.get("is_dark_vessel")),
+                    solas_carriage_expected=bool(p_det.get("length") and float(p_det.get("length")) >= solas_thresh),
+                    confidence=p_det.get("confidence"),
+                )
             if p_det.get("is_speed_spoofed"):
                 p_det.setdefault("dark_vessel_reasons", []).append(
                     f"AIS speed spoofing detected (wake speed {p_det.get('wake_speed_knots')} kn vs AIS {p_det['correlated_ais'].get('speed')} kn)"

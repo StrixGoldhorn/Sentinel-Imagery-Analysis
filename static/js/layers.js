@@ -427,6 +427,20 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
             aisBadgeHtml = `<span class="cv-conf-badge" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444;">No AIS Ping</span>`;
         }
 
+        const itemCep = (item.spatial_uncertainty && item.spatial_uncertainty.cep_meters !== undefined)
+            ? item.spatial_uncertainty.cep_meters
+            : item.cep_meters;
+        const itemAssocLh = item.association_likelihood !== undefined ? item.association_likelihood : null;
+        const itemDimUnc = item.dimension_uncertainty || {};
+        const itemRCodes = Array.isArray(item.reason_codes) ? item.reason_codes : [];
+
+        const lenDisplay = (item.length && itemDimUnc.length_uncertainty_m)
+            ? `${item.length} ±${Math.round(itemDimUnc.length_uncertainty_m)} m`
+            : (item.length ? `${item.length} m` : 'N/A');
+        const beamDisplay = (item.beam && itemDimUnc.beam_uncertainty_m)
+            ? `${item.beam} ±${Math.round(itemDimUnc.beam_uncertainty_m)} m`
+            : (item.beam ? `${item.beam} m` : 'N/A');
+
         const popupContent = `
             <div class="cv-detection-popup-card">
                 <div class="cv-popup-header">
@@ -446,11 +460,11 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
                     ${aisDetailHtml}
                     <div class="cv-popup-cell">
                         <span class="cv-lbl">Est. Length</span>
-                        <span class="cv-val">${item.length ? `${item.length} m` : 'N/A'}</span>
+                        <span class="cv-val">${lenDisplay}</span>
                     </div>
                     <div class="cv-popup-cell">
                         <span class="cv-lbl">Est. Beam</span>
-                        <span class="cv-val">${item.beam ? `${item.beam} m` : 'N/A'}</span>
+                        <span class="cv-val">${beamDisplay}</span>
                     </div>
                     <div class="cv-popup-cell">
                         <span class="cv-lbl">Heading</span>
@@ -460,7 +474,21 @@ function applyDetectionsToLayer(uiId, data, thresholdVal) {
                         <span class="cv-lbl">Pixel Size</span>
                         <span class="cv-val">${item.width}×${item.height} px</span>
                     </div>
+                    ${itemCep !== undefined && itemCep !== null ? `
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Spatial CEP (95%)</span>
+                        <span class="cv-val" style="color: #0284c7; font-weight: 600;">±${Number(itemCep).toFixed(1)} m</span>
+                    </div>` : ''}
+                    ${itemAssocLh !== null ? `
+                    <div class="cv-popup-cell">
+                        <span class="cv-lbl">Assoc Likelihood</span>
+                        <span class="cv-val" style="color: ${itemAssocLh >= 0.7 ? '#10b981' : (itemAssocLh >= 0.4 ? '#f59e0b' : '#ef4444')}; font-weight: 600;">${(itemAssocLh * 100).toFixed(0)}%</span>
+                    </div>` : ''}
                 </div>
+                ${itemRCodes.length > 0 ? `
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 3px; padding: 0 4px;">
+                    ${itemRCodes.slice(0, 3).map(c => `<span style="font-size: 0.65rem; background: #e2e8f0; color: #334155; padding: 1px 5px; border-radius: 3px; font-weight: 500;">${escapeHtml(c)}</span>`).join('')}
+                </div>` : ''}
                 <div class="cv-popup-actions">
                     <button type="button" class="cv-popup-btn-primary" style="background: #0ea5e9; color: white;" onclick='if (typeof openSarDetectionInShipSidebar === "function") openSarDetectionInShipSidebar("${folderName}", ${JSON.stringify(item)})'>
                         🚢 Dossier
@@ -893,6 +921,20 @@ function renderSarDetectionsList() {
             correlationBadge = `<span style="font-size:0.75rem; padding: 2px 6px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #ef4444; font-weight: 600; border: 1px solid #ef4444;">No AIS Ping</span>`;
         }
 
+        const modalCep = (item.spatial_uncertainty && item.spatial_uncertainty.cep_meters !== undefined)
+            ? item.spatial_uncertainty.cep_meters
+            : item.cep_meters;
+        const modalAssocLh = item.association_likelihood !== undefined ? item.association_likelihood : null;
+        const modalDimUnc = item.dimension_uncertainty || {};
+        const modalRCodes = Array.isArray(item.reason_codes) ? item.reason_codes : [];
+
+        const modalLenDisplay = (item.length && modalDimUnc.length_uncertainty_m)
+            ? `${item.length} ±${Math.round(modalDimUnc.length_uncertainty_m)} m`
+            : (item.length ? `${item.length} m` : 'N/A');
+        const modalBeamDisplay = (item.beam && modalDimUnc.beam_uncertainty_m)
+            ? `${item.beam} ±${Math.round(modalDimUnc.beam_uncertainty_m)} m`
+            : (item.beam ? `${item.beam} m` : 'N/A');
+
         return `
             <div class="detection-item-card">
                 <div class="detection-item-header">
@@ -913,11 +955,11 @@ function renderSarDetectionsList() {
                     ${aisFieldHtml}
                     <div class="detection-item-field">
                         <span class="lbl">Est. Length</span>
-                        <span class="val">${item.length ? `${item.length} m` : 'N/A'}</span>
+                        <span class="val">${modalLenDisplay}</span>
                     </div>
                     <div class="detection-item-field">
                         <span class="lbl">Est. Beam</span>
-                        <span class="val">${item.beam ? `${item.beam} m` : 'N/A'}</span>
+                        <span class="val">${modalBeamDisplay}</span>
                     </div>
                     <div class="detection-item-field">
                         <span class="lbl">Heading / Angle</span>
@@ -931,7 +973,21 @@ function renderSarDetectionsList() {
                         <span class="lbl">Pixel Extents</span>
                         <span class="val">${item.width}×${item.height} px</span>
                     </div>
+                    ${modalCep !== undefined && modalCep !== null ? `
+                    <div class="detection-item-field">
+                        <span class="lbl">Spatial CEP (95%)</span>
+                        <span class="val" style="color: #0284c7; font-weight: 600;">±${Number(modalCep).toFixed(1)} m</span>
+                    </div>` : ''}
+                    ${modalAssocLh !== null ? `
+                    <div class="detection-item-field">
+                        <span class="lbl">Assoc Likelihood</span>
+                        <span class="val" style="color: ${modalAssocLh >= 0.7 ? '#10b981' : (modalAssocLh >= 0.4 ? '#f59e0b' : '#ef4444')}; font-weight: 600;">${(modalAssocLh * 100).toFixed(0)}%</span>
+                    </div>` : ''}
                 </div>
+                ${modalRCodes.length > 0 ? `
+                <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    ${modalRCodes.map(c => `<span style="font-size: 0.68rem; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 1px 6px; border-radius: 3px; font-weight: 500;">${escapeHtml(c)}</span>`).join('')}
+                </div>` : ''}
                 <div class="detection-item-actions">
                     <button type="button" class="sar-btn-zoom" onclick='zoomToShipDetection("${layerObj.uiId}", ${item.origIdx})'>
                         🎯 Zoom on Map

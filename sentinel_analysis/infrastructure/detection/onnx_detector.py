@@ -16,6 +16,11 @@ import numpy as np
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
 from sentinel_analysis.domain.provenance import build_preprocessing_provenance
+from sentinel_analysis.domain.uncertainty import (
+    calibrate_dimension_uncertainty,
+    calibrate_spatial_uncertainty,
+    generate_contact_reason_codes,
+)
 from sentinel_analysis.infrastructure.detection.wake import ShipWakeDetector
 from sentinel_analysis.infrastructure.imagery.preprocessing import preprocess_sar
 
@@ -628,6 +633,27 @@ class DeepLearningShipDetector:
                 except Exception as exc:
                     logger.debug("Wake detection error: %s", exc)
 
+            spatial_unc = calibrate_spatial_uncertainty(
+                pixel_spacing_m=pixel_spacing,
+                length_m=length_m,
+                beam_m=beam_m,
+            )
+            dim_unc = calibrate_dimension_uncertainty(
+                length_m=length_m,
+                beam_m=beam_m,
+                pixel_spacing_m=pixel_spacing,
+                angle_deg=angle,
+            )
+            r_codes = generate_contact_reason_codes(
+                detection_data={
+                    "confidence": conf,
+                    "length": length_m,
+                    "beam": beam_m,
+                    "wake_detected": wake_detected,
+                },
+                is_correlated=False,
+            )
+
             detections.append(
                 ShipDetection(
                     x=x_min,
@@ -648,6 +674,10 @@ class DeepLearningShipDetector:
                     wake_speed_knots=wake_speed,
                     wake_confidence=wake_confidence,
                     provenance=provenance,
+                    spatial_uncertainty=spatial_unc,
+                    dimension_uncertainty=dim_unc,
+                    association_likelihood=0.0,
+                    reason_codes=r_codes,
                 )
             )
 

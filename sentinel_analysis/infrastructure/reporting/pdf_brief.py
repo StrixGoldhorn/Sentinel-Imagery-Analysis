@@ -304,9 +304,15 @@ class MatplotlibIntelligenceBriefGenerator:
         else:
             wake_str = "None Observed / Low Dynamic"
 
+        d_unc = target.get("dimension_uncertainty") or target.get("raw_detection", {}).get("dimension_uncertainty") or {}
+        l_margin = d_unc.get("length_uncertainty_m")
+        w_margin = d_unc.get("beam_uncertainty_m")
+        len_display = f"{length_m:.1f} ± {l_margin:.1f} m" if l_margin else f"{length_m:.1f} meters"
+        beam_display = f"{width_m:.1f} ± {w_margin:.1f} m" if w_margin else f"{width_m:.1f} meters"
+
         sig_items = [
-            ("Estimated Length", f"{length_m:.1f} meters"),
-            ("Estimated Beam (Width)", f"{width_m:.1f} meters"),
+            ("Estimated Length", len_display),
+            ("Estimated Beam (Width)", beam_display),
             ("Aspect Ratio (L / B)", f"{aspect_ratio:.1f} : 1"),
             ("Radar Detection Conf", f"{conf * 100:.1f}%"),
             ("Vessel Classification", f"{vessel_class[:24]}"),
@@ -316,9 +322,24 @@ class MatplotlibIntelligenceBriefGenerator:
             ("Orbit Geometry", f"{acq.orbit_direction or 'Ascending'} (Pass {acq.relative_orbit or 'N/A'})"),
         ]
 
-        y_pos = 0.76 if len(sig_items) > 8 else 0.74
-        y_step = 0.080 if len(sig_items) > 8 else 0.095
-        f_size = 6.8 if len(sig_items) > 8 else 7.2
+        sp_unc = target.get("spatial_uncertainty") or target.get("raw_detection", {}).get("spatial_uncertainty") or {}
+        cep_val = sp_unc.get("cep_meters") or target.get("cep_meters")
+        semi_maj = sp_unc.get("semi_major_axis_meters")
+        if cep_val is not None:
+            sig_items.append(("Spatial CEP (95%)", f"±{float(cep_val):.1f} m" + (f" (Maj: {semi_maj:.0f}m)" if semi_maj else "")))
+
+        assoc_lh = target.get("association_likelihood") if target.get("association_likelihood") is not None else target.get("raw_detection", {}).get("association_likelihood")
+        if assoc_lh is not None:
+            sig_items.append(("Association Likelihood", f"{float(assoc_lh) * 100:.1f}%"))
+
+        num_items = len(sig_items)
+        if num_items > 10:
+            y_pos, y_step, f_size = 0.78, 0.065, 5.8
+        elif num_items > 8:
+            y_pos, y_step, f_size = 0.76, 0.075, 6.4
+        else:
+            y_pos, y_step, f_size = 0.74, 0.095, 7.2
+
         for lbl, val in sig_items:
             card_frame.text(0.04, y_pos, lbl, fontsize=f_size, color="#718096", fontweight="bold", va="center")
             card_frame.text(0.96, y_pos, val, fontsize=f_size, color="#1a202c", ha="right", va="center")
@@ -584,8 +605,17 @@ class MatplotlibIntelligenceBriefGenerator:
         elif temp_change == "ARRIVED":
             compliance_items.append(("SAR Coherence/Pass", "NEW ARRIVAL (T2)"))
 
+        r_codes = target.get("reason_codes") or target.get("raw_detection", {}).get("reason_codes") or []
+        if r_codes:
+            code_str = ", ".join(r_codes[:2])
+            if len(r_codes) > 2:
+                code_str += f" (+{len(r_codes) - 2})"
+            compliance_items.append(("Tactical Reason Codes", code_str))
+
         item_count = len(compliance_items)
-        if item_count > 8:
+        if item_count > 9:
+            y_pos, y_step, f_size = 0.79, 0.046, 5.4
+        elif item_count > 8:
             y_pos, y_step, f_size = 0.78, 0.050, 5.8
         elif item_count > 7:
             y_pos, y_step, f_size = 0.77, 0.058, 6.4
@@ -1219,17 +1249,34 @@ class MatplotlibIntelligenceBriefGenerator:
 
                         comp_label = "AIS KINEMATIC ANOMALY // SPOOFED" if is_spoofed else "SOLAS COMPLIANT // AIS ACTIVE"
 
+                        d_unc = target.get("dimension_uncertainty") or target.get("raw_detection", {}).get("dimension_uncertainty") or {}
+                        l_unc = d_unc.get("length_uncertainty_m")
+                        w_unc = d_unc.get("beam_uncertainty_m")
+                        dim_label = f"L: {length_val:.0f}±{l_unc:.0f}m, B: {width_val:.0f}±{w_unc:.0f}m" if (l_unc and w_unc) else f"L: {length_val:.0f}m, B: {width_val:.0f}m"
+
+                        sp_unc = target.get("spatial_uncertainty") or target.get("raw_detection", {}).get("spatial_uncertainty") or {}
+                        cep_val = sp_unc.get("cep_meters") or target.get("cep_meters")
+                        assoc_lh = target.get("association_likelihood") if target.get("association_likelihood") is not None else target.get("raw_detection", {}).get("association_likelihood")
+                        r_codes = target.get("reason_codes") or target.get("raw_detection", {}).get("reason_codes") or []
+
                         info_lines = [
                             ("Vessel Name", v_name[:18]),
                             ("MMSI // IMO", f"{mmsi} / {imo[:7]}"),
                             ("Vessel Type", v_type[:22]),
                             ("Position (SAR)", f"{lat_str}, {lon_str}"),
                             ("Position (AIS)", f"{format_lat(ais.get('latitude'))}, {format_lon(ais.get('longitude'))}"),
-                            ("Dimensions", f"L: {length_val:.0f}m, B: {width_val:.0f}m"),
+                            ("Dimensions", dim_label),
                             ("Speed / Course", f"{sog_str} / {cog_str}"),
                             ("Correlation Offset", f"Δ = {offset_m:.0f} m"),
                             ("Compliance", comp_label),
                         ]
+
+                        if cep_val is not None:
+                            info_lines.append(("Spatial CEP", f"±{float(cep_val):.1f} m"))
+                        if assoc_lh is not None:
+                            info_lines.append(("Assoc Likelihood", f"{float(assoc_lh) * 100:.1f}%"))
+                        if r_codes:
+                            info_lines.append(("Reason Codes", ", ".join(r_codes[:2])))
 
                         opt_status = target.get("optical_status") or ais.get("optical_status") or target.get("raw_detection", {}).get("optical_status")
                         opt_conf = target.get("optical_confidence") or target.get("raw_detection", {}).get("optical_confidence")
@@ -1246,9 +1293,9 @@ class MatplotlibIntelligenceBriefGenerator:
                             info_lines.append(("SAR Coherence", "NEW ARRIVAL (T2)"))
 
                         n_lines = len(info_lines)
-                        y_text = 0.90 if n_lines > 9 else 0.88
-                        y_step = 0.82 / max(1, n_lines)
-                        f_sz = 6.0 if n_lines > 9 else 6.8
+                        y_text = 0.92 if n_lines > 10 else (0.90 if n_lines > 8 else 0.88)
+                        y_step = 0.86 / max(1, n_lines)
+                        f_sz = 5.2 if n_lines > 11 else (5.8 if n_lines > 9 else 6.6)
                         for label, val in info_lines:
                             info_ax.text(0.0, y_text, label, fontsize=f_sz, color="#718096", fontweight="bold")
                             val_col = "#c53030" if (is_spoofed and label == "Compliance") else (

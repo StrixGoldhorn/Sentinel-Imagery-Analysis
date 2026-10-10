@@ -50,6 +50,80 @@ async function inspectDetection(folderName, detectionData) {
     setInspectorText('inspectorConfidence', detectionData.confidence !== undefined ? `${(detectionData.confidence * 100).toFixed(1)}%` : 'N/A');
     setInspectorText('inspectorCoords', `X: ${Math.round(detectionData.x)}, Y: ${Math.round(detectionData.y)} (${Math.round(detectionData.width)}×${Math.round(detectionData.height)} px)`);
 
+    // Calibrated Uncertainty & Reason Codes
+    const spUnc = detectionData.spatial_uncertainty || (detectionData.raw_detection && detectionData.raw_detection.spatial_uncertainty) || {};
+    const cepVal = spUnc.cep_meters !== undefined ? spUnc.cep_meters : detectionData.cep_meters;
+    const semiMaj = spUnc.semi_major_axis_meters;
+    const semiMin = spUnc.semi_minor_axis_meters;
+    const orient = spUnc.orientation_deg;
+
+    if (cepVal !== undefined && cepVal !== null) {
+        setInspectorText('inspectorSpatialCep', `±${Number(cepVal).toFixed(1)} m`);
+    } else {
+        setInspectorText('inspectorSpatialCep', 'Uncalibrated');
+    }
+
+    if (semiMaj !== undefined && semiMin !== undefined) {
+        const orientStr = orient !== undefined ? ` @ ${Number(orient).toFixed(0)}°` : '';
+        setInspectorText('inspectorSpatialEllipse', `±${Number(semiMaj).toFixed(0)}m × ±${Number(semiMin).toFixed(0)}m${orientStr}`);
+    } else {
+        setInspectorText('inspectorSpatialEllipse', 'Circular / Uncalibrated');
+    }
+
+    const dimUnc = detectionData.dimension_uncertainty || (detectionData.raw_detection && detectionData.raw_detection.dimension_uncertainty) || {};
+    const lenUnc = dimUnc.length_uncertainty_m;
+    const beamUnc = dimUnc.beam_uncertainty_m;
+    const hdgUnc = dimUnc.heading_uncertainty_deg;
+
+    if (lenUnc !== undefined && beamUnc !== undefined) {
+        setInspectorText('inspectorDimBounds', `L: ±${Number(lenUnc).toFixed(1)}m, B: ±${Number(beamUnc).toFixed(1)}m`);
+    } else {
+        setInspectorText('inspectorDimBounds', 'Default Bounds');
+    }
+
+    if (hdgUnc !== undefined && hdgUnc !== null) {
+        setInspectorText('inspectorHeadingBounds', `±${Number(hdgUnc).toFixed(1)}°`);
+    } else {
+        setInspectorText('inspectorHeadingBounds', 'N/A');
+    }
+
+    // Association Likelihood Badge
+    const assocEl = document.getElementById('inspectorAssocLikelihoodBadge');
+    const assocLh = detectionData.association_likelihood !== undefined ? detectionData.association_likelihood :
+                   (detectionData.raw_detection && detectionData.raw_detection.association_likelihood);
+    if (assocEl) {
+        if (assocLh !== undefined && assocLh !== null) {
+            const pct = (Number(assocLh) * 100).toFixed(1);
+            let bg = '#10b981';
+            if (assocLh < 0.4) bg = '#ef4444';
+            else if (assocLh < 0.7) bg = '#f59e0b';
+            assocEl.style.background = bg;
+            assocEl.style.color = '#ffffff';
+            assocEl.innerText = `Assoc Likelihood: ${pct}%`;
+        } else {
+            assocEl.style.background = '#e2e8f0';
+            assocEl.style.color = '#475569';
+            assocEl.innerText = 'Assoc Likelihood: N/A';
+        }
+    }
+
+    // Reason Codes
+    const rcContainer = document.getElementById('inspectorReasonCodes');
+    const rCodes = detectionData.reason_codes || (detectionData.raw_detection && detectionData.raw_detection.reason_codes) || [];
+    if (rcContainer) {
+        if (Array.isArray(rCodes) && rCodes.length > 0) {
+            rcContainer.innerHTML = rCodes.map(code => {
+                let bg = '#64748b';
+                if (code.includes('AIS_') || code.includes('CONFIRMED')) bg = '#10b981';
+                else if (code.includes('DARK_') || code.includes('SOLAS_') || code.includes('SPOOF')) bg = '#ef4444';
+                else if (code.includes('RADAR_STRONG')) bg = '#0ea5e9';
+                return `<span class="badge" style="background: ${bg}; color: #ffffff; font-size: 0.70rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;">${escapeHtml(code)}</span>`;
+            }).join('');
+        } else {
+            rcContainer.innerHTML = `<span style="color: #94a3b8; font-size: 0.74rem; font-style: italic;">No specific reason codes</span>`;
+        }
+    }
+
     try {
         const detIdx = detectionData.origIdx !== undefined ? detectionData.origIdx : detectionData.index;
         let url = `/api/scan/${encodeURIComponent(folderName)}/crop?`;

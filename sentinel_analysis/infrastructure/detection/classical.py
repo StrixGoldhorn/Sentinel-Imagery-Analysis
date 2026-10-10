@@ -9,6 +9,11 @@ import numpy as np
 from sentinel_analysis.application.ports.detection import DetectionResult
 from sentinel_analysis.domain.entities import ShipDetection
 from sentinel_analysis.domain.provenance import build_preprocessing_provenance
+from sentinel_analysis.domain.uncertainty import (
+    calibrate_dimension_uncertainty,
+    calibrate_spatial_uncertainty,
+    generate_contact_reason_codes,
+)
 from sentinel_analysis.infrastructure.detection.cfar import (
     ca_cfar_2d,
     fuse_dual_polarization,
@@ -258,6 +263,27 @@ class ClassicalShipDetector:
                     except Exception:
                         pass
 
+                spatial_unc = calibrate_spatial_uncertainty(
+                    pixel_spacing_m=pixel_spacing,
+                    length_m=length_m,
+                    beam_m=beam_m,
+                )
+                dim_unc = calibrate_dimension_uncertainty(
+                    length_m=length_m,
+                    beam_m=beam_m,
+                    pixel_spacing_m=pixel_spacing,
+                    angle_deg=angle,
+                )
+                r_codes = generate_contact_reason_codes(
+                    detection_data={
+                        "confidence": confidence,
+                        "length": length_m,
+                        "beam": beam_m,
+                        "wake_detected": wake_detected,
+                    },
+                    is_correlated=False,
+                )
+
                 detections.append(
                     ShipDetection(
                         x=x,
@@ -278,6 +304,10 @@ class ClassicalShipDetector:
                         vessel_class=v_class,
                         classification_confidence=class_conf,
                         provenance=det_provenance,
+                        spatial_uncertainty=spatial_unc,
+                        dimension_uncertainty=dim_unc,
+                        association_likelihood=0.0,
+                        reason_codes=r_codes,
                     )
                 )
 

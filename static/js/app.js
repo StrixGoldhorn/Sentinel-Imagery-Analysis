@@ -675,6 +675,8 @@ function openShipDetailsSidebar(vessel) {
     if (alertsCard) alertsCard.style.display = 'none';
     const multiSensorCard = document.getElementById('shipSidebarMultiSensorCard');
     if (multiSensorCard) multiSensorCard.style.display = 'none';
+    const uncertaintyCard = document.getElementById('shipSidebarUncertaintyCard');
+    if (uncertaintyCard) uncertaintyCard.style.display = 'none';
     const exportRow = document.getElementById('shipSidebarExportRow');
     if (exportRow) exportRow.style.display = 'none';
 
@@ -929,6 +931,67 @@ function openSarDetectionInShipSidebar(folderName, item) {
                 wakeRowEl.style.display = 'none';
             }
         }
+    }
+
+    // Calibrated Uncertainty & Surveillance Codes Card in Sidebar
+    const uncertaintyCard = document.getElementById('shipSidebarUncertaintyCard');
+    const spatialCepEl = document.getElementById('shipSidebarSpatialCep');
+    const assocLhEl = document.getElementById('shipSidebarAssocLikelihood');
+    const dimBoundsEl = document.getElementById('shipSidebarDimBounds');
+    const headingUncEl = document.getElementById('shipSidebarHeadingUnc');
+    const rcRow = document.getElementById('shipSidebarReasonCodesRow');
+    const rcList = document.getElementById('shipSidebarReasonCodesList');
+
+    if (uncertaintyCard) {
+        const spUnc = item.spatial_uncertainty || (item.raw_detection && item.raw_detection.spatial_uncertainty) || {};
+        const cep = spUnc.cep_meters !== undefined ? spUnc.cep_meters : item.cep_meters;
+        const assocLh = item.association_likelihood !== undefined ? item.association_likelihood :
+                       (item.raw_detection && item.raw_detection.association_likelihood);
+        const dimUnc = item.dimension_uncertainty || (item.raw_detection && item.raw_detection.dimension_uncertainty) || {};
+        const lenUnc = dimUnc.length_uncertainty_m;
+        const beamUnc = dimUnc.beam_uncertainty_m;
+        const hdgUnc = dimUnc.heading_uncertainty_deg;
+        const rCodes = item.reason_codes || (item.raw_detection && item.raw_detection.reason_codes) || [];
+
+        if (spatialCepEl) {
+            spatialCepEl.textContent = cep !== undefined && cep !== null ? `±${Number(cep).toFixed(1)} m` : 'Uncalibrated';
+        }
+        if (assocLhEl) {
+            if (assocLh !== undefined && assocLh !== null) {
+                assocLhEl.textContent = `${(Number(assocLh) * 100).toFixed(0)}%`;
+                assocLhEl.style.color = assocLh >= 0.7 ? '#10b981' : (assocLh >= 0.4 ? '#f59e0b' : '#ef4444');
+            } else {
+                assocLhEl.textContent = 'N/A';
+                assocLhEl.style.color = '';
+            }
+        }
+        if (dimBoundsEl) {
+            if (lenUnc !== undefined && beamUnc !== undefined) {
+                dimBoundsEl.textContent = `±${Number(lenUnc).toFixed(0)}m × ±${Number(beamUnc).toFixed(0)}m`;
+            } else {
+                dimBoundsEl.textContent = 'Default Bounds';
+            }
+        }
+        if (headingUncEl) {
+            headingUncEl.textContent = hdgUnc !== undefined && hdgUnc !== null ? `±${Number(hdgUnc).toFixed(1)}°` : 'N/A';
+        }
+
+        if (rcRow && rcList) {
+            if (Array.isArray(rCodes) && rCodes.length > 0) {
+                rcList.innerHTML = rCodes.map(code => {
+                    let bg = '#64748b';
+                    if (code.includes('AIS_') || code.includes('CONFIRMED')) bg = '#10b981';
+                    else if (code.includes('DARK_') || code.includes('SOLAS_') || code.includes('SPOOF')) bg = '#ef4444';
+                    else if (code.includes('RADAR_STRONG')) bg = '#0ea5e9';
+                    return `<span class="badge" style="background: ${bg}; color: #ffffff; font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; font-weight: 500;">${escapeHtml(code)}</span>`;
+                }).join('');
+                rcRow.style.display = 'block';
+            } else {
+                rcRow.style.display = 'none';
+            }
+        }
+
+        uncertaintyCard.style.display = 'block';
     }
 
     // Export Row in Sidebar

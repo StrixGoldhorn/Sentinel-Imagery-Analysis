@@ -218,6 +218,15 @@ def extract_scan_intelligence(scan: Scan) -> dict[str, Any]:
             "optical_confirmed": d.get("optical_confirmed"),
             "optical_confidence": d.get("optical_confidence"),
             "temporal_change_type": d.get("temporal_change_type"),
+            "spatial_uncertainty": d.get("spatial_uncertainty"),
+            "dimension_uncertainty": d.get("dimension_uncertainty"),
+            "association_likelihood": d.get("association_likelihood"),
+            "reason_codes": d.get("reason_codes", []),
+            "cep_meters": (
+                (d.get("spatial_uncertainty") or {}).get("cep_meters")
+                if isinstance(d.get("spatial_uncertainty"), dict)
+                else d.get("cep_meters")
+            ),
             "correlated_ais": ais,
             "raw_detection": d,
         })

@@ -239,6 +239,10 @@ class ShipDetection:
     optical_confidence: Optional[float] = None
     temporal_change_type: Optional[str] = None
     provenance: Optional[dict[str, Any]] = None
+    spatial_uncertainty: Optional[dict[str, Any]] = None
+    dimension_uncertainty: Optional[dict[str, Any]] = None
+    association_likelihood: Optional[float] = None
+    reason_codes: Optional[tuple[str, ...] | list[str]] = None
 
     def __post_init__(self) -> None:
         _non_negative_integer(self.x, "Detection x coordinate")
@@ -307,6 +311,29 @@ class ShipDetection:
             if not isinstance(self.provenance, dict):
                 raise DomainValidationError("Detection provenance must be a dictionary")
             object.__setattr__(self, "provenance", dict(self.provenance))
+        if self.spatial_uncertainty is not None:
+            if hasattr(self.spatial_uncertainty, "to_dict"):
+                object.__setattr__(self, "spatial_uncertainty", self.spatial_uncertainty.to_dict())
+            elif isinstance(self.spatial_uncertainty, dict):
+                object.__setattr__(self, "spatial_uncertainty", dict(self.spatial_uncertainty))
+            else:
+                raise DomainValidationError("Detection spatial uncertainty must be a dictionary")
+        if self.dimension_uncertainty is not None:
+            if hasattr(self.dimension_uncertainty, "to_dict"):
+                object.__setattr__(self, "dimension_uncertainty", self.dimension_uncertainty.to_dict())
+            elif isinstance(self.dimension_uncertainty, dict):
+                object.__setattr__(self, "dimension_uncertainty", dict(self.dimension_uncertainty))
+            else:
+                raise DomainValidationError("Detection dimension uncertainty must be a dictionary")
+        if self.association_likelihood is not None:
+            assoc_like = _number(self.association_likelihood, "Detection association likelihood")
+            if not 0 <= assoc_like <= 1:
+                raise DomainValidationError("Detection association likelihood must be between 0 and 1")
+            object.__setattr__(self, "association_likelihood", assoc_like)
+        if self.reason_codes is not None:
+            if not isinstance(self.reason_codes, (list, tuple)):
+                raise DomainValidationError("Detection reason codes must be a sequence of strings")
+            object.__setattr__(self, "reason_codes", tuple(str(code).strip() for code in self.reason_codes if str(code).strip()))
 
 
 @dataclass(frozen=True)
