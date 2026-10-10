@@ -51,6 +51,8 @@ class ThreadedTaskQueue:
                 result = decoded if isinstance(decoded, dict) else {"data": decoded}
             except (TypeError, ValueError):
                 result = None
+        has_cid = "correlation_id" in row.keys()
+        cid = row["correlation_id"] if has_cid else None
         return BackgroundTask(
             task_id=row["task_id"],
             task_type=row["task_type"],
@@ -62,6 +64,7 @@ class ThreadedTaskQueue:
             completed_at=self._parse_dt(row["completed_at"]),
             result=result,
             error=row["error_text"],
+            correlation_id=cid,
         )
 
     def recover_crashed_tasks(self, lease_timeout_seconds: float = 300) -> list[str]:
@@ -137,8 +140,8 @@ class ThreadedTaskQueue:
                 INSERT INTO background_tasks (
                     task_id, task_type, status, progress, message, scan_id,
                     created_at, completed_at, result_json, error_text,
-                    owner_id, heartbeat_at, lease_expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    owner_id, heartbeat_at, lease_expires_at, correlation_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     status = excluded.status,
                     progress = excluded.progress,
@@ -149,7 +152,8 @@ class ThreadedTaskQueue:
                     error_text = excluded.error_text,
                     owner_id = excluded.owner_id,
                     heartbeat_at = excluded.heartbeat_at,
-                    lease_expires_at = excluded.lease_expires_at
+                    lease_expires_at = excluded.lease_expires_at,
+                    correlation_id = COALESCE(excluded.correlation_id, background_tasks.correlation_id)
                 """,
                 (
                     task.task_id,
@@ -165,6 +169,7 @@ class ThreadedTaskQueue:
                     self._owner_id,
                     heartbeat.isoformat() if heartbeat else None,
                     lease_expires.isoformat() if lease_expires else None,
+                    task.correlation_id,
                 ),
             )
 

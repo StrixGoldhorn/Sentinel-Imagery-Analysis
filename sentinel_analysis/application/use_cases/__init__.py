@@ -70,6 +70,7 @@ from sentinel_analysis.application.use_cases.trigger_automatic_ais import (
 )
 from sentinel_analysis.application.use_cases.tag_route_detections import TagRouteDetections
 from sentinel_analysis.application.use_cases.post_acquisition_pipeline import PostAcquisitionPipeline
+from sentinel_analysis.application.use_cases.get_operational_metrics import GetOperationalMetrics
 from sentinel_analysis.application.use_cases.review_cases import (
     ExportReviewedDataset,
     GetReviewDetails,
@@ -103,6 +104,7 @@ __all__ = [
     "GenerateHistoricalTrafficHeatmap",
     "GenerateIntelligenceBrief",
     "GeofenceMonitor",
+    "GetOperationalMetrics",
     "GetReviewDetails",
     "GetScan",
     "GetScraperDetail",

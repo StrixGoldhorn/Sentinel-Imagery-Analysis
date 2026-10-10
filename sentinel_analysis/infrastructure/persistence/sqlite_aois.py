@@ -43,6 +43,8 @@ class SQLiteAreaOfInterestRepository:
     def _from_row(row) -> AreaOfInterest:
         has_auto = "auto_capture_enabled" in row.keys()
         auto_capture = bool(row["auto_capture_enabled"]) if has_auto else False
+        has_cid = "correlation_id" in row.keys()
+        cid = row["correlation_id"] if has_cid else None
         return AreaOfInterest(
             id=row["id"],
             name=row["name"],
@@ -50,6 +52,7 @@ class SQLiteAreaOfInterestRepository:
             next_scan=_parse_dt(row["next_scan"]),
             last_checked=_parse_dt(row["last_checked"]),
             auto_capture_enabled=auto_capture,
+            correlation_id=cid,
         )
 
     def list(self) -> list[AreaOfInterest]:
@@ -60,8 +63,13 @@ class SQLiteAreaOfInterestRepository:
     def add(self, aoi: AreaOfInterest) -> int:
         with self._database.connection(rows=True) as connection:
             cursor = connection.execute(
-                "INSERT INTO aoi (name, bbox, auto_capture_enabled) VALUES (?, ?, ?)",
-                (aoi.name, json.dumps(aoi.bbox.as_list()), 1 if aoi.auto_capture_enabled else 0),
+                "INSERT INTO aoi (name, bbox, auto_capture_enabled, correlation_id) VALUES (?, ?, ?, ?)",
+                (
+                    aoi.name,
+                    json.dumps(aoi.bbox.as_list()),
+                    1 if aoi.auto_capture_enabled else 0,
+                    aoi.correlation_id,
+                ),
             )
             if cursor.lastrowid is None:
                 raise RuntimeError("SQLite did not return an AOI identifier")

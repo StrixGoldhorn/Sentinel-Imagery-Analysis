@@ -15,12 +15,17 @@ from sentinel_analysis.application.ports.detection import DetectionResult, ShipD
 from sentinel_analysis.application.ports.briefing import IntelligenceBriefGenerator
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import GeoTIFFWriter, ImageStitcher, ImageryProvider, TileImage
+from sentinel_analysis.application.ports.observability import (
+    ObservabilityMetricsProvider,
+    ObservabilityRecorder,
+)
 from sentinel_analysis.application.ports.optical import (
     OpticalCrossValidator,
     OpticalScene,
     OpticalValidationResult,
 )
 from sentinel_analysis.application.ports.alerting import WebhookDispatcher, WebhookRepository
+from sentinel_analysis.application.ports.post_pass_repository import PostPassIngestionRepository
 from sentinel_analysis.application.ports.sar_change_detector import SARChangeDetector
 from sentinel_analysis.application.ports.satellite import PassPrediction, PassPredictor
 from sentinel_analysis.application.ports.scan_repository import ScanRepository
@@ -46,6 +51,8 @@ __all__ = [
     "ImageryProvider",
     "IntelligenceBriefGenerator",
     "LocationResolver",
+    "ObservabilityMetricsProvider",
+    "ObservabilityRecorder",
     "OpticalCrossValidator",
     "OpticalScene",
     "OpticalValidationResult",

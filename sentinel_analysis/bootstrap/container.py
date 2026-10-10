@@ -25,6 +25,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
     GeofenceMonitor,
+    GetOperationalMetrics,
     GetReviewDetails,
     GetScan,
     GetStorageQuota,
@@ -68,6 +69,7 @@ from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
 from sentinel_analysis.infrastructure.imagery.geotiff import PillowGeoTIFFWriter
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
+from sentinel_analysis.infrastructure.monitoring import OperationalMetricsCollector
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
@@ -106,7 +108,12 @@ class ApplicationContainer:
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
         self.webhook_repository = SQLiteWebhookRepository(settings.database_path)
         self.review_repository = SQLiteReviewRepository(settings.database_path)
-        self.webhook_dispatcher = HTTPWebhookDispatcher()
+        self.observability_collector = OperationalMetricsCollector(
+            database_path=settings.database_path,
+            scans_dir=settings.output_root,
+        )
+        self.operational_metrics_collector = self.observability_collector
+        self.webhook_dispatcher = HTTPWebhookDispatcher(recorder=self.observability_collector)
         self.tile_cache = FilesystemTileCache(settings.cache_root)
         self.task_queue = ThreadedTaskQueue(database_path=settings.database_path)
 
@@ -307,6 +314,7 @@ class ApplicationContainer:
             scan_repo=self.scan_repository,
             output_root=settings.output_root,
         )
+        self.get_operational_metrics = GetOperationalMetrics(self.observability_collector)
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """Gracefully shut down all background workers, schedulers, and active threads."""

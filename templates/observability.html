@@ -1,0 +1,481 @@
+{% extends "base.html" %}
+
+{% block title %}Operational Observability & Telemetry - Sentinel Maritime{% endblock %}
+
+{% block extra_head %}
+<style>
+    .obs-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .obs-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary, #1e293b);
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .obs-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .obs-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .badge-success { background: #dcfce7; color: #15803d; }
+    .badge-warning { background: #fef9c3; color: #854d0e; }
+    .badge-danger { background: #fee2e2; color: #b91c1c; }
+    .badge-info { background: #e0f2fe; color: #0369a1; }
+    .badge-neutral { background: #f1f5f9; color: #475569; }
+
+    .obs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 2rem;
+    }
+    .obs-card {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+    }
+    .obs-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color, #f1f5f9);
+        padding-bottom: 0.65rem;
+    }
+    .obs-card-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text-primary, #334155);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .metric-value-large {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--text-primary, #0f172a);
+        line-height: 1.1;
+        margin-bottom: 0.25rem;
+    }
+    .metric-sublabel {
+        font-size: 0.8rem;
+        color: var(--text-muted, #64748b);
+        margin-bottom: 0.75rem;
+    }
+    .stat-rows {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        font-size: 0.85rem;
+    }
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.2rem 0;
+        border-bottom: 1px dashed var(--border-color, #f8fafc);
+    }
+    .stat-label {
+        color: var(--text-muted, #64748b);
+    }
+    .stat-num {
+        font-weight: 600;
+        color: var(--text-primary, #1e293b);
+    }
+    .recent-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+        margin-top: 0.5rem;
+    }
+    .recent-table th, .recent-table td {
+        padding: 0.4rem 0.5rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color, #f1f5f9);
+    }
+    .recent-table th {
+        color: var(--text-muted, #64748b);
+        font-weight: 600;
+        background: #f8fafc;
+    }
+    .btn-endpoint {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        border-radius: 0.375rem;
+        border: 1px solid var(--border-color, #cbd5e1);
+        background: #ffffff;
+        color: #334155;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+    .btn-endpoint:hover {
+        background: #f1f5f9;
+        border-color: #94a3b8;
+    }
+    .cid-box {
+        font-family: monospace;
+        font-size: 0.75rem;
+        background: #f1f5f9;
+        color: #0f172a;
+        padding: 0.2rem 0.45rem;
+        border-radius: 4px;
+        border: 1px solid #e2e8f0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid" style="max-width: 1400px; margin: 0 auto; padding: 1.5rem 1rem;">
+
+    <div class="obs-header">
+        <div>
+            <h1 class="obs-title">
+                <span>📊</span> Operational Observability & Telemetry
+            </h1>
+            <p class="metric-sublabel" style="margin-bottom: 0;">
+                Real-time queue depth, processing latency, external providers, leader leases, SQLite health, and alert metrics.
+            </p>
+        </div>
+        <div class="obs-actions">
+            <span class="cid-box" title="Active Request Correlation ID">
+                CID: {{ correlation_id or 'trace-' ~ report.timestamp.strftime('%Y%m%d%H%M%S') }}
+            </span>
+            <a href="/api/observability/metrics" target="_blank" class="btn-endpoint" title="View Full Telemetry JSON">
+                <span>{ }</span> JSON API
+            </a>
+            <a href="/metrics" target="_blank" class="btn-endpoint" title="View Prometheus Exposition Text Endpoint">
+                <span>📈</span> Prometheus (/metrics)
+            </a>
+            <button onclick="location.reload()" class="btn-endpoint" title="Refresh Telemetry">
+                <span>🔄</span> Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- 8 Observability Pillars Grid -->
+    <div class="obs-grid">
+
+        <!-- Pillar 1: Queue Depth -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">📥 Queue Depth</span>
+                {% if report.queue_depth.total_queue_depth > 10 %}
+                    <span class="obs-badge badge-warning">High Load</span>
+                {% else %}
+                    <span class="obs-badge badge-success">Healthy</span>
+                {% endif %}
+            </div>
+            <div class="metric-value-large">{{ report.queue_depth.total_queue_depth }}</div>
+            <div class="metric-sublabel">Total queued and active operations</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Active Background Tasks:</span>
+                    <span class="stat-num">{{ report.queue_depth.background_tasks_active }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Queued Background Tasks:</span>
+                    <span class="stat-num">{{ report.queue_depth.background_tasks_queued }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Post-Pass Polling Jobs:</span>
+                    <span class="stat-num">{{ report.queue_depth.post_pass_polling }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Pending Analyst Reviews:</span>
+                    <span class="stat-num">{{ report.queue_depth.review_queue_pending }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pillar 2: Scan Latency -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">⚡ Scan Latency</span>
+                <span class="obs-badge badge-info">{{ report.scan_latency.count }} Scans</span>
+            </div>
+            <div class="metric-value-large">
+                {{ report.scan_latency.mean_seconds }}<span style="font-size: 1rem; font-weight: normal; color: #64748b;">s</span>
+            </div>
+            <div class="metric-sublabel">Mean end-to-end ingestion & processing duration</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">P95 Latency:</span>
+                    <span class="stat-num">{{ report.scan_latency.p95_seconds }}s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Min / Max:</span>
+                    <span class="stat-num">{{ report.scan_latency.min_seconds }}s / {{ report.scan_latency.max_seconds }}s</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Latest Scan:</span>
+                    <span class="stat-num">{{ report.scan_latency.latest_scan_duration_seconds or '--' }}s</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pillar 3: Provider Failures -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">⚠️ Upstream Providers</span>
+                {% if report.provider_failures.total_failures == 0 %}
+                    <span class="obs-badge badge-success">0 Failures</span>
+                {% else %}
+                    <span class="obs-badge badge-warning">{{ report.provider_failures.total_failures }} Failures</span>
+                {% endif %}
+            </div>
+            <div class="metric-value-large">{{ report.provider_failures.total_failures }}</div>
+            <div class="metric-sublabel">Total recorded API/upstream errors</div>
+            <div class="stat-rows">
+                {% if report.provider_failures.by_provider %}
+                    {% for prov, cnt in report.provider_failures.by_provider.items() %}
+                    <div class="stat-row">
+                        <span class="stat-label">{{ prov|capitalize }}:</span>
+                        <span class="stat-num">{{ cnt }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="stat-row">
+                        <span class="stat-label">Copernicus / N2YO / AIS:</span>
+                        <span class="stat-num" style="color: #16a34a;">All 100% operational</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Pillar 4: Imagery Staleness -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">🛰️ Imagery Age</span>
+                <span class="obs-badge badge-neutral">{{ report.imagery_age.by_aoi|length }} AOIs</span>
+            </div>
+            <div class="metric-value-large">
+                {% if report.imagery_age.overall_newest_hours is not none %}
+                    {{ report.imagery_age.overall_newest_hours }}<span style="font-size: 1rem; font-weight: normal; color: #64748b;">h</span>
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+            <div class="metric-sublabel">Newest SAR acquisition freshness</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Oldest Active Acquisition:</span>
+                    <span class="stat-num">{{ report.imagery_age.overall_oldest_hours or '--' }}h</span>
+                </div>
+                {% for aoi in report.imagery_age.by_aoi[:3] %}
+                <div class="stat-row">
+                    <span class="stat-label">{{ aoi.aoi_name }}:</span>
+                    <span class="stat-num">
+                        {% if aoi.newest_scan_age_hours is not none %}
+                            {{ aoi.newest_scan_age_hours }}h
+                            <span class="obs-badge badge-{{ 'success' if aoi.status == 'fresh' else ('warning' if aoi.status == 'moderate' else 'danger') }}" style="font-size: 0.65rem; padding: 0.1rem 0.35rem;">
+                                {{ aoi.status }}
+                            </span>
+                        {% else %}
+                            <span style="color: #94a3b8;">no scans</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Pillar 5: Scheduler Leadership -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">👑 Scheduler Lease</span>
+                {% if report.scheduler_leadership.is_leader %}
+                    <span class="obs-badge badge-success">Leader Active</span>
+                {% else %}
+                    <span class="obs-badge badge-neutral">Standby / None</span>
+                {% endif %}
+            </div>
+            <div class="metric-value-large">
+                {% if report.scheduler_leadership.is_leader %}
+                    ACTIVE
+                {% else %}
+                    STANDBY
+                {% endif %}
+            </div>
+            <div class="metric-sublabel">Distributed pass scheduler coordinator status</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Lease Owner ID:</span>
+                    <span class="stat-num" style="font-family: monospace; font-size: 0.75rem;">
+                        {{ report.scheduler_leadership.owner_id or 'None' }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Time Until Expiry:</span>
+                    <span class="stat-num">
+                        {% if report.scheduler_leadership.time_until_expiry_seconds is not none %}
+                            {{ report.scheduler_leadership.time_until_expiry_seconds }}s
+                        {% else %}
+                            --
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Last Heartbeat:</span>
+                    <span class="stat-num" style="font-size: 0.75rem;">
+                        {{ report.scheduler_leadership.heartbeat_at or 'None' }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pillar 6: Database Contention & Locks -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">💾 SQLite & Contention</span>
+                <span class="obs-badge badge-{{ 'success' if report.database_locks.lock_status == 'normal' else 'danger' }}">
+                    {{ report.database_locks.lock_status|upper }}
+                </span>
+            </div>
+            <div class="metric-value-large">
+                {{ (report.database_locks.database_size_bytes / (1024 * 1024))|round(2) }}<span style="font-size: 1rem; font-weight: normal; color: #64748b;">MB</span>
+            </div>
+            <div class="metric-sublabel">Journal mode: <strong>{{ report.database_locks.journal_mode|upper }}</strong> (timeout {{ report.database_locks.busy_timeout_ms }}ms)</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Contention Errors:</span>
+                    <span class="stat-num">{{ report.database_locks.busy_contention_count }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">AOI / Vessel Records:</span>
+                    <span class="stat-num">
+                        {{ report.database_locks.table_counts.get('aoi', 0) }} / {{ report.database_locks.table_counts.get('vessels', 0) }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Post-Pass Ingestions:</span>
+                    <span class="stat-num">{{ report.database_locks.table_counts.get('post_pass_ingestions', 0) }}</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Review Records:</span>
+                    <span class="stat-num">{{ report.database_locks.table_counts.get('reviews', 0) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pillar 7: Detection Volumes -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">🚢 Detections & Anomalies</span>
+                <span class="obs-badge badge-info">{{ report.detection_counts.cumulative_detections }} Contacts</span>
+            </div>
+            <div class="metric-value-large">{{ report.detection_counts.cumulative_detections }}</div>
+            <div class="metric-sublabel">Cumulative identified maritime contacts</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Dark Vessels:</span>
+                    <span class="stat-num" style="color: #b91c1c;">
+                        {{ report.detection_counts.anomalies.get('dark_vessels', 0) }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Transshipment Events:</span>
+                    <span class="stat-num" style="color: #d97706;">
+                        {{ report.detection_counts.anomalies.get('transshipment', 0) }}
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Loitering & Geofence:</span>
+                    <span class="stat-num">
+                        {{ report.detection_counts.anomalies.get('loitering', 0) }} / {{ report.detection_counts.anomalies.get('geofence_breaches', 0) }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pillar 8: Alert Delivery Metrics -->
+        <div class="obs-card">
+            <div class="obs-card-header">
+                <span class="obs-card-title">🔔 Alert Deliveries</span>
+                <span class="obs-badge badge-{{ 'success' if report.alert_delivery.success_rate_percent >= 99 else 'warning' }}">
+                    {{ report.alert_delivery.success_rate_percent }}% Success
+                </span>
+            </div>
+            <div class="metric-value-large">{{ report.alert_delivery.total_attempts }}</div>
+            <div class="metric-sublabel">Dispatched webhook events</div>
+            <div class="stat-rows">
+                <div class="stat-row">
+                    <span class="stat-label">Delivered / Failed:</span>
+                    <span class="stat-num">
+                        <span style="color: #16a34a;">{{ report.alert_delivery.success_count }}</span> / 
+                        <span style="color: #b91c1c;">{{ report.alert_delivery.failure_count }}</span>
+                    </span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Mean Latency:</span>
+                    <span class="stat-num">{{ report.alert_delivery.mean_latency_ms }}ms</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">P95 Delivery Latency:</span>
+                    <span class="stat-num">{{ report.alert_delivery.p95_latency_ms }}ms</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Recent Provider Failures Table (if any) -->
+    {% if report.provider_failures.recent_failures %}
+    <div class="obs-card" style="margin-bottom: 2rem;">
+        <div class="obs-card-header">
+            <span class="obs-card-title">⚠️ Recent Upstream Provider Failures</span>
+            <span class="obs-badge badge-danger">Audit Trail</span>
+        </div>
+        <table class="recent-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Provider</th>
+                    <th>Operation</th>
+                    <th>Error Message</th>
+                    <th>Correlation ID</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in report.provider_failures.recent_failures %}
+                <tr>
+                    <td>{{ f.created_at }}</td>
+                    <td><strong>{{ f.provider|upper }}</strong></td>
+                    <td>{{ f.operation }}</td>
+                    <td style="color: #b91c1c;">{{ f.error_message }}</td>
+                    <td><span class="cid-box">{{ f.correlation_id }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

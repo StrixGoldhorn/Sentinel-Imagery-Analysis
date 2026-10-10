@@ -10,7 +10,10 @@ import urllib.error
 import urllib.request
 import uuid
 
+import time
 from sentinel_analysis.application.ports.alerting import WebhookDispatcher
+from sentinel_analysis.application.ports.observability import ObservabilityRecorder
+from sentinel_analysis.domain.correlation import get_current_correlation_id
 from sentinel_analysis.domain.entities import MaritimeAlert, WebhookConfig
 
 logger = logging.getLogger(__name__)
@@ -19,17 +22,26 @@ logger = logging.getLogger(__name__)
 class HTTPWebhookDispatcher(WebhookDispatcher):
     """Dispatches maritime alerts to external endpoints (Generic JSON, Slack, Discord, Telegram)."""
 
-    def __init__(self, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        timeout: float = 10.0,
+        recorder: Optional[ObservabilityRecorder] = None,
+    ) -> None:
         self.timeout = float(timeout)
+        self.recorder = recorder
 
     def dispatch(self, webhook: WebhookConfig, alert: MaritimeAlert) -> bool:
         """Deliver an alert to a specific external webhook service."""
+        start_time = time.perf_counter()
+        correlation_id = getattr(alert, "correlation_id", None) or get_current_correlation_id()
         try:
             payload = self._build_payload(webhook, alert)
             headers = {
                 "Content-Type": "application/json",
                 "User-Agent": "Sentinel-Maritime-Surveillance/1.0",
             }
+            if correlation_id:
+                headers["X-Correlation-ID"] = correlation_id
 
             body_bytes = json.dumps(payload, default=str).encode("utf-8")
 
@@ -52,8 +64,31 @@ class HTTPWebhookDispatcher(WebhookDispatcher):
             )
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
                 status = response.getcode()
-                return 200 <= status < 300
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+                success = 200 <= status < 300
+                if self.recorder is not None:
+                    self.recorder.record_alert_delivery(
+                        alert_id=alert.alert_id,
+                        channel=webhook.service_type,
+                        status="SUCCESS" if success else "FAILED",
+                        latency_ms=latency_ms,
+                        http_status=status,
+                        correlation_id=correlation_id,
+                    )
+                return success
         except Exception as exc:
+            latency_ms = (time.perf_counter() - start_time) * 1000.0
+            http_status = getattr(exc, "code", None) if hasattr(exc, "code") else None
+            if self.recorder is not None:
+                self.recorder.record_alert_delivery(
+                    alert_id=alert.alert_id,
+                    channel=webhook.service_type,
+                    status="FAILED",
+                    latency_ms=latency_ms,
+                    http_status=http_status,
+                    error_message=str(exc),
+                    correlation_id=correlation_id,
+                )
             logger.warning(
                 "Failed to dispatch alert %s to webhook %s (%s): %s",
                 alert.alert_id,

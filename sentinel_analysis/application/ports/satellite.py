@@ -49,6 +49,7 @@ class PassPrediction(TypedDict, total=False):
     basis_acquisition_time: str | None
     basis_satellite: str | None
     basis_relative_orbit: int | None
+    correlation_id: str | None
 
 
 @runtime_checkable

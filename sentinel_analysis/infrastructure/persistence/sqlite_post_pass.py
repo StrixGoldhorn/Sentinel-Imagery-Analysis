@@ -166,6 +166,7 @@ class SQLitePostPassIngestionRepository:
             completed_at=_parse_dt(row["completed_at"]),
             aoi_name=row["aoi_name"] if "aoi_name" in keys else None,
             expected_imagery_time=_parse_dt(row["expected_imagery_time"]) if "expected_imagery_time" in keys else None,
+            correlation_id=row["correlation_id"] if "correlation_id" in keys else None,
         )
 
     def add(self, job: PostPassIngestionJob) -> int:
@@ -183,8 +184,8 @@ class SQLitePostPassIngestionRepository:
                     error_message, completed_at, expected_imagery_time,
                     relative_orbit, trigger_type, prediction_source, workflow_id,
                     basis_product_id, basis_acquisition_time, basis_satellite,
-                    basis_relative_orbit, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                    basis_relative_orbit, correlation_id, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 ON CONFLICT(aoi_id, pass_time) DO UPDATE SET
                     satellite = excluded.satellite,
                     orbit_direction = COALESCE(excluded.orbit_direction, post_pass_ingestions.orbit_direction),
@@ -196,6 +197,7 @@ class SQLitePostPassIngestionRepository:
                     basis_acquisition_time = COALESCE(excluded.basis_acquisition_time, post_pass_ingestions.basis_acquisition_time),
                     basis_satellite = COALESCE(excluded.basis_satellite, post_pass_ingestions.basis_satellite),
                     basis_relative_orbit = COALESCE(excluded.basis_relative_orbit, post_pass_ingestions.basis_relative_orbit),
+                    correlation_id = COALESCE(excluded.correlation_id, post_pass_ingestions.correlation_id),
                     deleted_at = NULL,
                     expected_imagery_time = COALESCE(excluded.expected_imagery_time, post_pass_ingestions.expected_imagery_time),
                     status = CASE
@@ -229,6 +231,7 @@ class SQLitePostPassIngestionRepository:
                     _format_dt(job.basis_acquisition_time),
                     job.basis_satellite,
                     job.basis_relative_orbit,
+                    job.correlation_id,
                 ),
             )
             row = cursor.fetchone()

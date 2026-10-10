@@ -57,6 +57,8 @@ class FilesystemScanRepository:
             metadata.setdefault("relative_orbit", scan.acquisition.relative_orbit)
         if scan.acquisition.polarizations:
             metadata.setdefault("polarizations", list(scan.acquisition.polarizations))
+        if scan.correlation_id:
+            metadata.setdefault("correlation_id", scan.correlation_id)
         image_path = Path(scan.image_path).resolve()
         image_directory = (directory / "images").resolve()
         if image_path.parent != image_directory:
@@ -97,7 +99,14 @@ class FilesystemScanRepository:
                 if not candidates:
                     return None
                 image_path = candidates[0]
-            return Scan(folder_name, bbox, acquisition, str(image_path), metadata)
+            return Scan(
+                folder_name,
+                bbox,
+                acquisition,
+                str(image_path),
+                metadata,
+                correlation_id=metadata.get("correlation_id"),
+            )
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             return None
 

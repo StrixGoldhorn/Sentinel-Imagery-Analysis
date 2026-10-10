@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from math import cos, isfinite, radians
 from typing import Any, Optional
 
+from sentinel_analysis.domain.correlation import ensure_correlation_id
 from sentinel_analysis.domain.exceptions import DomainValidationError
 
 
@@ -184,13 +185,19 @@ class Scan:
     acquisition: Acquisition
     image_path: str
     metadata: dict[str, object] = field(default_factory=dict)
+    correlation_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "folder_name", _required_text(self.folder_name, "Scan folder name"))
         object.__setattr__(self, "image_path", _required_text(self.image_path, "Scan image path"))
         if not isinstance(self.metadata, dict):
             raise DomainValidationError("Scan metadata must be a dictionary")
-        object.__setattr__(self, "metadata", dict(self.metadata))
+        meta = dict(self.metadata)
+        cid = self.correlation_id or meta.get("correlation_id")
+        cid_str = ensure_correlation_id(str(cid) if cid else None, prefix="scan")
+        meta["correlation_id"] = cid_str
+        object.__setattr__(self, "metadata", meta)
+        object.__setattr__(self, "correlation_id", cid_str)
 
 
 @dataclass(frozen=True)
@@ -201,6 +208,7 @@ class AreaOfInterest:
     next_scan: Optional[datetime] = None
     last_checked: Optional[datetime] = None
     auto_capture_enabled: bool = False
+    correlation_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _required_text(self.name, "Area-of-interest name"))
@@ -211,6 +219,8 @@ class AreaOfInterest:
         if self.last_checked is not None:
             object.__setattr__(self, "last_checked", _utc_datetime(self.last_checked, "Last-checked time"))
         object.__setattr__(self, "auto_capture_enabled", bool(self.auto_capture_enabled))
+        cid_str = ensure_correlation_id(self.correlation_id, prefix="aoi")
+        object.__setattr__(self, "correlation_id", cid_str)
 
 
 @dataclass(frozen=True)
@@ -348,6 +358,7 @@ class BackgroundTask:
     completed_at: Optional[datetime] = None
     result: Optional[dict[str, object]] = None
     error: Optional[str] = None
+    correlation_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "task_id", _required_text(self.task_id, "Task ID"))
@@ -373,6 +384,8 @@ class BackgroundTask:
             raise DomainValidationError("Task result must be a dictionary")
         if self.error is not None:
             object.__setattr__(self, "error", _optional_text(self.error, "Task error"))
+        cid_str = ensure_correlation_id(self.correlation_id, prefix="task")
+        object.__setattr__(self, "correlation_id", cid_str)
 
 
 @dataclass(frozen=True)
@@ -455,9 +468,9 @@ class PostPassIngestionJob:
     error_message: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
-    id: Optional[int] = None
     aoi_name: Optional[str] = None
     expected_imagery_time: Optional[datetime] = None
+    correlation_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if isinstance(self.aoi_id, bool) or not isinstance(self.aoi_id, int) or self.aoi_id <= 0:
@@ -508,6 +521,8 @@ class PostPassIngestionJob:
             object.__setattr__(self, "expected_imagery_time", _utc_datetime(self.expected_imagery_time, "Expected imagery time"))
         else:
             object.__setattr__(self, "expected_imagery_time", self.pass_time)
+        cid_str = ensure_correlation_id(self.correlation_id, prefix="job")
+        object.__setattr__(self, "correlation_id", cid_str)
 
 
 @dataclass(frozen=True)
@@ -684,6 +699,7 @@ class MaritimeAlert:
     summary: str
     details: dict[str, object] = field(default_factory=dict)
     timestamp: Optional[datetime] = None
+    correlation_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "alert_id", _required_text(self.alert_id, "Alert ID"))
@@ -696,6 +712,7 @@ class MaritimeAlert:
         object.__setattr__(self, "details", dict(self.details))
         if self.timestamp is not None:
             object.__setattr__(self, "timestamp", _utc_datetime(self.timestamp, "Timestamp"))
+        object.__setattr__(self, "correlation_id", ensure_correlation_id(self.correlation_id, prefix="alert"))
 
 
 @dataclass(frozen=True)
