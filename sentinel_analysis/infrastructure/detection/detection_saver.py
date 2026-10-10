@@ -22,7 +22,7 @@ def _serialize_detection(
         data = dict(item)
         data.setdefault("index", index)
         prov_dict = data.get("provenance") or default_provenance or {}
-        normalized_prov = build_preprocessing_provenance(metadata=data, **prov_dict)
+        normalized_prov = build_preprocessing_provenance(base_provenance=prov_dict, metadata=data)
         data["provenance"] = normalized_prov
         for k in (
             "orbit",
@@ -47,7 +47,7 @@ def _serialize_detection(
         pts = [[round(float(p[0]), 2), round(float(p[1]), 2)] for p in pts]
 
     item_prov = getattr(item, "provenance", None) or default_provenance or {}
-    normalized_prov = build_preprocessing_provenance(**item_prov)
+    normalized_prov = build_preprocessing_provenance(base_provenance=item_prov)
 
     return {
         "index": index,

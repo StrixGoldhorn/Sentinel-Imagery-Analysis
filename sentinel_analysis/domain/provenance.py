@@ -86,9 +86,55 @@ def build_preprocessing_provenance(
     vh_path: Path | str | None = None,
     scan: Any = None,
     metadata: dict[str, Any] | None = None,
+    base_provenance: dict[str, Any] | PreprocessingProvenance | None = None,
     **extra_kwargs: Any,
 ) -> dict[str, Any]:
     """Build a complete, normalized preprocessing provenance dictionary with all 12 metadata dimensions."""
+    if base_provenance is None and "provenance" in extra_kwargs:
+        base_provenance = extra_kwargs.pop("provenance")
+
+    base_dict: dict[str, Any] = {}
+    if isinstance(base_provenance, PreprocessingProvenance):
+        base_dict = base_provenance.to_dict()
+    elif isinstance(base_provenance, dict):
+        base_dict = dict(base_provenance)
+
+    # Fall back to base_provenance for any unsupplied parameters
+    if orbit is None and "orbit" in base_dict:
+        orbit = base_dict["orbit"]
+    if product_id is None and "product_id" in base_dict:
+        product_id = base_dict["product_id"]
+    if polarization is None and "polarization" in base_dict:
+        polarization = base_dict["polarization"]
+    if processing_baseline is None and "processing_baseline" in base_dict:
+        processing_baseline = base_dict["processing_baseline"]
+    if calibration_method is None and "calibration_method" in base_dict:
+        calibration_method = base_dict["calibration_method"]
+    if terrain_correction is None and "terrain_correction" in base_dict:
+        terrain_correction = base_dict["terrain_correction"]
+    if dem is None and "dem" in base_dict:
+        dem = base_dict["dem"]
+    if speckle_filtering is None and "speckle_filtering" in base_dict:
+        speckle_filtering = base_dict["speckle_filtering"]
+    if pixel_spacing is None and "pixel_spacing" in base_dict:
+        pixel_spacing = base_dict["pixel_spacing"]
+    if model_version is None and "model_version" in base_dict:
+        model_version = base_dict["model_version"]
+    if source_checksum is None and "source_checksum" in base_dict:
+        source_checksum = base_dict["source_checksum"]
+    if source_checksums is None and "source_checksums" in base_dict:
+        source_checksums = base_dict["source_checksums"]
+    elif source_checksums is not None and isinstance(base_dict.get("source_checksums"), dict):
+        source_checksums = {**base_dict["source_checksums"], **source_checksums}
+
+    # Merge thresholds: base thresholds are preserved, then augmented/overridden
+    merged_thresholds: dict[str, Any] = {}
+    if isinstance(base_dict.get("thresholds"), dict):
+        merged_thresholds.update(base_dict["thresholds"])
+    if thresholds is not None:
+        merged_thresholds.update(thresholds)
+    thresholds = merged_thresholds
+
     meta = dict(metadata or {})
     if scan is not None and hasattr(scan, "metadata") and isinstance(scan.metadata, dict):
         # Merge scan metadata as fallback

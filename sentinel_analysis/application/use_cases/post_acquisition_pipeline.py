@@ -232,8 +232,9 @@ class PostAcquisitionPipeline:
 
         # Enrich all detections with sensor, orbit, product ID, and preprocessing provenance
         for det_dict in enriched_detections:
-            existing_prov = det_dict.get("provenance") or {}
+            existing_prov = det_dict.get("provenance")
             det_prov = build_preprocessing_provenance(
+                base_provenance=existing_prov,
                 scan=scan,
                 image_path=scan.image_path,
                 dem_path=dem_path,
@@ -243,7 +244,6 @@ class PostAcquisitionPipeline:
                     "threshold": threshold,
                     "coastal_buffer_pixels": coastal_buffer,
                 },
-                **existing_prov,
             )
             det_dict["provenance"] = det_prov
             for k in (

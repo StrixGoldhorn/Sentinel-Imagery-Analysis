@@ -209,6 +209,26 @@ class PreprocessingProvenanceTests(unittest.TestCase):
             self.assertIn(key, feat_props, f"Missing key {key} in GeoJSON properties")
             self.assertEqual(feat_props[key], det.provenance[key])
 
+    def test_base_provenance_threshold_merging(self) -> None:
+        """Verifies that base_provenance with existing thresholds merges cleanly without TypeError."""
+        base_prov = {
+            "orbit": "ASCENDING",
+            "model_version": "Classical-CFAR-OBB-v2.1",
+            "thresholds": {"threshold": 35, "min_area": 12, "max_area": 600, "coastal_buffer_pixels": 50},
+        }
+        # Explicitly pass thresholds to override/augment base thresholds
+        merged = build_preprocessing_provenance(
+            base_provenance=base_prov,
+            thresholds={"threshold": 45, "coastal_buffer_pixels": 80},
+        )
+        self.assertEqual(merged["orbit"], "ASCENDING")
+        self.assertEqual(merged["model_version"], "Classical-CFAR-OBB-v2.1")
+        self.assertEqual(merged["thresholds"]["threshold"], 45)
+        self.assertEqual(merged["thresholds"]["coastal_buffer_pixels"], 80)
+        self.assertEqual(merged["thresholds"]["min_area"], 12)
+        self.assertEqual(merged["thresholds"]["max_area"], 600)
+
 
 if __name__ == "__main__":
     unittest.main()
+

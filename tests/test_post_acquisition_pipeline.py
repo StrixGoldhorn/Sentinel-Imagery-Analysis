@@ -337,7 +337,55 @@ class TestPostAcquisitionPipeline(unittest.TestCase):
             reference_folder=prior_folder,
         )
 
+    def test_pipeline_execution_with_detector_provenance_thresholds(self):
+        """Regression test: detections with pre-existing provenance containing thresholds do not raise TypeError."""
+        mock_detect = MagicMock()
+        mock_detect.execute.return_value = DetectionResult(
+            image_width=100,
+            image_height=100,
+            detections=[
+                ShipDetection(
+                    x=15,
+                    y=25,
+                    width=20,
+                    height=30,
+                    confidence=0.88,
+                    angle=30.0,
+                    length=60.0,
+                    beam=14.0,
+                    center_x=25.0,
+                    center_y=40.0,
+                    provenance={
+                        "orbit": "ASCENDING",
+                        "model_version": "Classical-CFAR-v2.1",
+                        "thresholds": {
+                            "threshold": 40,
+                            "coastal_buffer_pixels": 81,
+                            "min_area": 10,
+                            "max_area": 500,
+                        },
+                    },
+                )
+            ],
+        )
+
+        pipeline = PostAcquisitionPipeline(
+            scan_repository=self.scan_repo,
+            detect_ships=mock_detect,
+            output_root=self.output_root,
+        )
+
+        result = pipeline.execute(self.scan, threshold=50, coastal_buffer=100)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["detections"]), 1)
+        det = result["detections"][0]
+        self.assertIn("provenance", det)
+        self.assertEqual(det["provenance"]["thresholds"]["threshold"], 50)
+        self.assertEqual(det["provenance"]["thresholds"]["coastal_buffer_pixels"], 100)
+        self.assertEqual(det["provenance"]["thresholds"]["min_area"], 10)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
