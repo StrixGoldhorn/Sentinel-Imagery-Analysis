@@ -1155,6 +1155,13 @@ def scan_sar_change_detection(folder_name: str):
     return jsonify(result)
 
 
+@blueprint.route("/api/scan/<folder_name>/environmental", methods=["GET", "POST"])
+def scan_environmental_context(folder_name: str) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    result = container().enrich_environmental_context.execute(scan_id=safe_name)
+    return jsonify(result)
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

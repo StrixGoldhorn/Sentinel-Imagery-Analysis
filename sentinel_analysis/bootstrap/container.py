@@ -21,6 +21,7 @@ from sentinel_analysis.application.use_cases import (
     DispatchMaritimeAlert,
     ExecuteStorageRetention,
     ExportGeospatial,
+    EnrichMarineEnvironmentalContext,
     ExportReviewedDataset,
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
@@ -62,6 +63,7 @@ from sentinel_analysis.application.use_cases import (
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.alerting import HTTPWebhookDispatcher
+from sentinel_analysis.infrastructure.environmental.marine_context_provider import MarineContextProvider
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 from sentinel_analysis.infrastructure.detection.onnx_detector import DeepLearningShipDetector
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
@@ -171,6 +173,10 @@ class ApplicationContainer:
         self.generate_briefing = GenerateIntelligenceBrief(self.scan_repository, self.brief_generator)
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.detect_identity_anomalies = DetectIdentityAnomalies(self.ais_repository, self.scan_repository)
+        self.marine_context_provider = MarineContextProvider()
+        self.enrich_environmental_context = EnrichMarineEnvironmentalContext(
+            self.marine_context_provider, self.scan_repository
+        )
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)

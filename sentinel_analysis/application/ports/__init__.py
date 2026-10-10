@@ -13,6 +13,7 @@ from sentinel_analysis.application.ports.aoi_repository import AreaOfInterestRep
 from sentinel_analysis.application.ports.cache import TileCache
 from sentinel_analysis.application.ports.detection import DetectionResult, ShipDetector
 from sentinel_analysis.application.ports.briefing import IntelligenceBriefGenerator
+from sentinel_analysis.application.ports.environmental import MarineContextProviderPort
 from sentinel_analysis.application.ports.geocoding import LocationResolver
 from sentinel_analysis.application.ports.imagery import GeoTIFFWriter, ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.observability import (
@@ -51,6 +52,7 @@ __all__ = [
     "ImageryProvider",
     "IntelligenceBriefGenerator",
     "LocationResolver",
+    "MarineContextProviderPort",
     "ObservabilityMetricsProvider",
     "ObservabilityRecorder",
     "OpticalCrossValidator",

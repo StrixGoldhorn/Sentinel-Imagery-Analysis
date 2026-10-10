@@ -17,6 +17,7 @@ from sentinel_analysis.application.use_cases.manage_alerts import (
     ManageWebhooks,
 )
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
+from sentinel_analysis.application.use_cases.enrich_environmental_context import EnrichMarineEnvironmentalContext
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.generate_traffic_heatmap import GenerateHistoricalTrafficHeatmap
@@ -101,6 +102,7 @@ __all__ = [
     "DispatchMaritimeAlert",
     "ExecuteStorageRetention",
     "ExportGeospatial",
+    "EnrichMarineEnvironmentalContext",
     "ExportReviewedDataset",
     "GenerateDEM",
     "GenerateHistoricalTrafficHeatmap",
