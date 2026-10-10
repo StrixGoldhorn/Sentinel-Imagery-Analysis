@@ -253,6 +253,7 @@ class ShipDetection:
     spatial_uncertainty: Optional[dict[str, Any]] = None
     dimension_uncertainty: Optional[dict[str, Any]] = None
     association_likelihood: Optional[float] = None
+    association_probability: Optional[float] = None
     reason_codes: Optional[tuple[str, ...] | list[str]] = None
 
     def __post_init__(self) -> None:
@@ -341,6 +342,11 @@ class ShipDetection:
             if not 0 <= assoc_like <= 1:
                 raise DomainValidationError("Detection association likelihood must be between 0 and 1")
             object.__setattr__(self, "association_likelihood", assoc_like)
+        if self.association_probability is not None:
+            assoc_prob = _number(self.association_probability, "Detection association probability")
+            if not 0 <= assoc_prob <= 1:
+                raise DomainValidationError("Detection association probability must be between 0 and 1")
+            object.__setattr__(self, "association_probability", assoc_prob)
         if self.reason_codes is not None:
             if not isinstance(self.reason_codes, (list, tuple)):
                 raise DomainValidationError("Detection reason codes must be a sequence of strings")

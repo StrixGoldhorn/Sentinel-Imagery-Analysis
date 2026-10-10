@@ -275,6 +275,140 @@ def calibrate_dimension_uncertainty(
     )
 
 
+def calculate_mahalanobis_distance(
+    dx_meters: float,
+    dy_meters: float,
+    semi_major_m: float,
+    semi_minor_m: float,
+    orientation_deg: float = 0.0,
+) -> float:
+    """Calculate the normalized Mahalanobis distance d_M for a metric displacement (dx, dy)
+    relative to a 2D oriented error ellipse.
+
+    Parameters:
+        dx_meters: Metric offset East in meters.
+        dy_meters: Metric offset North in meters.
+        semi_major_m: Semi-major axis in meters (95% confidence).
+        semi_minor_m: Semi-minor axis in meters (95% confidence).
+        orientation_deg: Orientation of semi-major axis clockwise from True North in degrees.
+
+    Returns:
+        float: Dimensionless Mahalanobis distance d_M.
+    """
+    a = max(0.1, float(semi_major_m))
+    b = max(0.1, float(semi_minor_m))
+    theta = math.radians(float(orientation_deg) % 360.0)
+
+    # Project metric offset into along-axis and cross-axis coordinate frame
+    # orientation_deg is clockwise from North (+y axis), so North is dy, East is dx
+    along = dy_meters * math.cos(theta) + dx_meters * math.sin(theta)
+    cross = -dy_meters * math.sin(theta) + dx_meters * math.cos(theta)
+
+    d2 = (along / a) ** 2 + (cross / b) ** 2
+    return round(math.sqrt(max(0.0, d2)), 3)
+
+
+def compute_joint_covariance_ellipse(
+    radar_ellipse: SpatialUncertainty | dict[str, Any],
+    ais_ellipse: dict[str, Any] | None = None,
+) -> SpatialUncertainty:
+    """Compute exact joint spatial error ellipse (Sigma_radar + Sigma_ais) via bivariate Gaussian addition."""
+    def _extract_axes(obj: Any) -> tuple[float, float, float]:
+        if obj is None:
+            return 15.0, 10.0, 0.0
+        if hasattr(obj, "semi_major_axis_meters"):
+            return float(obj.semi_major_axis_meters), float(obj.semi_minor_axis_meters), float(obj.orientation_deg)
+        if isinstance(obj, dict):
+            maj = float(obj.get("semi_major_axis_meters") or obj.get("semi_major_m") or 15.0)
+            min_ = float(obj.get("semi_minor_axis_meters") or obj.get("semi_minor_m") or 10.0)
+            ori = float(obj.get("orientation_deg") or 0.0)
+            return maj, min_, ori
+        return 15.0, 10.0, 0.0
+
+    a1, b1, o1 = _extract_axes(radar_ellipse)
+    if not ais_ellipse:
+        cep = 0.562 * a1 + 0.589 * b1
+        return SpatialUncertainty(
+            cep_meters=round(cep, 1),
+            semi_major_axis_meters=round(a1, 1),
+            semi_minor_axis_meters=round(b1, 1),
+            orientation_deg=round(o1, 1),
+            confidence_level=0.95,
+        )
+
+    a2, b2, o2 = _extract_axes(ais_ellipse)
+
+    # 2D Covariance matrices from ellipse semi-axes:
+    # Covariance elements in local tangent plane (dy = North, dx = East)
+    # Angle theta is clockwise from True North (+y)
+    th1 = math.radians(o1 % 360.0)
+    c1, s1 = math.cos(th1), math.sin(th1)
+    sxx1 = (a1 * s1) ** 2 + (b1 * c1) ** 2
+    syy1 = (a1 * c1) ** 2 + (b1 * s1) ** 2
+    sxy1 = (a1**2 - b1**2) * s1 * c1
+
+    th2 = math.radians(o2 % 360.0)
+    c2, s2 = math.cos(th2), math.sin(th2)
+    sxx2 = (a2 * s2) ** 2 + (b2 * c2) ** 2
+    syy2 = (a2 * c2) ** 2 + (b2 * s2) ** 2
+    sxy2 = (a2**2 - b2**2) * s2 * c2
+
+    # Joint covariance Sigma_joint = Sigma_1 + Sigma_2
+    sxx = sxx1 + sxx2
+    syy = syy1 + syy2
+    sxy = sxy1 + sxy2
+
+    # Eigenvalues of joint covariance matrix
+    diff = (sxx - syy) / 2.0
+    r = math.sqrt(diff**2 + sxy**2)
+    lambda1 = (sxx + syy) / 2.0 + r
+    lambda2 = max(1.0, (sxx + syy) / 2.0 - r)
+
+    major = math.sqrt(max(1.0, lambda1))
+    minor = math.sqrt(max(1.0, lambda2))
+    if minor > major:
+        major, minor = minor, major
+
+    # Orientation of major axis clockwise from North
+    joint_ori = (0.5 * math.degrees(math.atan2(2 * sxy, syy - sxx))) % 360.0
+    cep = 0.562 * major + 0.589 * minor
+
+    return SpatialUncertainty(
+        cep_meters=round(cep, 1),
+        semi_major_axis_meters=round(major, 1),
+        semi_minor_axis_meters=round(minor, 1),
+        orientation_deg=round(joint_ori, 1),
+        confidence_level=0.95,
+    )
+
+
+def calculate_competing_candidate_probabilities(
+    candidate_likelihoods: dict[str, float] | list[float],
+    null_hypothesis_likelihood: float = 0.08,
+) -> dict[str, float] | list[float]:
+    """Calculate competing-candidate normalized association probabilities.
+
+    Uses a soft assignment formulation (JPDA / Bayesian hypothesis filter)
+    where competing candidates divide candidate probability mass and the null
+    hypothesis (target is dark/uncorrelated) has prior likelihood null_hypothesis_likelihood.
+    """
+    is_dict = isinstance(candidate_likelihoods, dict)
+    if is_dict:
+        items = list(candidate_likelihoods.items())
+        keys = [k for k, _ in items]
+        raw_vals = [max(0.0, float(v)) for _, v in items]
+    else:
+        keys = []
+        raw_vals = [max(0.0, float(v)) for v in candidate_likelihoods]
+
+    total_sum = max(1e-6, sum(raw_vals) + max(0.001, null_hypothesis_likelihood))
+    probs = [round(min(0.99, max(0.0, val / total_sum)), 3) for val in raw_vals]
+
+    if is_dict:
+        return {k: p for k, p in zip(keys, probs)}
+    return probs
+
+
 def calculate_association_likelihood(
     is_correlated: bool = True,
     match_type: str = "inside_box",
@@ -299,6 +433,7 @@ def calculate_association_likelihood(
     sar_heading_deg: float | None = None,
     ais_heading_deg: float | None = None,
     sar_length_m: float | None = None,
+    mahalanobis_distance: float | None = None,
     **kwargs: Any,
 ) -> float:
     """Calculate calibrated multi-factor association likelihood (0.0 to 1.0).
@@ -351,9 +486,13 @@ def calculate_association_likelihood(
     # Base prior by match category
     prior = 0.98 if match_type == "inside_box" else 0.75
 
-    # 1. Spatial decay factor: Gaussian kernel over distance relative to tolerance
-    spatial_sigma = max(35.0, tol * 0.45)
-    f_spatial = math.exp(-0.5 * ((dist / spatial_sigma) ** 2))
+    # 1. Spatial decay factor: Mahalanobis distance or Gaussian kernel over distance relative to tolerance
+    if mahalanobis_distance is not None:
+        d_m = max(0.0, float(mahalanobis_distance))
+        f_spatial = math.exp(-0.5 * (d_m ** 2))
+    else:
+        spatial_sigma = max(35.0, tol * 0.45)
+        f_spatial = math.exp(-0.5 * ((dist / spatial_sigma) ** 2))
 
     # 2. Kinematic velocity agreement factor
     f_speed = 1.0

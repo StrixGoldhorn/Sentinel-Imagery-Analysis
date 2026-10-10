@@ -12,8 +12,11 @@ from sentinel_analysis.domain.uncertainty import (
     DimensionUncertainty,
     SpatialUncertainty,
     calculate_association_likelihood,
+    calculate_competing_candidate_probabilities,
+    calculate_mahalanobis_distance,
     calibrate_dimension_uncertainty,
     calibrate_spatial_uncertainty,
+    compute_joint_covariance_ellipse,
     generate_contact_reason_codes,
 )
 
@@ -1000,8 +1003,10 @@ class CorrelateDetectionsWithAIS:
                 "interpolation_method": method,
             })
 
-        # 3. Build candidate match pairs: (detection_index, cand_dict, dist_to_box, dist_to_center)
-        candidate_matches: list[tuple[int, dict[str, Any], float, float]] = []
+        # 3. Build candidate match evaluation: (det_idx, cand, dist_to_box, dist_to_center, m_dist, likelihood, joint_spatial)
+        raw_candidate_pairs: list[dict[str, Any]] = []
+        det_candidate_map: dict[int, list[dict[str, Any]]] = {d["index"]: [] for d in projected_detections}
+        vessel_candidate_map: dict[str, list[dict[str, Any]]] = {}
 
         for p_det in projected_detections:
             g_box = p_det["geo_bbox"]
@@ -1009,55 +1014,179 @@ class CorrelateDetectionsWithAIS:
             det_idx = p_det["index"]
             c_lat = p_det["lat"]
             c_lon = p_det["lng"]
+            radar_sp = p_det.get("spatial_uncertainty") or {}
 
             for cand in prepared_candidates:
+                vessel = cand["vessel"]
+                v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
+                cand_lat = cand["eff_lat"]
+                cand_lon = cand["eff_lon"]
+
                 if geo_poly:
                     _, dist_to_box = point_in_polygon_and_distance(
-                        cand["eff_lat"],
-                        cand["eff_lon"],
+                        cand_lat,
+                        cand_lon,
                         geo_poly,
                     )
                 else:
                     dist_to_box = distance_to_bbox_meters(
-                        cand["eff_lat"],
-                        cand["eff_lon"],
+                        cand_lat,
+                        cand_lon,
                         g_box["min_lat"],
                         g_box["max_lat"],
                         g_box["min_lon"],
                         g_box["max_lon"],
                     )
 
-                ellipse = cand.get("uncertainty_ellipse")
-                inside_ellipse = False
-                if ellipse:
-                    inside_ellipse, _ = is_point_in_ellipse(
-                        c_lat,
-                        c_lon,
-                        cand["eff_lat"],
-                        cand["eff_lon"],
-                        ellipse["semi_major_m"],
-                        ellipse["semi_minor_m"],
-                        ellipse["orientation_deg"],
+                dist_to_center = haversine_distance_meters(cand_lat, cand_lon, c_lat, c_lon)
+
+                # Metric displacement (dx=East, dy=North) from radar centroid to candidate
+                mean_lat_rad = math.radians((cand_lat + c_lat) / 2.0)
+                cos_lat = max(0.01, math.cos(mean_lat_rad))
+                dy_m = (cand_lat - c_lat) * 111320.0
+                dx_m = (cand_lon - c_lon) * 111320.0 * cos_lat
+
+                # Joint covariance error ellipse
+                ais_ellipse = cand.get("uncertainty_ellipse") or {}
+                joint_spatial = compute_joint_covariance_ellipse(radar_sp, ais_ellipse)
+
+                m_dist = calculate_mahalanobis_distance(
+                    dx_meters=dx_m,
+                    dy_meters=dy_m,
+                    semi_major_m=joint_spatial.semi_major_axis_meters,
+                    semi_minor_m=joint_spatial.semi_minor_axis_meters,
+                    orientation_deg=joint_spatial.orientation_deg,
+                )
+
+                inside_ellipse = bool(m_dist <= 1.0)
+                is_gated = (dist_to_box <= tolerance_meters) or inside_ellipse or (m_dist <= 2.8)
+
+                if is_gated:
+                    # Kinematic and dimensional agreement
+                    ais_spd = vessel.get("speed") if vessel.get("speed") is not None else vessel.get("sog")
+                    ais_hdg = vessel.get("heading") if vessel.get("heading") is not None else vessel.get("course")
+                    if ais_hdg is None:
+                        ais_hdg = vessel.get("cog")
+
+                    ais_len = vessel.get("length")
+                    if ais_len is None:
+                        to_b = vessel.get("to_bow") or vessel.get("dimension_to_bow")
+                        to_s = vessel.get("to_stern") or vessel.get("dimension_to_stern")
+                        if to_b is not None and to_s is not None:
+                            try:
+                                ais_len = float(to_b) + float(to_s)
+                            except (ValueError, TypeError):
+                                pass
+
+                    match_status = "inside_box" if dist_to_box == 0.0 else "outside_box"
+                    raw_likelihood = calculate_association_likelihood(
+                        dist_to_box_meters=dist_to_box,
+                        tolerance_meters=tolerance_meters,
+                        is_inside_box=(match_status == "inside_box"),
+                        sar_speed_knots=p_det.get("wake_speed_knots"),
+                        ais_speed_knots=ais_spd,
+                        sar_heading_deg=p_det.get("wake_heading") or p_det.get("angle"),
+                        ais_heading_deg=ais_hdg,
+                        sar_length_m=p_det.get("length"),
+                        ais_length_m=ais_len,
+                        mahalanobis_distance=m_dist,
                     )
 
-                if dist_to_box <= tolerance_meters or inside_ellipse:
-                    dist_to_center = haversine_distance_meters(cand["eff_lat"], cand["eff_lon"], c_lat, c_lon)
-                    candidate_matches.append((det_idx, cand, dist_to_box, dist_to_center))
+                    # Track continuity decay over extrapolation interval
+                    dt_abs = abs(float(cand.get("delta_seconds", 0.0)))
+                    f_continuity = math.exp(-0.5 * (min(dt_abs, 7200.0) / 3600.0) ** 2)
+                    joint_likelihood = round(max(0.05, min(0.99, raw_likelihood * (0.85 + 0.15 * f_continuity))), 3)
 
-        # 4. Resolve conflicts: Greedy assignment by (dist_to_box, dist_to_center)
-        candidate_matches.sort(key=lambda item: (item[2], item[3]))
+                    pair_info = {
+                        "det_idx": det_idx,
+                        "cand": cand,
+                        "v_key": v_key,
+                        "dist_to_box": dist_to_box,
+                        "dist_to_center": dist_to_center,
+                        "m_dist": m_dist,
+                        "match_status": match_status,
+                        "likelihood": joint_likelihood,
+                        "joint_spatial": joint_spatial,
+                        "ais_speed": ais_spd,
+                        "ais_heading": ais_hdg,
+                        "ais_length": ais_len,
+                    }
+                    raw_candidate_pairs.append(pair_info)
+                    det_candidate_map[det_idx].append(pair_info)
+                    vessel_candidate_map.setdefault(v_key, []).append(pair_info)
+
+        # 4. Competing-candidate probability normalization (Bayesian multi-hypothesis scoring)
+        # Compute detection-side competition probabilities
+        for det_idx, pairs in det_candidate_map.items():
+            if not pairs:
+                continue
+            lh_map = {f"cand_{i}": p["likelihood"] for i, p in enumerate(pairs)}
+            prob_map = calculate_competing_candidate_probabilities(lh_map, null_hypothesis_likelihood=0.08)
+            for i, p in enumerate(pairs):
+                p["det_prob"] = prob_map.get(f"cand_{i}", p["likelihood"])
+
+        # Compute vessel-side competition probabilities
+        for v_key, pairs in vessel_candidate_map.items():
+            if not pairs:
+                continue
+            lh_map = {f"det_{p['det_idx']}": p["likelihood"] for p in pairs}
+            prob_map = calculate_competing_candidate_probabilities(lh_map, null_hypothesis_likelihood=0.08)
+            for p in pairs:
+                p["vessel_prob"] = prob_map.get(f"det_{p['det_idx']}", p["likelihood"])
+
+        # Symmetric competing-candidate association probability
+        for p in raw_candidate_pairs:
+            d_p = p.get("det_prob", p["likelihood"])
+            v_p = p.get("vessel_prob", p["likelihood"])
+            p["assoc_prob"] = round(math.sqrt(max(0.001, d_p * v_p)), 3)
+
+        # Attach candidate list to detections for explainability and full analyst observability
+        for det_idx, pairs in det_candidate_map.items():
+            comp_list = []
+            for p in pairs:
+                v = p["cand"]["vessel"]
+                comp_list.append({
+                    "mmsi": v.get("mmsi"),
+                    "vessel_name": v.get("vessel_name") or v.get("name"),
+                    "distance_to_box_meters": round(p["dist_to_box"], 1),
+                    "distance_to_center_meters": round(p["dist_to_center"], 1),
+                    "mahalanobis_distance": round(p["m_dist"], 2),
+                    "association_likelihood": p["likelihood"],
+                    "association_probability": p["assoc_prob"],
+                })
+            comp_list.sort(key=lambda item: item["association_probability"], reverse=True)
+            projected_detections[det_idx]["competing_candidates"] = comp_list
+
+        # 5. Global assignment: Maximize joint probability & likelihood, prioritizing inside_box matches
+        raw_candidate_pairs.sort(
+            key=lambda item: (
+                1 if item["match_status"] == "inside_box" else 0,
+                item["assoc_prob"],
+                item["likelihood"],
+                -item["dist_to_box"],
+                -item["dist_to_center"],
+            ),
+            reverse=True,
+        )
 
         matched_detections: set[int] = set()
         matched_vessel_keys: set[str] = set()
 
-        for det_idx, cand, dist_to_box, dist_to_center in candidate_matches:
-            if det_idx in matched_detections:
+        for item in raw_candidate_pairs:
+            det_idx = item["det_idx"]
+            v_key = item["v_key"]
+            if det_idx in matched_detections or v_key in matched_vessel_keys:
                 continue
 
+            cand = item["cand"]
             vessel = cand["vessel"]
-            v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
-            if v_key in matched_vessel_keys:
-                continue
+            dist_to_box = item["dist_to_box"]
+            dist_to_center = item["dist_to_center"]
+            match_status = item["match_status"]
+            joint_spatial = item["joint_spatial"]
+            assoc_likelihood = item["likelihood"]
+            assoc_prob = item["assoc_prob"]
+            m_dist = item["m_dist"]
 
             # AIS Speed & Heading Spoofing Cross-Validation
             is_speed_spoofed = None
@@ -1067,10 +1196,8 @@ class CorrelateDetectionsWithAIS:
 
             wake_spd = projected_detections[det_idx].get("wake_speed_knots")
             wake_hdg = projected_detections[det_idx].get("wake_heading")
-            ais_spd = vessel.get("speed") if vessel.get("speed") is not None else vessel.get("sog")
-            ais_hdg = vessel.get("heading") if vessel.get("heading") is not None else vessel.get("course")
-            if ais_hdg is None:
-                ais_hdg = vessel.get("cog")
+            ais_spd = item["ais_speed"]
+            ais_hdg = item["ais_heading"]
 
             if wake_spd is not None and ais_spd is not None:
                 try:
@@ -1088,8 +1215,6 @@ class CorrelateDetectionsWithAIS:
                 except (TypeError, ValueError):
                     pass
 
-            match_status = "inside_box" if dist_to_box == 0.0 else "outside_box"
-
             matched_detections.add(det_idx)
             matched_vessel_keys.add(v_key)
 
@@ -1100,35 +1225,6 @@ class CorrelateDetectionsWithAIS:
 
             projected_detections[det_idx]["correlation_status"] = match_status
             projected_detections[det_idx]["is_correlated"] = True
-
-            ais_ellipse = cand.get("uncertainty_ellipse") or {}
-            joint_spatial = calibrate_spatial_uncertainty(
-                ais_semi_major_m=ais_ellipse.get("semi_major_m"),
-                ais_semi_minor_m=ais_ellipse.get("semi_minor_m"),
-                ais_orientation_deg=ais_ellipse.get("orientation_deg"),
-            )
-
-            ais_len = vessel.get("length")
-            if ais_len is None:
-                to_b = vessel.get("to_bow") or vessel.get("dimension_to_bow")
-                to_s = vessel.get("to_stern") or vessel.get("dimension_to_stern")
-                if to_b is not None and to_s is not None:
-                    try:
-                        ais_len = float(to_b) + float(to_s)
-                    except (ValueError, TypeError):
-                        pass
-
-            assoc_likelihood = calculate_association_likelihood(
-                dist_to_box_meters=dist_to_box,
-                tolerance_meters=tolerance_meters,
-                is_inside_box=(match_status == "inside_box"),
-                sar_speed_knots=projected_detections[det_idx].get("wake_speed_knots"),
-                ais_speed_knots=ais_spd,
-                sar_heading_deg=projected_detections[det_idx].get("wake_heading") or projected_detections[det_idx].get("angle"),
-                ais_heading_deg=ais_hdg,
-                sar_length_m=projected_detections[det_idx].get("length"),
-                ais_length_m=ais_len,
-            )
 
             matched_reason_codes = generate_contact_reason_codes(
                 is_correlated=True,
@@ -1143,6 +1239,7 @@ class CorrelateDetectionsWithAIS:
 
             projected_detections[det_idx]["spatial_uncertainty"] = joint_spatial.to_dict()
             projected_detections[det_idx]["association_likelihood"] = assoc_likelihood
+            projected_detections[det_idx]["association_probability"] = assoc_prob
             projected_detections[det_idx]["reason_codes"] = matched_reason_codes
 
             projected_detections[det_idx]["correlated_ais"] = {
@@ -1162,6 +1259,7 @@ class CorrelateDetectionsWithAIS:
                 "propagated_distance_meters": round(cand["prop_dist"], 1),
                 "distance_to_box_meters": round(dist_to_box, 1),
                 "distance_to_center_meters": round(dist_to_center, 1),
+                "mahalanobis_distance": round(m_dist, 2),
                 "uncertainty_ellipse": cand.get("uncertainty_ellipse"),
                 "interpolation_method": cand.get("interpolation_method"),
                 "match_type": match_status,
@@ -1171,6 +1269,8 @@ class CorrelateDetectionsWithAIS:
                 "heading_discrepancy_deg": heading_discrepancy_deg,
                 "spatial_uncertainty": joint_spatial.to_dict(),
                 "association_likelihood": assoc_likelihood,
+                "association_probability": assoc_prob,
+                "competing_candidates_count": len(projected_detections[det_idx].get("competing_candidates", [])),
                 "reason_codes": matched_reason_codes,
                 "timestamp": (
                     vessel["timestamp"].isoformat()
