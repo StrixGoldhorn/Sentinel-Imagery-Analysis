@@ -114,10 +114,12 @@ class SuitabilityAssessment:
     tactical_summary: str
 
     def to_dict(self) -> dict[str, Any]:
+        factors_dict = self.factors.to_dict()
         return {
             "composite_score": round(self.composite_score, 1),
             "grade": self.grade,
-            "factors": self.factors.to_dict(),
+            "factors": factors_dict,
+            "factor_scores": factors_dict,
             "strengths": self.strengths,
             "limitations": self.limitations,
             "tactical_summary": self.tactical_summary,

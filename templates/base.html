@@ -107,7 +107,7 @@
                     <!-- 4. Collection -->
                     <li class="nav-item dropdown">
                         <div class="nav-item-wrapper">
-                            <a href="/aois" class="nav-link-main {{ 'active' if request.path in ('/aois', '/schedule') else '' }}">
+                            <a href="/aois" class="nav-link-main {{ 'active' if request.path in ('/aois', '/schedule', '/acquisition-planner', '/planning') else '' }}">
                                 Collection
                             </a>
                             <span class="nav-badge" id="navAoiBadge" style="display: none;">0</span>
@@ -119,6 +119,9 @@
                             </a>
                             <a href="/schedule" class="dropdown-item {{ 'active' if request.path == '/schedule' else '' }}">
                                 <span>🛰️</span> Pass Planning
+                            </a>
+                            <a href="/acquisition-planner" class="dropdown-item {{ 'active' if request.path in ('/acquisition-planner', '/planning') else '' }}">
+                                <span>🎯</span> Revisit &amp; Provider Comparator
                             </a>
                         </div>
                     </li>

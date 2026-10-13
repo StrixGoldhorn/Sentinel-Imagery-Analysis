@@ -238,6 +238,14 @@ function createAoiCard(aoi) {
                         </svg>
                         Next Flypasts ▾
                     </button>
+                    <a href="/acquisition-planner?aoi_id=${aoi.id}" class="btn btn-outline-info" title="Revisit Calendar, Acquisition Suitability & Multi-Provider Comparator">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                            <path d="M2 12h20"></path>
+                        </svg>
+                        Revisit &amp; Providers
+                    </a>
                     <button class="btn btn-warning" id="btn-force-scan-${aoi.id}" onclick="forceScanAOIAIS(${aoi.id})" title="Force immediate AIS vessel scan regardless of satellite flypass timing">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>

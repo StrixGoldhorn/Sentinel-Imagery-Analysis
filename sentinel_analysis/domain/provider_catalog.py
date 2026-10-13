@@ -57,13 +57,16 @@ class ProviderProfile:
             "frequency_or_spectral": self.frequency_or_spectral,
             "standard_resolution_m": self.standard_resolution_m,
             "high_resolution_m": self.high_resolution_m,
+            "best_resolution_m": self.high_resolution_m,
             "swath_width_km": self.swath_width_km,
             "spotlight_swath_width_km": self.spotlight_swath_width_km,
             "is_commercial": self.is_commercial,
             "cost_tier": self.cost_tier,
             "day_night_capable": self.day_night_capable,
             "all_weather_capable": self.all_weather_capable,
+            "all_weather": self.all_weather_capable,
             "typical_latency_hours": self.typical_latency_hours,
+            "typical_revisit_hours": self.typical_latency_hours,
             "tasking_lead_time_hours": self.tasking_lead_time_hours,
             "revisit_rate_description": self.revisit_rate_description,
             "best_use_case": self.best_use_case,
@@ -87,6 +90,7 @@ class ProviderComparisonEntry:
     dispatch_recommendation: str
 
     def to_dict(self) -> dict[str, Any]:
+        tactical = "HIGH" if self.estimated_suitability_score >= 75.0 else ("MEDIUM" if self.estimated_suitability_score >= 50.0 else "LOW")
         return {
             "provider": self.provider.to_dict(),
             "estimated_suitability_score": round(self.estimated_suitability_score, 1),
@@ -97,6 +101,13 @@ class ProviderComparisonEntry:
             "tasking_flexibility": self.tasking_flexibility,
             "estimated_cost_level": self.estimated_cost_level,
             "dispatch_recommendation": self.dispatch_recommendation,
+            "tactical_feasibility": tactical,
+            "suitability": {
+                "composite_score": round(self.estimated_suitability_score, 1),
+                "grade": self.suitability_grade,
+                "tactical_summary": self.dispatch_recommendation,
+            },
+            "is_recommended": self.estimated_suitability_score >= 80.0,
         }
 
 

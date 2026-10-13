@@ -11,6 +11,7 @@ from sentinel_analysis.domain.correlation import (
     set_current_correlation_id,
 )
 from sentinel_analysis.interfaces.web import (
+    acquisition_planning,
     ais,
     alerts,
     aois,
@@ -55,6 +56,7 @@ def create_app(
     app.register_blueprint(probes.blueprint)
     app.register_blueprint(scans.blueprint)
     app.register_blueprint(aois.blueprint)
+    app.register_blueprint(acquisition_planning.blueprint)
     app.register_blueprint(ais.blueprint)
     app.register_blueprint(schedule.blueprint)
     app.register_blueprint(scrapers.blueprint)
