@@ -18,6 +18,7 @@ from sentinel_analysis.application.use_cases.detect_transshipment import DetectT
 from sentinel_analysis.application.use_cases.detect_identity_anomalies import DetectIdentityAnomalies
 from sentinel_analysis.application.use_cases.detect_sar_changes import ComputeSARChangeDetection
 from sentinel_analysis.application.use_cases.evaluate_acquisition_suitability import EvaluateAcquisitionSuitability
+from sentinel_analysis.application.use_cases.evaluate_pass_alerts import EvaluatePassAlerts
 from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
 from sentinel_analysis.application.use_cases.get_aoi_revisit_calendar import GetAoiRevisitCalendar
 from sentinel_analysis.application.use_cases.recommend_acquisition_opportunities import RecommendAcquisitionOpportunities
@@ -131,6 +132,7 @@ __all__ = [
     "DispatchMaritimeAlert",
     "EnhanceScanRadiometry",
     "EvaluateAcquisitionSuitability",
+    "EvaluatePassAlerts",
     "ExecuteStorageRetention",
     "ExportGeospatial",
     "EnrichMarineEnvironmentalContext",

@@ -129,3 +129,35 @@ def dispatch_alert():
 
     result = app_container.dispatch_alert.execute(alert)
     return jsonify(result)
+
+
+@blueprint.route("/api/alerts/pass-monitoring", methods=["GET"])
+def get_pass_monitoring_alerts():
+    """Inspect active delayed-ingestion and missed-pass alert evaluations."""
+    app_container = container()
+    evaluator = getattr(app_container, "evaluate_pass_alerts", None)
+    if evaluator is None:
+        return jsonify({"status": "unavailable", "message": "Pass alert evaluator not configured"}), 503
+
+    raw_threshold = request.args.get("threshold_minutes")
+    threshold = float(raw_threshold) if raw_threshold is not None else None
+    result = evaluator.execute(delay_threshold_minutes=threshold, auto_dispatch=False)
+    return jsonify(result)
+
+
+@blueprint.route("/api/alerts/pass-monitoring/evaluate", methods=["POST"])
+def evaluate_pass_monitoring_alerts():
+    """Evaluate pass and ingestion telemetry and dispatch new alerts to webhooks."""
+    app_container = container()
+    evaluator = getattr(app_container, "evaluate_pass_alerts", None)
+    if evaluator is None:
+        return jsonify({"status": "unavailable", "message": "Pass alert evaluator not configured"}), 503
+
+    payload = request.get_json(silent=True) or {}
+    threshold = payload.get("threshold_minutes") or request.args.get("threshold_minutes")
+    threshold_val = float(threshold) if threshold is not None else None
+    auto_dispatch = payload.get("auto_dispatch", True)
+
+    result = evaluator.execute(delay_threshold_minutes=threshold_val, auto_dispatch=bool(auto_dispatch))
+    return jsonify(result)
+

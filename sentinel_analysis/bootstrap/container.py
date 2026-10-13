@@ -28,6 +28,7 @@ from sentinel_analysis.application.use_cases import (
     DispatchMaritimeAlert,
     EnhanceScanRadiometry,
     EvaluateAcquisitionSuitability,
+    EvaluatePassAlerts,
     ExecuteStorageRetention,
     ExportGeospatial,
     EnrichMarineEnvironmentalContext,
@@ -334,6 +335,12 @@ class ApplicationContainer:
             self.ingest_ais,
             self.post_pass_repository,
             automatic_scrape=self.trigger_automatic_ais,
+        )
+        self.evaluate_pass_alerts = EvaluatePassAlerts(
+            post_pass_repository=self.post_pass_repository,
+            aoi_repository=self.aoi_repository,
+            pass_monitor=self.pass_monitor,
+            dispatch_alert=self.dispatch_alert,
         )
         self.schedule_aois = CheckAndScheduleAOIs(
             self.aoi_repository,
