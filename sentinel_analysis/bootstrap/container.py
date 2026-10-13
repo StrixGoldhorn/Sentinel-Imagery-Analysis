@@ -75,6 +75,9 @@ from sentinel_analysis.application.use_cases import (
     TagRouteDetections,
     ToggleScraper,
     TriggerAutomaticAISScrape,
+    EnforceAoiRetentionPolicy,
+    RecordAoiExpenditure,
+    UpdateAreaOfInterestPolicy,
     UpdateScraper,
     UpdateScraperConfig,
     UpdateSettings,
@@ -289,6 +292,9 @@ class ApplicationContainer:
         self.list_aois = ListAreasOfInterest(self.aoi_repository)
         self.add_aoi = AddAreaOfInterest(self.aoi_repository, self.settings_repository)
         self.delete_aoi = DeleteAreaOfInterest(self.aoi_repository)
+        self.update_aoi_policy = UpdateAreaOfInterestPolicy(self.aoi_repository)
+        self.record_aoi_expenditure = RecordAoiExpenditure(self.aoi_repository)
+        self.enforce_aoi_retention = EnforceAoiRetentionPolicy(self.aoi_repository, self.scan_repository)
         self.predict_aoi = PredictAreaOfInterest(
             self.aoi_repository,
             self.hybrid_predictor,

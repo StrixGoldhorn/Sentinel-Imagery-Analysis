@@ -80,11 +80,37 @@ class CheckAndScheduleAOIs:
         if self._pass_monitor is not None and hasattr(self._pass_monitor, "reconcile_enabled_satellites"):
             self._pass_monitor.reconcile_enabled_satellites(enabled_satellites)
 
-        for aoi in self._aois.list():
+        priority_weights = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        aoi_list = sorted(
+            self._aois.list(),
+            key=lambda a: priority_weights.get(getattr(a, "priority", "MEDIUM"), 2),
+            reverse=True,
+        )
+        for aoi in aoi_list:
             if shutdown_coordinator.is_shutting_down:
                 logger.info("AOI scheduling loop aborted due to application shutdown")
                 break
             if not getattr(aoi, "auto_capture_enabled", False):
+                continue
+
+            budget = getattr(aoi, "collection_budget_usd", 0.0) or 0.0
+            spent = getattr(aoi, "budget_spent_usd", 0.0) or 0.0
+            if budget > 0 and spent >= budget:
+                logger.warning(
+                    "AOI '%s' (id=%s) collection budget reached ($%.2f / $%.2f). Skipping auto-capture.",
+                    aoi.name,
+                    aoi.id,
+                    spent,
+                    budget,
+                )
+                results.append({
+                    "aoi_id": aoi.id,
+                    "aoi_name": aoi.name,
+                    "priority": getattr(aoi, "priority", "MEDIUM"),
+                    "status": "budget_exhausted",
+                    "budget_spent_usd": spent,
+                    "collection_budget_usd": budget,
+                })
                 continue
 
             try:

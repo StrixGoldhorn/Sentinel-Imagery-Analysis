@@ -26,7 +26,16 @@ class AddAreaOfInterest:
         self._repository = repository
         self._settings_repo = settings_repo
 
-    def execute(self, name: str, bbox: BoundingBox, auto_capture_enabled: bool | None = None) -> int:
+    def execute(
+        self,
+        name: str,
+        bbox: BoundingBox,
+        auto_capture_enabled: bool | None = None,
+        priority: str | None = None,
+        collection_budget_usd: float | None = None,
+        desired_revisit_rate_hours: float | None = None,
+        retention_policy_days: int | None = None,
+    ) -> int:
         if auto_capture_enabled is None:
             auto_capture_enabled = False
             if self._settings_repo is not None:
@@ -34,7 +43,93 @@ class AddAreaOfInterest:
                     auto_capture_enabled = bool(self._settings_repo.get("auto_capture_default", False))
                 except Exception:
                     auto_capture_enabled = False
-        return self._repository.add(AreaOfInterest(name, bbox, auto_capture_enabled=auto_capture_enabled))
+        aoi = AreaOfInterest(
+            name=name,
+            bbox=bbox,
+            auto_capture_enabled=auto_capture_enabled,
+            priority=priority or "MEDIUM",
+            collection_budget_usd=collection_budget_usd if collection_budget_usd is not None else 0.0,
+            desired_revisit_rate_hours=desired_revisit_rate_hours,
+            retention_policy_days=retention_policy_days,
+        )
+        return self._repository.add(aoi)
+
+
+class UpdateAreaOfInterestPolicy:
+    def __init__(self, repository: AreaOfInterestRepository) -> None:
+        self._repository = repository
+
+    def execute(
+        self,
+        aoi_id: int,
+        priority: str | None = None,
+        collection_budget_usd: float | None = None,
+        budget_spent_usd: float | None = None,
+        desired_revisit_rate_hours: float | None = None,
+        retention_policy_days: int | None = None,
+    ) -> AreaOfInterest:
+        if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
+            raise ValueError("Area-of-interest ID must be a positive integer")
+        aoi = self._repository.get(aoi_id)
+        if aoi is None:
+            raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
+        return self._repository.update_operations_policy(
+            aoi_id=aoi_id,
+            priority=priority,
+            collection_budget_usd=collection_budget_usd,
+            budget_spent_usd=budget_spent_usd,
+            desired_revisit_rate_hours=desired_revisit_rate_hours,
+            retention_policy_days=retention_policy_days,
+        )
+
+
+class RecordAoiExpenditure:
+    def __init__(self, repository: AreaOfInterestRepository) -> None:
+        self._repository = repository
+
+    def execute(self, aoi_id: int, amount_usd: float) -> AreaOfInterest:
+        if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
+            raise ValueError("Area-of-interest ID must be a positive integer")
+        if not isinstance(amount_usd, (int, float)) or amount_usd < 0:
+            raise ValueError("Expenditure amount must be non-negative")
+        aoi = self._repository.get(aoi_id)
+        if aoi is None:
+            raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
+        return self._repository.record_expenditure(aoi_id=aoi_id, amount_usd=float(amount_usd))
+
+
+class EnforceAoiRetentionPolicy:
+    def __init__(self, aoi_repository: AreaOfInterestRepository, scan_repository: Any) -> None:
+        self._aois = aoi_repository
+        self._scans = scan_repository
+
+    def execute(self, aoi_id: int) -> dict[str, Any]:
+        if isinstance(aoi_id, bool) or not isinstance(aoi_id, int) or aoi_id <= 0:
+            raise ValueError("Area-of-interest ID must be a positive integer")
+        aoi = self._aois.get(aoi_id)
+        if aoi is None:
+            raise AreaOfInterestNotFoundError(f"Area of interest not found: {aoi_id}")
+        retention_days = getattr(aoi, "retention_policy_days", None)
+        if retention_days is None:
+            return {"aoi_id": aoi_id, "pruned_scans": 0, "message": "No retention policy set"}
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        scans = self._scans.list()
+        pruned_ids = []
+        for scan in scans:
+            if getattr(scan, "aoi_name", None) == aoi.name:
+                scan_time = getattr(scan, "acquired_at", None) or getattr(scan, "created_at", None)
+                if scan_time and scan_time < cutoff:
+                    try:
+                        self._scans.delete(scan.id)
+                        pruned_ids.append(scan.id)
+                    except Exception:
+                        pass
+        return {
+            "aoi_id": aoi_id,
+            "pruned_scans": len(pruned_ids),
+            "pruned_scan_ids": pruned_ids,
+            "retention_days": retention_days,
+        }
 
 
 class DeleteAreaOfInterest:

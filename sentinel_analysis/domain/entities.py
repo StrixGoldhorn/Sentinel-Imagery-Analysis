@@ -210,6 +210,11 @@ class AreaOfInterest:
     last_checked: Optional[datetime] = None
     auto_capture_enabled: bool = False
     correlation_id: Optional[str] = None
+    priority: str = "MEDIUM"
+    collection_budget_usd: float = 0.0
+    budget_spent_usd: float = 0.0
+    desired_revisit_rate_hours: Optional[float] = None
+    retention_policy_days: Optional[int] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _required_text(self.name, "Area-of-interest name"))
@@ -222,6 +227,32 @@ class AreaOfInterest:
         object.__setattr__(self, "auto_capture_enabled", bool(self.auto_capture_enabled))
         cid_str = ensure_correlation_id(self.correlation_id, prefix="aoi")
         object.__setattr__(self, "correlation_id", cid_str)
+
+        valid_priorities = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+        norm_pri = str(self.priority or "MEDIUM").strip().upper()
+        if norm_pri not in valid_priorities:
+            raise DomainValidationError(f"Invalid AOI priority '{self.priority}'. Must be one of {sorted(valid_priorities)}")
+        object.__setattr__(self, "priority", norm_pri)
+
+        if self.collection_budget_usd is not None:
+            if not isinstance(self.collection_budget_usd, (int, float)) or self.collection_budget_usd < 0:
+                raise DomainValidationError("Collection budget must be non-negative")
+            object.__setattr__(self, "collection_budget_usd", float(self.collection_budget_usd))
+
+        if self.budget_spent_usd is not None:
+            if not isinstance(self.budget_spent_usd, (int, float)) or self.budget_spent_usd < 0:
+                raise DomainValidationError("Budget spent must be non-negative")
+            object.__setattr__(self, "budget_spent_usd", float(self.budget_spent_usd))
+
+        if self.desired_revisit_rate_hours is not None:
+            if not isinstance(self.desired_revisit_rate_hours, (int, float)) or self.desired_revisit_rate_hours <= 0:
+                raise DomainValidationError("Desired revisit rate hours must be positive")
+            object.__setattr__(self, "desired_revisit_rate_hours", float(self.desired_revisit_rate_hours))
+
+        if self.retention_policy_days is not None:
+            if isinstance(self.retention_policy_days, bool) or not isinstance(self.retention_policy_days, int) or self.retention_policy_days <= 0:
+                raise DomainValidationError("Retention policy days must be a positive integer")
+            object.__setattr__(self, "retention_policy_days", int(self.retention_policy_days))
 
 
 @dataclass(frozen=True)

@@ -42,3 +42,18 @@ class AreaOfInterestRepository(Protocol):
     def delete(self, aoi_id: int) -> None:
         ...
 
+    def update_operations_policy(
+        self,
+        aoi_id: int,
+        priority: Optional[str] = None,
+        collection_budget_usd: Optional[float] = None,
+        budget_spent_usd: Optional[float] = None,
+        desired_revisit_rate_hours: Optional[float] = None,
+        retention_policy_days: Optional[int] = None,
+    ) -> AreaOfInterest:
+        ...
+
+    def record_expenditure(self, aoi_id: int, amount_usd: float) -> AreaOfInterest:
+        ...
+
+

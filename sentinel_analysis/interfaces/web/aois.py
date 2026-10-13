@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, render_template, request
 import uuid
 
+from sentinel_analysis.application.exceptions import AreaOfInterestNotFoundError
 from sentinel_analysis.interfaces.web.dependencies import container
 from sentinel_analysis.interfaces.web.request_data import (
     RequestValidationError,
@@ -38,10 +39,19 @@ def add_aoi():
         boolean(payload, "auto_capture_enabled")
         if "auto_capture_enabled" in payload else None
     )
+    priority = payload.get("priority")
+    budget = payload.get("collection_budget_usd")
+    revisit = payload.get("desired_revisit_rate_hours")
+    retention = payload.get("retention_policy_days")
+
     aoi_id = container().add_aoi.execute(
         required_string(payload, "name"),
         bbox,
         auto_capture_enabled=auto_capture,
+        priority=str(priority) if priority is not None else None,
+        collection_budget_usd=float(budget) if budget is not None else None,
+        desired_revisit_rate_hours=float(revisit) if revisit is not None else None,
+        retention_policy_days=int(retention) if retention is not None else None,
     )
     return jsonify(status="success", id=aoi_id), 201
 
@@ -55,6 +65,84 @@ def delete_aoi(aoi_id: int):
         pass_monitor.stop_for_aoi(aoi_id)
     cnt.delete_aoi.execute(aoi_id)
     return jsonify(status="success", message=f"Area of interest #{aoi_id} deleted successfully")
+
+
+@blueprint.get("/api/aoi/<int:aoi_id>/policy")
+def get_aoi_policy(aoi_id: int):
+    aoi = container().aoi_repository.get(aoi_id)
+    if aoi is None:
+        return jsonify(status="error", message=f"Area of interest #{aoi_id} not found"), 404
+    budget = getattr(aoi, "collection_budget_usd", 0.0)
+    spent = getattr(aoi, "budget_spent_usd", 0.0)
+    return jsonify({
+        "status": "success",
+        "policy": {
+            "id": aoi.id,
+            "name": aoi.name,
+            "priority": getattr(aoi, "priority", "MEDIUM"),
+            "collection_budget_usd": budget,
+            "budget_spent_usd": spent,
+            "budget_remaining_usd": max(0.0, budget - spent) if budget > 0 else None,
+            "desired_revisit_rate_hours": getattr(aoi, "desired_revisit_rate_hours", None),
+            "retention_policy_days": getattr(aoi, "retention_policy_days", None),
+        }
+    })
+
+
+@blueprint.put("/api/aoi/<int:aoi_id>/policy")
+@blueprint.post("/api/aoi/<int:aoi_id>/policy")
+def update_aoi_policy(aoi_id: int):
+    payload = json_object()
+    priority = payload.get("priority")
+    budget = payload.get("collection_budget_usd")
+    spent = payload.get("budget_spent_usd")
+    revisit = payload.get("desired_revisit_rate_hours")
+    retention = payload.get("retention_policy_days")
+
+    try:
+        updated = container().update_aoi_policy.execute(
+            aoi_id=aoi_id,
+            priority=str(priority) if priority is not None else None,
+            collection_budget_usd=float(budget) if budget is not None else None,
+            budget_spent_usd=float(spent) if spent is not None else None,
+            desired_revisit_rate_hours=float(revisit) if revisit is not None else None,
+            retention_policy_days=int(retention) if retention is not None else None,
+        )
+        return jsonify({
+            "status": "success",
+            "aoi": serialize_aoi(updated),
+        })
+    except AreaOfInterestNotFoundError as exc:
+        return jsonify(status="error", message=str(exc)), 404
+    except (ValueError, TypeError) as exc:
+        return jsonify(status="error", message=str(exc)), 400
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/spend")
+def record_aoi_spend(aoi_id: int):
+    payload = json_object()
+    amount = payload.get("amount_usd")
+    if amount is None or not isinstance(amount, (int, float)) or amount < 0:
+        return jsonify(status="error", message="amount_usd must be a non-negative number"), 400
+    try:
+        updated = container().record_aoi_expenditure.execute(aoi_id, float(amount))
+        return jsonify({
+            "status": "success",
+            "aoi": serialize_aoi(updated),
+        })
+    except AreaOfInterestNotFoundError as exc:
+        return jsonify(status="error", message=str(exc)), 404
+    except (ValueError, TypeError) as exc:
+        return jsonify(status="error", message=str(exc)), 400
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/enforce-retention")
+def enforce_aoi_retention(aoi_id: int):
+    try:
+        outcome = container().enforce_aoi_retention.execute(aoi_id)
+        return jsonify({"status": "success", "result": outcome})
+    except AreaOfInterestNotFoundError as exc:
+        return jsonify(status="error", message=str(exc)), 404
 
 
 @blueprint.post("/api/aoi/<int:aoi_id>/predict")

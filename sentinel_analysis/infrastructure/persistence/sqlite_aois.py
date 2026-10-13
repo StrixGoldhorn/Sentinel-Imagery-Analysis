@@ -41,10 +41,17 @@ class SQLiteAreaOfInterestRepository:
 
     @staticmethod
     def _from_row(row) -> AreaOfInterest:
-        has_auto = "auto_capture_enabled" in row.keys()
+        keys = row.keys()
+        has_auto = "auto_capture_enabled" in keys
         auto_capture = bool(row["auto_capture_enabled"]) if has_auto else False
-        has_cid = "correlation_id" in row.keys()
+        has_cid = "correlation_id" in keys
         cid = row["correlation_id"] if has_cid else None
+        priority = str(row["priority"]) if "priority" in keys and row["priority"] else "MEDIUM"
+        budget = float(row["collection_budget_usd"]) if "collection_budget_usd" in keys and row["collection_budget_usd"] is not None else 0.0
+        spent = float(row["budget_spent_usd"]) if "budget_spent_usd" in keys and row["budget_spent_usd"] is not None else 0.0
+        revisit = float(row["desired_revisit_rate_hours"]) if "desired_revisit_rate_hours" in keys and row["desired_revisit_rate_hours"] is not None else None
+        retention = int(row["retention_policy_days"]) if "retention_policy_days" in keys and row["retention_policy_days"] is not None else None
+
         return AreaOfInterest(
             id=row["id"],
             name=row["name"],
@@ -53,6 +60,11 @@ class SQLiteAreaOfInterestRepository:
             last_checked=_parse_dt(row["last_checked"]),
             auto_capture_enabled=auto_capture,
             correlation_id=cid,
+            priority=priority,
+            collection_budget_usd=budget,
+            budget_spent_usd=spent,
+            desired_revisit_rate_hours=revisit,
+            retention_policy_days=retention,
         )
 
     def list(self) -> list[AreaOfInterest]:
@@ -63,17 +75,88 @@ class SQLiteAreaOfInterestRepository:
     def add(self, aoi: AreaOfInterest) -> int:
         with self._database.connection(rows=True) as connection:
             cursor = connection.execute(
-                "INSERT INTO aoi (name, bbox, auto_capture_enabled, correlation_id) VALUES (?, ?, ?, ?)",
+                """INSERT INTO aoi (
+                    name, bbox, auto_capture_enabled, correlation_id,
+                    priority, collection_budget_usd, budget_spent_usd,
+                    desired_revisit_rate_hours, retention_policy_days
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     aoi.name,
                     json.dumps(aoi.bbox.as_list()),
                     1 if aoi.auto_capture_enabled else 0,
                     aoi.correlation_id,
+                    aoi.priority,
+                    aoi.collection_budget_usd,
+                    aoi.budget_spent_usd,
+                    aoi.desired_revisit_rate_hours,
+                    aoi.retention_policy_days,
                 ),
             )
             if cursor.lastrowid is None:
                 raise RuntimeError("SQLite did not return an AOI identifier")
             return int(cursor.lastrowid)
+
+    def update_operations_policy(
+        self,
+        aoi_id: int,
+        priority: str | None = None,
+        collection_budget_usd: float | None = None,
+        budget_spent_usd: float | None = None,
+        desired_revisit_rate_hours: float | None = None,
+        retention_policy_days: int | None = None,
+    ) -> AreaOfInterest:
+        current = self.get(aoi_id)
+        if current is None:
+            raise LookupError(f"Area of interest not found: {aoi_id}")
+
+        new_priority = current.priority if priority is None else priority
+        new_budget = current.collection_budget_usd if collection_budget_usd is None else collection_budget_usd
+        new_spent = current.budget_spent_usd if budget_spent_usd is None else budget_spent_usd
+        new_revisit = current.desired_revisit_rate_hours if desired_revisit_rate_hours is None else desired_revisit_rate_hours
+        new_retention = current.retention_policy_days if retention_policy_days is None else retention_policy_days
+
+        updated = AreaOfInterest(
+            id=current.id,
+            name=current.name,
+            bbox=current.bbox,
+            next_scan=current.next_scan,
+            last_checked=current.last_checked,
+            auto_capture_enabled=current.auto_capture_enabled,
+            correlation_id=current.correlation_id,
+            priority=new_priority,
+            collection_budget_usd=new_budget,
+            budget_spent_usd=new_spent,
+            desired_revisit_rate_hours=new_revisit,
+            retention_policy_days=new_retention,
+        )
+
+        with self._database.connection(rows=True) as connection:
+            connection.execute(
+                """UPDATE aoi SET
+                    priority = ?,
+                    collection_budget_usd = ?,
+                    budget_spent_usd = ?,
+                    desired_revisit_rate_hours = ?,
+                    retention_policy_days = ?
+                WHERE id = ?""",
+                (
+                    updated.priority,
+                    updated.collection_budget_usd,
+                    updated.budget_spent_usd,
+                    updated.desired_revisit_rate_hours,
+                    updated.retention_policy_days,
+                    aoi_id,
+                ),
+            )
+        return updated
+
+    def record_expenditure(self, aoi_id: int, amount_usd: float) -> AreaOfInterest:
+        if amount_usd < 0:
+            raise ValueError("Expenditure amount must be non-negative")
+        current = self.get(aoi_id)
+        if current is None:
+            raise LookupError(f"Area of interest not found: {aoi_id}")
+        return self.update_operations_policy(aoi_id, budget_spent_usd=current.budget_spent_usd + amount_usd)
 
     def get(self, aoi_id: int) -> AreaOfInterest | None:
         with self._database.connection(rows=True) as connection:

@@ -55,8 +55,11 @@ from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import Ing
 from sentinel_analysis.application.use_cases.manage_aois import (
     AddAreaOfInterest,
     DeleteAreaOfInterest,
+    EnforceAoiRetentionPolicy,
     ListAreasOfInterest,
     PredictAreaOfInterest,
+    RecordAoiExpenditure,
+    UpdateAreaOfInterestPolicy,
 )
 from sentinel_analysis.application.use_cases.manage_scans import (
     DeleteScan,
@@ -138,6 +141,7 @@ __all__ = [
     "EnhanceScanRadiometry",
     "EvaluateAcquisitionSuitability",
     "EvaluatePassAlerts",
+    "EnforceAoiRetentionPolicy",
     "ExecuteStorageRetention",
     "ExportGeospatial",
     "EnrichMarineEnvironmentalContext",
@@ -174,6 +178,7 @@ __all__ = [
     "PredictAreaOfInterest",
     "PredictPasses",
     "RecommendAcquisitionOpportunities",
+    "RecordAoiExpenditure",
     "ReidentifyVessels",
     "RenameScan",
     "RenderPolarimetricPresetUseCase",
@@ -184,6 +189,7 @@ __all__ = [
     "TagRouteDetections",
     "ToggleScraper",
     "TriggerAutomaticAISScrape",
+    "UpdateAreaOfInterestPolicy",
     "UpdateScraper",
     "UpdateScraperConfig",
     "UpdateSettings",
