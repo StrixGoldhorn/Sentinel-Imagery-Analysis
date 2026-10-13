@@ -212,7 +212,7 @@ function renderRecommendations(data) {
                         <span class="badge-tag">${rec.resolution_m}m GSD</span>
                         <span class="badge-tag">${Math.round(rec.swath_width_km || 0)}km Swath</span>
                         <span class="badge-tag">${rec.incidence_angle_deg ? Math.round(rec.incidence_angle_deg) + '&deg; Inc' : ''}</span>
-                        <span class="badge-tag ${costClass}">${rec.is_commercial ? 'Commercial' : 'Free / Open'}</span>
+                        <span class="badge-tag ${costClass}">${rec.is_commercial ? 'Commercial Tasking' : 'Copernicus Open Access'}</span>
                     </div>
 
                     <div class="rec-summary">
@@ -221,9 +221,9 @@ function renderRecommendations(data) {
                 </div>
 
                 <div class="rec-footer">
-                    <span class="rec-cost-note">${rec.is_commercial ? 'On-Demand Tasking' : 'Automatic Ingestion'}</span>
+                    <span class="rec-cost-note">${rec.is_commercial ? 'Commercial On-Demand Tasking' : 'Copernicus Open Access Ingestion'}</span>
                     <button class="btn btn-sm btn-primary" onclick="openDispatchModal(${JSON.stringify(rec).replace(/"/g, '&quot;')})">
-                        Dispatch Opportunity
+                        Dispatch Acquisition
                     </button>
                 </div>
             </div>
@@ -240,7 +240,7 @@ function renderCalendarData(data) {
     if (totalPassesEl) totalPassesEl.textContent = data.total_events || data.events?.length || 0;
     if (meanRevisitEl) {
         const avgH = data.revisit_metrics?.average_revisit_hours;
-        meanRevisitEl.textContent = avgH ? `${avgH}h` : 'N/A';
+        meanRevisitEl.textContent = avgH ? `${avgH}h avg` : 'N/A';
     }
 
     const events = data.events || [];
@@ -250,7 +250,6 @@ function renderCalendarData(data) {
     }
 
     if (metoceanEl) {
-        // Average cloud cover or waves from factors
         metoceanEl.textContent = 'Favorable (Sea State 2-3)';
     }
 
@@ -316,7 +315,7 @@ function renderOpportunityTable(events) {
                     <span class="badge-tag ${modClass}">${evt.modality}</span>
                 </td>
                 <td>
-                    <strong>${evt.resolution_m}m</strong>
+                    <strong>${evt.resolution_m}m GSD</strong>
                 </td>
                 <td>
                     <div>${Math.round(evt.incidence_angle_deg || 35)}&deg; Inc</div>
@@ -435,11 +434,11 @@ function renderProviderComparison(data) {
                         </li>
                         <li>
                             <span class="lbl">Weather Resilience:</span>
-                            <span class="val">${prov.all_weather ? 'All-Weather (SAR)' : 'Daylight / Cloud Clear'}</span>
+                            <span class="val">${prov.all_weather ? 'All-Weather (SAR)' : 'Daylight / Cloud-Clear (Optical)'}</span>
                         </li>
                         <li>
-                            <span class="lbl">Cost Tier:</span>
-                            <span class="val">${prov.cost_tier}</span>
+                            <span class="lbl">Data Access Tier:</span>
+                            <span class="val">${prov.is_commercial ? 'Commercial Tasking' : 'Copernicus Open Access'}</span>
                         </li>
                         <li>
                             <span class="lbl">Tactical Feasibility:</span>
@@ -450,12 +449,12 @@ function renderProviderComparison(data) {
                     </ul>
 
                     <div style="font-size: 0.8rem; color: #475569; margin-bottom: 14px; background: #f8fafc; padding: 8px 10px; border-radius: 6px;">
-                        <strong>Assessment:</strong> ${escapeHtml(suit.tactical_summary || 'Suitable for Maritime Domain Awareness operations.')}
+                        <strong>Tactical Assessment:</strong> ${escapeHtml(suit.tactical_summary || 'Suitable for Maritime Domain Awareness operations.')}
                     </div>
                 </div>
 
                 <div style="border-top: 1px solid #f1f5f9; padding-top: 12px; margin-top: auto; display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 0.75rem; color: #64748b;">${prov.is_commercial ? 'Commercial Dispatch' : 'Open Copernicus'}</span>
+                    <span style="font-size: 0.75rem; color: #64748b;">${prov.is_commercial ? 'Commercial On-Demand Tasking' : 'Copernicus Open Access Ingestion'}</span>
                     <button class="btn btn-sm btn-primary" onclick="openDispatchModal({ provider_id: '${prov.provider_id}', provider_name: '${prov.name}', resolution_m: ${prov.best_resolution_m}, modality: '${prov.modality}', is_commercial: ${prov.is_commercial} })">
                         Select Provider
                     </button>
@@ -547,11 +546,11 @@ function renderSimulationResult(data) {
 
     if (factorList && data.factor_scores) {
         const factors = [
-            { key: 'resolution', name: 'Resolution & Target GSD', val: Math.round(data.factor_scores.resolution || 0) },
-            { key: 'coverage', name: 'Footprint Coverage %', val: Math.round(data.factor_scores.coverage || 0) },
+            { key: 'resolution', name: 'Ground Resolution (GSD)', val: Math.round(data.factor_scores.resolution || 0) },
+            { key: 'coverage', name: 'Footprint Coverage', val: Math.round(data.factor_scores.coverage || 0) },
             { key: 'incidence', name: 'Incidence Angle Geometry', val: Math.round(data.factor_scores.incidence_angle || 0) },
-            { key: 'metocean', name: 'Metocean & Cloud Conditions', val: Math.round(data.factor_scores.metocean || 0) },
-            { key: 'illumination', name: 'Illumination / Modality', val: Math.round(data.factor_scores.illumination || 0) },
+            { key: 'metocean', name: 'Metocean & Wave Conditions', val: Math.round(data.factor_scores.metocean || 0) },
+            { key: 'illumination', name: 'Solar Illumination & Cloud Cover', val: Math.round(data.factor_scores.illumination || 0) },
         ];
 
         factorList.innerHTML = factors.map(f => `
@@ -589,19 +588,21 @@ function openDispatchModal(opportunity) {
     const sat = opportunity.satellite || 'Satellite Sensor';
     const res = opportunity.resolution_m || 10.0;
     const time = opportunity.pass_time ? new Date(opportunity.pass_time).toLocaleString() : 'Next scheduled pass window';
-    const costTier = opportunity.is_commercial ? 'Commercial Tasking Order' : 'Automatic Open-Access Copernicus Collection';
+    const costTier = opportunity.is_commercial ? 'Commercial On-Demand Tasking' : 'Copernicus Open Access Ingestion';
+    const score = Math.round(opportunity.suitability_score || 85);
+    const scoreClass = score >= 80 ? 'bg-success' : score >= 65 ? 'bg-primary' : score >= 50 ? 'bg-warning text-dark' : 'bg-danger';
 
     modalBody.innerHTML = `
         <div class="alert alert-info">
             You are dispatching an acquisition monitoring order for Area of Interest #${opportunity.aoi_id || getSelectedAoiId()}.
         </div>
         <table class="table table-sm">
-            <tr><th style="width: 35%;">Satellite Provider:</th><td><strong>${escapeHtml(pName)}</strong></td></tr>
-            <tr><th>Sensor Platform:</th><td>${escapeHtml(sat)}</td></tr>
+            <tr><th style="width: 38%;">Satellite Provider:</th><td><strong>${escapeHtml(pName)}</strong></td></tr>
+            <tr><th>Sensor Modality &amp; Platform:</th><td>${escapeHtml(sat)} (${opportunity.modality || 'SAR'})</td></tr>
             <tr><th>Ground Resolution (GSD):</th><td><strong>${res}m</strong></td></tr>
-            <tr><th>Expected Pass Time:</th><td>${time}</td></tr>
-            <tr><th>Collection Category:</th><td>${costTier}</td></tr>
-            <tr><th>Suitability Score:</th><td><span class="badge bg-success">${Math.round(opportunity.suitability_score || 85)}/100</span></td></tr>
+            <tr><th>Expected Pass Time (UTC / Local):</th><td>${time}</td></tr>
+            <tr><th>Data Access Tier:</th><td>${costTier}</td></tr>
+            <tr><th>Acquisition Suitability Score:</th><td><span class="badge ${scoreClass}">${score}/100</span></td></tr>
         </table>
         <div class="mb-3">
             <label for="dispatchNotes" class="form-label">Mission Tasking Notes:</label>

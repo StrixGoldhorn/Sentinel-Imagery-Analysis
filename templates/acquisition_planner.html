@@ -69,7 +69,7 @@
         </div>
 
         <div class="control-group">
-            <label for="inputTargetVessel">Target Vessel Size (m):</label>
+            <label for="inputTargetVessel">Target Vessel Length (m):</label>
             <div class="input-with-unit">
                 <input type="number" id="inputTargetVessel" class="form-control" value="30" min="5" max="500" step="5" onchange="refreshPlannerData()" />
                 <span class="unit-tag">meters</span>
@@ -77,11 +77,11 @@
         </div>
 
         <div class="control-group">
-            <label for="selectCostPref">Cost Strategy:</label>
+            <label for="selectCostPref">Acquisition Cost Strategy:</label>
             <select id="selectCostPref" class="form-select" onchange="refreshPlannerData()">
-                <option value="BALANCED" selected>Balanced (Open + Commercial)</option>
-                <option value="FREE_ONLY">Free &amp; Open Only (Sentinel)</option>
-                <option value="TACTICAL_PRIORITY">Tactical Priority (Highest GSD)</option>
+                <option value="BALANCED" selected>Balanced (Copernicus + Commercial Tasking)</option>
+                <option value="FREE_ONLY">Copernicus Open Access Only</option>
+                <option value="TACTICAL_PRIORITY">Tactical Priority (Highest Resolution GSD)</option>
             </select>
         </div>
     </div>
@@ -91,7 +91,7 @@
         <span class="pill-bar-title">Providers:</span>
         <label class="provider-toggle-pill active" data-provider="sentinel-1">
             <input type="checkbox" checked value="sentinel-1" onchange="onProviderFilterChanged()" />
-            <span>Sentinel-1 (C-SAR)</span>
+            <span>Sentinel-1 (C-band SAR)</span>
         </label>
         <label class="provider-toggle-pill active" data-provider="sentinel-2">
             <input type="checkbox" checked value="sentinel-2" onchange="onProviderFilterChanged()" />
@@ -99,19 +99,19 @@
         </label>
         <label class="provider-toggle-pill active" data-provider="umbra">
             <input type="checkbox" checked value="umbra" onchange="onProviderFilterChanged()" />
-            <span>Umbra (0.25m SAR)</span>
+            <span>Umbra (X-band SAR, 0.25m)</span>
         </label>
         <label class="provider-toggle-pill active" data-provider="capella">
             <input type="checkbox" checked value="capella" onchange="onProviderFilterChanged()" />
-            <span>Capella Space (0.5m SAR)</span>
+            <span>Capella Space (X-band SAR, 0.5m)</span>
         </label>
         <label class="provider-toggle-pill active" data-provider="iceye">
             <input type="checkbox" checked value="iceye" onchange="onProviderFilterChanged()" />
-            <span>ICEYE (1.0m SAR)</span>
+            <span>ICEYE (X-band SAR, 1.0m)</span>
         </label>
         <label class="provider-toggle-pill active" data-provider="planetscope">
             <input type="checkbox" checked value="planetscope" onchange="onProviderFilterChanged()" />
-            <span>PlanetScope (3m Optical)</span>
+            <span>PlanetScope (Multispectral Optical, 3.0m)</span>
         </label>
     </div>
 
@@ -126,7 +126,7 @@
             </div>
             <div class="metric-content">
                 <div class="metric-value" id="kpiTotalPasses">-</div>
-                <div class="metric-label">Predicted Flypasts</div>
+                <div class="metric-label">Predicted Satellite Overpasses</div>
             </div>
         </div>
 
@@ -139,7 +139,7 @@
             </div>
             <div class="metric-content">
                 <div class="metric-value" id="kpiMeanRevisit">-</div>
-                <div class="metric-label">Mean Revisit Time</div>
+                <div class="metric-label">Mean Revisit Interval</div>
             </div>
         </div>
 
@@ -152,7 +152,7 @@
             </div>
             <div class="metric-content">
                 <div class="metric-value" id="kpiBestScore">-</div>
-                <div class="metric-label">Best Opportunity Score</div>
+                <div class="metric-label">Peak Suitability Score</div>
             </div>
         </div>
 
@@ -164,7 +164,7 @@
             </div>
             <div class="metric-content">
                 <div class="metric-value" id="kpiMetoceanStatus">-</div>
-                <div class="metric-label">Metocean / Cloud Index</div>
+                <div class="metric-label">Metocean &amp; Cloud Index</div>
             </div>
         </div>
     </div>
@@ -199,7 +199,7 @@
                 <line x1="8" y1="2" x2="8" y2="6"></line>
                 <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
-            Revisit Calendar &amp; Pass Matrix
+            Revisit Calendar &amp; Overpass Matrix
         </button>
         <button class="planner-tab" data-tab="comparator" onclick="switchPlannerTab('comparator')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -225,7 +225,7 @@
                 <h3>Daily Acquisition Opportunities &amp; Peak Suitability</h3>
                 <span class="calendar-legend">
                     <span class="legend-item"><span class="badge-dot dot-sar"></span> SAR (All-Weather)</span>
-                    <span class="legend-item"><span class="badge-dot dot-opt"></span> Optical</span>
+                    <span class="legend-item"><span class="badge-dot dot-opt"></span> Optical (Cloud-Sensitive)</span>
                     <span class="legend-item"><span class="badge-dot dot-high"></span> Suitability &ge; 75</span>
                 </span>
             </div>
@@ -239,7 +239,7 @@
             <div class="card-header">
                 <div class="card-header-title">
                     <h3>Chronological Acquisition Windows &amp; Suitability Decomposition</h3>
-                    <p>Resolution, Footprint Coverage, Incidence Angle, Orbit Direction, Wind, Waves, and Cloud Probability</p>
+                    <p>Resolution (GSD), Footprint Coverage, Incidence Angle, Orbit Direction, Wind Speed, Wave Height, and Cloud Probability</p>
                 </div>
                 <div class="filter-controls">
                     <input type="text" id="searchPasses" class="form-control form-control-sm" placeholder="Filter by satellite or provider..." onkeyup="filterPassStream()" />
@@ -253,10 +253,10 @@
                                 <th>Pass Time (UTC / Local)</th>
                                 <th>Provider &amp; Sensor</th>
                                 <th>Modality</th>
-                                <th>Resolution (GSD)</th>
-                                <th>Geometry (Incidence / Orbit)</th>
-                                <th>Coverage</th>
-                                <th>Metocean &amp; Cloud</th>
+                                <th>Ground Resolution (GSD)</th>
+                                <th>Incidence &amp; Orbit</th>
+                                <th>Footprint Coverage</th>
+                                <th>Metocean &amp; Waves</th>
                                 <th>Suitability Score</th>
                                 <th>Action</th>
                             </tr>
@@ -313,17 +313,17 @@
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Ground Resolution (m): <span id="valSimRes" class="badge-tag">10.0m</span></label>
+                                <label class="form-label">Ground Resolution (GSD): <span id="valSimRes" class="badge-tag">10.0m</span></label>
                                 <input type="range" class="form-range" id="simResolution" min="0.25" max="30.0" step="0.25" value="10.0" />
                             </div>
 
                             <div class="col-md-6">
                                 <label class="form-label">Incidence Angle (&deg;): <span id="valSimInc" class="badge-tag">35&deg;</span></label>
                                 <input type="range" class="form-range" id="simIncidence" min="15" max="55" step="1" value="35" />
-                                <small class="text-muted">Optimal SAR ship detection: 25&deg; &ndash; 45&deg;</small>
+                                <small class="text-muted">Optimal SAR vessel detection: 25&deg; &ndash; 45&deg;</small>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">AOI Footprint Coverage (%): <span id="valSimCov" class="badge-tag">100%</span></label>
+                                <label class="form-label">Footprint Coverage (%): <span id="valSimCov" class="badge-tag">100%</span></label>
                                 <input type="range" class="form-range" id="simCoverage" min="10" max="100" step="5" value="100" />
                             </div>
 
@@ -342,20 +342,20 @@
                                 </select>
                             </div>
 
-                            <div class="col-12"><hr class="my-2" /><h5>Simulated Metocean Conditions</h5></div>
+                            <div class="col-12"><hr class="my-2" /><h5>Simulated Metocean &amp; Cloud Conditions</h5></div>
 
                             <div class="col-md-4">
                                 <label class="form-label">Wind Speed: <span id="valSimWind" class="badge-tag">6.0 m/s</span></label>
                                 <input type="range" class="form-range" id="simWind" min="0" max="25" step="0.5" value="6.0" />
-                                <small class="text-muted">High wind &gt; 12m/s roughens sea</small>
+                                <small class="text-muted">High wind &gt; 12 m/s elevates sea clutter floor</small>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Significant Wave Height: <span id="valSimWaves" class="badge-tag">1.2 m</span></label>
+                                <label class="form-label">Wave Height (Hs): <span id="valSimWaves" class="badge-tag">1.2 m</span></label>
                                 <input type="range" class="form-range" id="simWaves" min="0.1" max="6.0" step="0.1" value="1.2" />
-                                <small class="text-muted">Sea State 4+ increases clutter</small>
+                                <small class="text-muted">Sea State 4+ (Hs &gt; 2.5m) increases false alarms</small>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Cloud Cover (%): <span id="valSimCloud" class="badge-tag">15%</span></label>
+                                <label class="form-label">Cloud Cover Probability: <span id="valSimCloud" class="badge-tag">15%</span></label>
                                 <input type="range" class="form-range" id="simCloud" min="0" max="100" step="5" value="15" />
                                 <small class="text-muted">Directly obscures optical imagery</small>
                             </div>
