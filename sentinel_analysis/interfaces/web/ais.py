@@ -520,12 +520,44 @@ def get_ais_anomalies() -> Response:
         except (ValueError, TypeError):
             pass
 
+    teleport_spd = 120.0
+    if payload.get("teleport_speed_knots"):
+        try:
+            teleport_spd = float(payload.get("teleport_speed_knots"))
+        except (ValueError, TypeError):
+            pass
+
+    disc_turn = 90.0
+    if payload.get("discontinuity_turn_degrees"):
+        try:
+            disc_turn = float(payload.get("discontinuity_turn_degrees"))
+        except (ValueError, TypeError):
+            pass
+
+    loiter_spd = 3.0
+    if payload.get("loiter_max_speed_knots"):
+        try:
+            loiter_spd = float(payload.get("loiter_max_speed_knots"))
+        except (ValueError, TypeError):
+            pass
+
+    loiter_dur = 2.0
+    if payload.get("loiter_min_duration_hours"):
+        try:
+            loiter_dur = float(payload.get("loiter_min_duration_hours"))
+        except (ValueError, TypeError):
+            pass
+
     res = container().detect_identity_anomalies.execute(
         ais_records=records,
         scan_id=scan_id,
         aoi_bbox=bbox,
         max_speed_knots=max_spd,
         gap_threshold_hours=gap_hrs,
+        teleport_speed_knots=teleport_spd,
+        discontinuity_turn_degrees=disc_turn,
+        loiter_max_speed_knots=loiter_spd,
+        loiter_min_duration_hours=loiter_dur,
     )
     return jsonify(res)
 

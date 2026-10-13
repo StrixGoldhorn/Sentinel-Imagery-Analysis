@@ -19,9 +19,12 @@ from sentinel_analysis.application.use_cases.manage_alerts import (
 )
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
 from sentinel_analysis.application.use_cases.enrich_environmental_context import EnrichMarineEnvironmentalContext
+from sentinel_analysis.application.use_cases.decompose_risk_score import DecomposeRiskScore
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
+from sentinel_analysis.application.use_cases.generate_chip_gallery import GenerateChipGallery
 from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.generate_tactical_explainability import GenerateTacticalExplainability
+from sentinel_analysis.application.use_cases.reidentify_vessels import ReidentifyVessels
 from sentinel_analysis.application.use_cases.generate_traffic_heatmap import GenerateHistoricalTrafficHeatmap
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
@@ -96,6 +99,7 @@ __all__ = [
     "extract_ghost_vessels",
     "CreateScan",
     "CrossValidateOptical",
+    "DecomposeRiskScore",
     "DeleteAreaOfInterest",
     "DeleteScan",
     "DetectShips",
@@ -107,6 +111,7 @@ __all__ = [
     "ExportGeospatial",
     "EnrichMarineEnvironmentalContext",
     "ExportReviewedDataset",
+    "GenerateChipGallery",
     "GenerateDEM",
     "GenerateHistoricalTrafficHeatmap",
     "GenerateIntelligenceBrief",
@@ -132,6 +137,7 @@ __all__ = [
     "PostAcquisitionPipeline",
     "PredictAreaOfInterest",
     "PredictPasses",
+    "ReidentifyVessels",
     "RenameScan",
     "ResetScraperCooldown",
     "ResetSettings",

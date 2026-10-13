@@ -12,6 +12,7 @@ from sentinel_analysis.application.use_cases import (
     CorrelateDetectionsWithAIS,
     CreateScan,
     CrossValidateOptical,
+    DecomposeRiskScore,
     ArchiveScan,
     DeleteAreaOfInterest,
     DeleteScan,
@@ -23,6 +24,7 @@ from sentinel_analysis.application.use_cases import (
     ExecuteStorageRetention,
     ExportGeospatial,
     EnrichMarineEnvironmentalContext,
+    GenerateChipGallery,
     ExportReviewedDataset,
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
@@ -48,6 +50,7 @@ from sentinel_analysis.application.use_cases import (
     ManageWebhooks,
     PostAcquisitionPipeline,
     PredictAreaOfInterest,
+    ReidentifyVessels,
     RenameScan,
     ResetScraperCooldown,
     ResetSettings,
@@ -189,6 +192,13 @@ class ApplicationContainer:
             onnx_detector=self.onnx_detector,
         )
         self.generate_tactical_explainability = GenerateTacticalExplainability(self.scan_repository)
+        self.reidentify_vessels = ReidentifyVessels(self.scan_repository)
+        self.decompose_risk_score = DecomposeRiskScore(self.scan_repository)
+        self.generate_chip_gallery = GenerateChipGallery(
+            scan_repository=self.scan_repository,
+            ais_repository=self.ais_repository,
+            sentinel2_client=self.sentinel2_client,
+        )
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)
         self.manage_webhooks = ManageWebhooks(self.webhook_repository, self.webhook_dispatcher)

@@ -1275,6 +1275,82 @@ def on_demand_explainability() -> Response:
     return jsonify(result.to_dict())
 
 
+@blueprint.route("/api/scan/<folder_name>/reidentify", methods=["GET", "POST"])
+def scan_reidentify(folder_name: str) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    payload = request.get_json(silent=True) or {}
+    prior_scan_id = payload.get("prior_scan_id") or request.args.get("prior_scan_id")
+    max_time_delta = float(payload.get("max_time_delta_hours") or request.args.get("max_time_delta_hours") or 72.0)
+    min_sim = float(payload.get("min_similarity") or request.args.get("min_similarity") or 0.40)
+    max_cand = int(payload.get("max_candidates") or request.args.get("max_candidates") or 100)
+
+    result = container().reidentify_vessels.execute(
+        scan_id=safe_name,
+        prior_scan_id=prior_scan_id,
+        max_time_delta_hours=max_time_delta,
+        min_similarity=min_sim,
+        max_candidates=max_cand,
+    )
+    return jsonify(result)
+
+
+@blueprint.route("/api/scan/<folder_name>/risk_decomposition", methods=["GET", "POST"])
+@blueprint.route("/api/scan/<folder_name>/risk_decomposition/<int:detection_idx>", methods=["GET", "POST"])
+def scan_risk_decomposition(folder_name: str, detection_idx: int | None = None) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    payload = request.get_json(silent=True) or {}
+    idx = detection_idx
+    if idx is None:
+        idx_arg = payload.get("detection_idx") or request.args.get("detection_idx") or request.args.get("index")
+        if idx_arg is not None:
+            try:
+                idx = int(idx_arg)
+            except (ValueError, TypeError):
+                idx = None
+
+    result = container().decompose_risk_score.execute(
+        scan_id=safe_name,
+        target_idx=idx,
+    )
+    return jsonify(result)
+
+
+@blueprint.route("/api/scan/<folder_name>/chip_gallery", methods=["GET", "POST"])
+@blueprint.route("/api/scan/<folder_name>/chip_gallery/<int:detection_idx>", methods=["GET", "POST"])
+def scan_chip_gallery(folder_name: str, detection_idx: int | None = None) -> Response:
+    safe_name = safe_folder_name(folder_name)
+    payload = request.get_json(silent=True) or {}
+
+    idx = detection_idx
+    if idx is None:
+        idx_arg = payload.get("detection_idx") or request.args.get("detection_idx") or request.args.get("index")
+        if idx_arg is not None:
+            try:
+                idx = int(idx_arg)
+            except (ValueError, TypeError):
+                idx = None
+
+    padding = int(payload.get("padding") or request.args.get("padding") or 80)
+    chip_size = int(payload.get("chip_size") or request.args.get("chip_size") or 256)
+    all_detections = request.args.get("all") in ("1", "true") or payload.get("all") is True
+
+    if all_detections and idx is None:
+        result = container().generate_chip_gallery.execute_all(
+            scan_id=safe_name,
+            padding_px=padding,
+            chip_size=chip_size,
+        )
+        return jsonify({"scan_id": safe_name, "count": len(result), "galleries": result})
+
+    result = container().generate_chip_gallery.execute(
+        scan_id=safe_name,
+        detection_idx=idx or 0,
+        padding_px=padding,
+        chip_size=chip_size,
+    )
+    return jsonify(result)
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

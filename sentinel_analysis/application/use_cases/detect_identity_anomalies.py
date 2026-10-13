@@ -115,15 +115,23 @@ class DetectIdentityAnomalies:
             dup_anomalies = self._detect_duplicate_identities(mmsi, valid_group)
             anomalies.extend(dup_anomalies)
 
-            # 4. Impossible Kinematic Jumps
+            # 4. Impossible Kinematic Jumps & Speeds
             jump_anomalies = self._detect_impossible_jumps(mmsi, valid_group, max_speed_knots=max_speed_knots)
             anomalies.extend(jump_anomalies)
 
-            # 5. AIS Blackout Gaps
+            # 5. Teleportation Anomaly
+            teleport_anomalies = self._detect_teleportation(mmsi, valid_group)
+            anomalies.extend(teleport_anomalies)
+
+            # 6. Course Discontinuity Anomaly
+            course_anomalies = self._detect_course_discontinuities(mmsi, valid_group)
+            anomalies.extend(course_anomalies)
+
+            # 7. AIS Blackout Gaps
             gap_anomalies = self._detect_ais_gaps(mmsi, valid_group, gap_hours_threshold=gap_threshold_hours)
             anomalies.extend(gap_anomalies)
 
-            # 6. Loitering
+            # 8. Loitering
             loiter_anomalies = self._detect_loitering(
                 mmsi,
                 valid_group,
@@ -132,6 +140,17 @@ class DetectIdentityAnomalies:
                 designated_anchorages=designated_anchorages,
             )
             anomalies.extend(loiter_anomalies)
+
+            # 9. Unusual Route & High Sinuosity
+            route_anomalies = self._detect_unusual_routes(mmsi, valid_group)
+            anomalies.extend(route_anomalies)
+
+        # 10. Multi-vessel Tactical Interactions: Convoy and Rendezvous
+        convoy_anomalies = self._detect_convoys(mmsi_groups)
+        anomalies.extend(convoy_anomalies)
+
+        rendezvous_anomalies = self._detect_rendezvous(mmsi_groups, designated_anchorages=designated_anchorages)
+        anomalies.extend(rendezvous_anomalies)
 
         # Generate GeoJSON features
         geojson_features = []
@@ -445,6 +464,29 @@ class DetectIdentityAnomalies:
                         longitude=r2["_lon"],
                     )
                 )
+                anomalies.append(
+                    IdentityAnomaly(
+                        anomaly_id=f"anom-speed-{mmsi}-{i}",
+                        anomaly_type=IdentityAnomalyType.IMPOSSIBLE_SPEED,
+                        mmsi=mmsi,
+                        vessel_name=r2.get("vessel_name") or r1.get("vessel_name"),
+                        severity=sev,
+                        confidence=0.95,
+                        description=(
+                            f"Impossible speed detected: MMSI {mmsi} implied speed of {implied_knots:.1f} knots "
+                            f"exceeds vessel kinematic limit of {max_speed_knots:.1f} knots."
+                        ),
+                        evidence={
+                            "implied_speed_knots": round(implied_knots, 1),
+                            "distance_km": round(dist_km, 2),
+                            "elapsed_minutes": round(dt_sec / 60.0, 1),
+                            "speed_limit_knots": max_speed_knots,
+                        },
+                        detected_at=t2,
+                        latitude=r2["_lat"],
+                        longitude=r2["_lon"],
+                    )
+                )
 
         return anomalies
 
@@ -599,3 +641,375 @@ class DetectIdentityAnomalies:
                 longitude=center_lon,
             )
         )
+
+    def _detect_teleportation(
+        self,
+        mmsi: str,
+        records: list[dict[str, Any]],
+    ) -> list[IdentityAnomaly]:
+        anomalies: list[IdentityAnomaly] = []
+        if len(records) < 2:
+            return anomalies
+
+        for i in range(len(records) - 1):
+            r1 = records[i]
+            r2 = records[i + 1]
+            t1 = r1["_parsed_ts"]
+            t2 = r2["_parsed_ts"]
+            if not t1 or not t2:
+                continue
+
+            dt_sec = abs((t2 - t1).total_seconds())
+            if dt_sec < 1.0:
+                continue
+
+            dist_km = haversine_distance_km(r1["_lat"], r1["_lon"], r2["_lat"], r2["_lon"])
+            implied_knots = (dist_km / (dt_sec / 3600.0)) * 0.539957
+
+            # Teleportation condition: extreme jump (> 140 knots, or > 100 km in <= 30 mins)
+            if implied_knots >= 140.0 or (dist_km >= 100.0 and dt_sec <= 1800.0):
+                anomalies.append(
+                    IdentityAnomaly(
+                        anomaly_id=f"anom-teleport-{mmsi}-{i}",
+                        anomaly_type=IdentityAnomalyType.TELEPORTATION,
+                        mmsi=mmsi,
+                        vessel_name=r2.get("vessel_name") or r1.get("vessel_name"),
+                        severity=IdentityAnomalySeverity.CRITICAL,
+                        confidence=0.98,
+                        description=(
+                            f"Kinematic teleportation anomaly: MMSI {mmsi} displaced by {dist_km:.1f} km "
+                            f"in {dt_sec/60.0:.1f} minutes (implied speed: {implied_knots:.1f} knots), "
+                            f"indicating coordinate corruption or GNSS spoofing."
+                        ),
+                        evidence={
+                            "implied_speed_knots": round(implied_knots, 1),
+                            "distance_km": round(dist_km, 2),
+                            "time_delta_seconds": dt_sec,
+                            "from_lat": r1["_lat"],
+                            "from_lon": r1["_lon"],
+                            "to_lat": r2["_lat"],
+                            "to_lon": r2["_lon"],
+                        },
+                        detected_at=t2,
+                        latitude=r2["_lat"],
+                        longitude=r2["_lon"],
+                    )
+                )
+
+        return anomalies
+
+    def _detect_course_discontinuities(
+        self,
+        mmsi: str,
+        records: list[dict[str, Any]],
+    ) -> list[IdentityAnomaly]:
+        anomalies: list[IdentityAnomaly] = []
+        if len(records) < 2:
+            return anomalies
+
+        for i in range(len(records) - 1):
+            r1 = records[i]
+            r2 = records[i + 1]
+            t1 = r1["_parsed_ts"]
+            t2 = r2["_parsed_ts"]
+            if not t1 or not t2:
+                continue
+
+            dt_sec = abs((t2 - t1).total_seconds())
+            if dt_sec < 5.0 or dt_sec > 900.0:
+                continue
+
+            s1 = float(r1.get("speed") or r1.get("sog") or 0.0)
+            s2 = float(r2.get("speed") or r2.get("sog") or 0.0)
+            avg_speed = max(s1, s2)
+
+            # 1. Sudden COG change at speed
+            cog1 = r1.get("cog") or r1.get("course")
+            cog2 = r2.get("cog") or r2.get("course")
+            if cog1 is not None and cog2 is not None and avg_speed >= 8.0:
+                try:
+                    c1 = float(cog1) % 360.0
+                    c2 = float(cog2) % 360.0
+                    diff = abs(c1 - c2)
+                    turn_deg = min(diff, 360.0 - diff)
+                    if turn_deg >= 85.0 and dt_sec <= 300.0:
+                        anomalies.append(
+                            IdentityAnomaly(
+                                anomaly_id=f"anom-course-{mmsi}-{i}",
+                                anomaly_type=IdentityAnomalyType.COURSE_DISCONTINUITY,
+                                mmsi=mmsi,
+                                vessel_name=r2.get("vessel_name") or r1.get("vessel_name"),
+                                severity=IdentityAnomalySeverity.HIGH,
+                                confidence=0.89,
+                                description=(
+                                    f"Severe course discontinuity: MMSI {mmsi} made an abrupt {turn_deg:.1f}° "
+                                    f"turn in {dt_sec:.0f}s while steaming at {avg_speed:.1f} knots without deceleration."
+                                ),
+                                evidence={
+                                    "course_delta_deg": round(turn_deg, 1),
+                                    "speed_knots": round(avg_speed, 1),
+                                    "time_delta_seconds": dt_sec,
+                                    "previous_cog": round(c1, 1),
+                                    "new_cog": round(c2, 1),
+                                },
+                                detected_at=t2,
+                                latitude=r2["_lat"],
+                                longitude=r2["_lon"],
+                            )
+                        )
+                        continue
+                except (ValueError, TypeError):
+                    pass
+
+            # 2. Heading vs COG divergence
+            h2 = r2.get("heading")
+            c2_val = r2.get("cog") or r2.get("course")
+            if h2 is not None and c2_val is not None and s2 >= 6.0:
+                try:
+                    h_val = float(h2) % 360.0
+                    c_val = float(c2_val) % 360.0
+                    diff_hc = abs(h_val - c_val)
+                    dev_deg = min(diff_hc, 360.0 - diff_hc)
+                    if dev_deg >= 65.0:
+                        anomalies.append(
+                            IdentityAnomaly(
+                                anomaly_id=f"anom-heading-cog-{mmsi}-{i}",
+                                anomaly_type=IdentityAnomalyType.COURSE_DISCONTINUITY,
+                                mmsi=mmsi,
+                                vessel_name=r2.get("vessel_name"),
+                                severity=IdentityAnomalySeverity.HIGH,
+                                confidence=0.87,
+                                description=(
+                                    f"Heading vs COG divergence: MMSI {mmsi} heading ({h_val:.1f}°) diverges by {dev_deg:.1f}° "
+                                    f"from Course Over Ground ({c_val:.1f}°) at {s2:.1f} knots."
+                                ),
+                                evidence={
+                                    "heading_deg": round(h_val, 1),
+                                    "cog_deg": round(c_val, 1),
+                                    "divergence_deg": round(dev_deg, 1),
+                                    "speed_knots": round(s2, 1),
+                                },
+                                detected_at=t2,
+                                latitude=r2["_lat"],
+                                longitude=r2["_lon"],
+                            )
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+        return anomalies
+
+    def _detect_unusual_routes(
+        self,
+        mmsi: str,
+        records: list[dict[str, Any]],
+    ) -> list[IdentityAnomaly]:
+        anomalies: list[IdentityAnomaly] = []
+        if len(records) < 4:
+            return anomalies
+
+        total_path_km = 0.0
+        for i in range(len(records) - 1):
+            total_path_km += haversine_distance_km(
+                records[i]["_lat"], records[i]["_lon"], records[i + 1]["_lat"], records[i + 1]["_lon"]
+            )
+
+        direct_km = haversine_distance_km(
+            records[0]["_lat"], records[0]["_lon"], records[-1]["_lat"], records[-1]["_lon"]
+        )
+
+        if total_path_km >= 12.0 and direct_km >= 0.05:
+            sinuosity = total_path_km / direct_km
+            if sinuosity >= 2.3:
+                latest = records[-1]
+                anomalies.append(
+                    IdentityAnomaly(
+                        anomaly_id=f"anom-route-{mmsi}-{len(anomalies)+1}",
+                        anomaly_type=IdentityAnomalyType.UNUSUAL_ROUTE,
+                        mmsi=mmsi,
+                        vessel_name=latest.get("vessel_name"),
+                        severity=IdentityAnomalySeverity.MEDIUM,
+                        confidence=0.84,
+                        description=(
+                            f"Unusual route / high sinuosity: MMSI {mmsi} traversed {total_path_km:.1f} km "
+                            f"for a net displacement of only {direct_km:.1f} km (sinuosity ratio: {sinuosity:.2f}), "
+                            f"indicating erratic wandering, evasion, or search behavior."
+                        ),
+                        evidence={
+                            "total_path_km": round(total_path_km, 2),
+                            "direct_displacement_km": round(direct_km, 2),
+                            "sinuosity_ratio": round(sinuosity, 2),
+                            "points_evaluated": len(records),
+                        },
+                        detected_at=latest["_parsed_ts"] or datetime.now(timezone.utc),
+                        latitude=latest.get("_lat"),
+                        longitude=latest.get("_lon"),
+                    )
+                )
+
+        return anomalies
+
+    def _detect_convoys(
+        self,
+        valid_groups: dict[str, list[dict[str, Any]]],
+    ) -> list[IdentityAnomaly]:
+        anomalies: list[IdentityAnomaly] = []
+        mmsi_keys = list(valid_groups.keys())
+        if len(mmsi_keys) < 2:
+            return anomalies
+
+        checked_pairs: set[tuple[str, str]] = set()
+
+        for idx1 in range(len(mmsi_keys)):
+            m1 = mmsi_keys[idx1]
+            rec1 = valid_groups[m1]
+            for idx2 in range(idx1 + 1, len(mmsi_keys)):
+                m2 = mmsi_keys[idx2]
+                rec2 = valid_groups[m2]
+                pair_key = (min(m1, m2), max(m1, m2))
+                if pair_key in checked_pairs:
+                    continue
+                checked_pairs.add(pair_key)
+
+                matched_pairs = []
+                for p1 in rec1:
+                    t1 = _parse_utc_timestamp(p1.get("timestamp")) or p1.get("_parsed_ts")
+                    lat1 = float(p1.get("latitude") or p1.get("_lat") or 0.0)
+                    lon1 = float(p1.get("longitude") or p1.get("_lon") or 0.0)
+                    if not t1 or lat1 == 0.0:
+                        continue
+                    for p2 in rec2:
+                        t2 = _parse_utc_timestamp(p2.get("timestamp")) or p2.get("_parsed_ts")
+                        lat2 = float(p2.get("latitude") or p2.get("_lat") or 0.0)
+                        lon2 = float(p2.get("longitude") or p2.get("_lon") or 0.0)
+                        if not t2 or lat2 == 0.0:
+                            continue
+                        dt = abs((t2 - t1).total_seconds())
+                        if dt <= 180.0:
+                            dist_km = haversine_distance_km(lat1, lon1, lat2, lon2)
+                            if 0.15 <= dist_km <= 4.5:
+                                s1 = float(p1.get("speed") or p1.get("sog") or 0.0)
+                                s2 = float(p2.get("speed") or p2.get("sog") or 0.0)
+                                if s1 >= 3.0 and s2 >= 3.0 and abs(s1 - s2) <= 2.5:
+                                    c1 = p1.get("cog") or p1.get("course") or p1.get("heading")
+                                    c2 = p2.get("cog") or p2.get("course") or p2.get("heading")
+                                    if c1 is not None and c2 is not None:
+                                        c_diff = abs(float(c1) - float(c2)) % 360.0
+                                        c_ang = min(c_diff, 360.0 - c_diff)
+                                        if c_ang <= 20.0:
+                                            matched_pairs.append((p1, p2, dist_km, s1, s2, c_ang, lat1, lon1, t1))
+
+                if len(matched_pairs) >= 2:
+                    p1_last, p2_last, last_dist, sp1, sp2, ang, l_lat, l_lon, l_ts = matched_pairs[-1]
+                    anomalies.append(
+                        IdentityAnomaly(
+                            anomaly_id=f"anom-convoy-{m1}-{m2}",
+                            anomaly_type=IdentityAnomalyType.CONVOY,
+                            mmsi=m1,
+                            vessel_name=p1_last.get("vessel_name") or p1_last.get("name"),
+                            severity=IdentityAnomalySeverity.MEDIUM,
+                            confidence=0.88,
+                            description=(
+                                f"Coordinated convoy formation: MMSI {m1} and MMSI {m2} navigating in close formation "
+                                f"({last_dist:.2f} km separation) with matched speed ({sp1:.1f} kn vs {sp2:.1f} kn) "
+                                f"and course alignment (Δ={ang:.1f}°)."
+                            ),
+                            evidence={
+                                "partner_mmsi": m2,
+                                "partner_vessel_name": p2_last.get("vessel_name") or p2_last.get("name"),
+                                "distance_km": round(last_dist, 2),
+                                "speed_1_knots": round(sp1, 1),
+                                "speed_2_knots": round(sp2, 1),
+                                "course_diff_deg": round(ang, 1),
+                                "coordinated_observations": len(matched_pairs),
+                            },
+                            detected_at=l_ts,
+                            latitude=l_lat,
+                            longitude=l_lon,
+                        )
+                    )
+
+        return anomalies
+
+    def _detect_rendezvous(
+        self,
+        valid_groups: dict[str, list[dict[str, Any]]],
+        designated_anchorages: Optional[list[dict[str, Any]]] = None,
+    ) -> list[IdentityAnomaly]:
+        anomalies: list[IdentityAnomaly] = []
+        mmsi_keys = list(valid_groups.keys())
+        if len(mmsi_keys) < 2:
+            return anomalies
+
+        checked_pairs: set[tuple[str, str]] = set()
+
+        for idx1 in range(len(mmsi_keys)):
+            m1 = mmsi_keys[idx1]
+            rec1 = valid_groups[m1]
+            for idx2 in range(idx1 + 1, len(mmsi_keys)):
+                m2 = mmsi_keys[idx2]
+                rec2 = valid_groups[m2]
+                pair_key = (min(m1, m2), max(m1, m2))
+                if pair_key in checked_pairs:
+                    continue
+                checked_pairs.add(pair_key)
+
+                for p1 in rec1:
+                    t1 = _parse_utc_timestamp(p1.get("timestamp")) or p1.get("_parsed_ts")
+                    lat1 = float(p1.get("latitude") or p1.get("_lat") or 0.0)
+                    lon1 = float(p1.get("longitude") or p1.get("_lon") or 0.0)
+                    if not t1 or lat1 == 0.0:
+                        continue
+                    for p2 in rec2:
+                        t2 = _parse_utc_timestamp(p2.get("timestamp")) or p2.get("_parsed_ts")
+                        lat2 = float(p2.get("latitude") or p2.get("_lat") or 0.0)
+                        lon2 = float(p2.get("longitude") or p2.get("_lon") or 0.0)
+                        if not t2 or lat2 == 0.0:
+                            continue
+                        dt = abs((t2 - t1).total_seconds())
+                        if dt <= 180.0:
+                            dist_km = haversine_distance_km(lat1, lon1, lat2, lon2)
+                            if dist_km <= 0.6:  # Under 600m
+                                s1 = float(p1.get("speed") or p1.get("sog") or 0.0)
+                                s2 = float(p2.get("speed") or p2.get("sog") or 0.0)
+                                if s1 <= 3.5 and s2 <= 3.5:
+                                    in_anchorage = False
+                                    if designated_anchorages:
+                                        for anch in designated_anchorages:
+                                            alat = anch.get("latitude")
+                                            alon = anch.get("longitude")
+                                            rad = anch.get("radius_km", 5.0)
+                                            if alat is not None and alon is not None:
+                                                if haversine_distance_km(lat1, lon1, float(alat), float(alon)) <= rad:
+                                                    in_anchorage = True
+                                                    break
+                                    if not in_anchorage:
+                                        anomalies.append(
+                                            IdentityAnomaly(
+                                                anomaly_id=f"anom-rdvz-{m1}-{m2}",
+                                                anomaly_type=IdentityAnomalyType.RENDEZVOUS,
+                                                mmsi=m1,
+                                                vessel_name=p1.get("vessel_name") or p1.get("name"),
+                                                severity=IdentityAnomalySeverity.HIGH,
+                                                confidence=0.91,
+                                                description=(
+                                                    f"Ship-to-Ship rendezvous / transshipment pattern: MMSI {m1} and MMSI {m2} "
+                                                    f"in close proximity ({dist_km*1000.0:.0f}m) at low speed outside designated zones."
+                                                ),
+                                                evidence={
+                                                    "partner_mmsi": m2,
+                                                    "partner_vessel_name": p2.get("vessel_name") or p2.get("name"),
+                                                    "separation_meters": round(dist_km * 1000.0, 1),
+                                                    "speed_1_knots": round(s1, 1),
+                                                    "speed_2_knots": round(s2, 1),
+                                                },
+                                                detected_at=t1,
+                                                latitude=lat1,
+                                                longitude=lon1,
+                                            )
+                                        )
+                                        break
+                    if any(a.anomaly_id == f"anom-rdvz-{m1}-{m2}" for a in anomalies):
+                        break
+
+        return anomalies
