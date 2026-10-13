@@ -37,6 +37,7 @@ from sentinel_analysis.application.use_cases import (
     EnrichMarineEnvironmentalContext,
     GenerateChipGallery,
     ExportReviewedDataset,
+    ForecastAcquisitionAndStorage,
     GenerateDEM,
     GenerateHistoricalTrafficHeatmap,
     GenerateIntelligenceBrief,
@@ -472,6 +473,12 @@ class ApplicationContainer:
                 "asf": lambda bbox=None, aoi_id=None, params=None: _dispatch_scan("asf", bbox, aoi_id, params),
                 "umbra": lambda bbox=None, aoi_id=None, params=None: _dispatch_scan("umbra", bbox, aoi_id, params),
             },
+        )
+        self.forecast_acquisition_storage = ForecastAcquisitionAndStorage(
+            aoi_repository=self.aoi_repository,
+            storage_manager=self.storage_manager,
+            get_storage_quota=self.get_storage_quota,
+            default_storage_quota_bytes=settings.storage_quota_bytes,
         )
 
     def shutdown(self, timeout: float = 2.0) -> None:

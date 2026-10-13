@@ -135,14 +135,46 @@ def update_provider_quota(provider_id: str):
     })
 
 
+@blueprint.get("/api/forecast/acquisition-storage")
+def get_acquisition_storage_forecast():
+    """Return JSON forecast of satellite tasking expenditure, passes, and storage quota runway."""
+    c = container()
+    horizon_days_param = request.args.get("horizon_days", 30)
+    aoi_id_param = request.args.get("aoi_id")
+    try:
+        horizon_days = int(horizon_days_param)
+    except (ValueError, TypeError):
+        horizon_days = 30
+
+    aoi_id = int(aoi_id_param) if aoi_id_param is not None and str(aoi_id_param).isdigit() else None
+
+    summary = c.forecast_acquisition_storage.execute(
+        horizon_days=horizon_days,
+        aoi_id=aoi_id,
+    )
+    return jsonify({
+        "status": "success",
+        "forecast": summary.to_dict(),
+        "correlation_id": get_current_correlation_id(),
+    })
+
+
 @blueprint.get("/providers")
 def providers_dashboard():
-    """Render the HTML provider health and quota dashboard."""
+    """Render the HTML provider health, failover chains, and cost/storage forecast dashboard."""
     c = container()
     dashboard = c.get_provider_health.execute()
+    try:
+        forecast = c.forecast_acquisition_storage.execute(horizon_days=30)
+        forecast_dict = forecast.to_dict()
+    except Exception:
+        forecast = None
+        forecast_dict = None
     return render_template(
         "providers.html",
         dashboard=dashboard,
         dashboard_dict=dashboard.to_dict(),
+        forecast=forecast,
+        forecast_dict=forecast_dict,
         correlation_id=get_current_correlation_id(),
     )
