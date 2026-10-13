@@ -295,6 +295,54 @@
         </div>
     </div>
 
+    <!-- Automated Failover & Fallback Chains -->
+    <div style="background: var(--bg-card, #ffffff); border: 1px solid var(--border-color, #e2e8f0); border-radius: 0.75rem; padding: 1.25rem 1.5rem; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+                <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary, #0f172a); display: flex; align-items: center; gap: 0.5rem; margin: 0;">
+                    <span>🔄</span> Automated Provider Failover Chains
+                </h2>
+                <p style="font-size: 0.8rem; color: var(--text-secondary, #64748b); margin: 0.25rem 0 0 0;">
+                    Autonomous cascading failover triggered when a primary satellite data provider is DOWN, DEGRADED, or rate-limited.
+                </p>
+            </div>
+            <button onclick="testFallbackDispatch()" class="btn-quota" style="height: 32px; font-size: 0.78rem;">
+                ⚡ Test SAR Failover Dispatch
+            </button>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem;">
+            <!-- SAR Chain -->
+            <div style="background: var(--bg-hover, #f8fafc); border-radius: 0.5rem; padding: 0.85rem 1rem; border-left: 3px solid #3b82f6;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #1e40af; margin-bottom: 0.5rem;">SAR SATELLITE CHAIN</div>
+                <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #0f172a;">1. Copernicus S-1</span>
+                    <span style="color: #94a3b8;">➔</span>
+                    <span style="font-weight: 600; color: #0f172a;">2. ASF DAAC</span>
+                    <span style="color: #94a3b8;">➔</span>
+                    <span style="font-weight: 600; color: #7c3aed;">3. Umbra SAR (Commercial)</span>
+                </div>
+            </div>
+            <!-- Optical Chain -->
+            <div style="background: var(--bg-hover, #f8fafc); border-radius: 0.5rem; padding: 0.85rem 1rem; border-left: 3px solid #10b981;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #065f46; margin-bottom: 0.5rem;">OPTICAL SATELLITE CHAIN</div>
+                <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #0f172a;">1. Copernicus S-2</span>
+                    <span style="color: #94a3b8;">➔</span>
+                    <span style="font-weight: 600; color: #059669;">2. PlanetScope (Commercial)</span>
+                </div>
+            </div>
+            <!-- Ephemeris Chain -->
+            <div style="background: var(--bg-hover, #f8fafc); border-radius: 0.5rem; padding: 0.85rem 1rem; border-left: 3px solid #f59e0b;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #92400e; margin-bottom: 0.5rem;">PASS PREDICTION CHAIN</div>
+                <div style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; flex-wrap: wrap;">
+                    <span style="font-weight: 600; color: #0f172a;">1. N2YO Tracker</span>
+                    <span style="color: #94a3b8;">➔</span>
+                    <span style="font-weight: 600; color: #d97706;">2. SGP4 Hybrid Propagator</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Provider Cards Grid -->
     <div class="prov-grid" id="providersGrid">
         {% for p in dashboard.providers %}
@@ -478,6 +526,34 @@
             }
         } catch (err) {
             alert('Request failed: ' + err.message);
+        }
+    }
+
+    async function testFallbackDispatch() {
+        try {
+            const res = await fetch('/api/providers/dispatch-with-fallback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    modality: 'SAR',
+                    preferred_provider: 'copernicus',
+                    allow_commercial: true
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const resl = data.resolution;
+                let msg = `Dispatch Successful!\nSelected Provider: ${resl.selected_provider_id.toUpperCase()}\nFallback Occurred: ${resl.fallback_occurred ? 'YES' : 'NO (Primary Used)'}\nTotal Attempts: ${resl.total_attempts}`;
+                if (resl.attempts && resl.attempts.length > 0) {
+                    msg += '\n\nAttempt Sequence:\n' + resl.attempts.map(a => `• ${a.provider_id.toUpperCase()}: ${a.success ? 'SUCCESS' : 'FAILED (' + (a.reason || a.error_message) + ')'}`).join('\n');
+                }
+                alert(msg);
+                location.reload();
+            } else {
+                alert('Fallback Dispatch Failed:\n' + (data.error || 'All providers exhausted'));
+            }
+        } catch (err) {
+            alert('Dispatch test error: ' + err.message);
         }
     }
 </script>

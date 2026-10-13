@@ -1,3 +1,4 @@
+from sentinel_analysis.application.use_cases.acquire_with_fallback import AcquireWithProviderFallback
 from sentinel_analysis.application.use_cases.analyze_mission_passes import AnalyzeMissionPasses
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
 from sentinel_analysis.application.use_cases.backfill_aoi_baseline import (
@@ -117,6 +118,7 @@ from sentinel_analysis.application.use_cases.review_cases import (
 
 
 __all__ = [
+    "AcquireWithProviderFallback",
     "AddAreaOfInterest",
     "AnalyzeMissionPasses",
     "AnnotationSummary",

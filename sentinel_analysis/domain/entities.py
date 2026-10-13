@@ -254,6 +254,20 @@ class AreaOfInterest:
                 raise DomainValidationError("Retention policy days must be a positive integer")
             object.__setattr__(self, "retention_policy_days", int(self.retention_policy_days))
 
+    @property
+    def has_budget_available(self) -> bool:
+        """Indicates whether the AOI has remaining commercial collection budget."""
+        if self.collection_budget_usd <= 0.0:
+            return True
+        return self.budget_spent_usd < self.collection_budget_usd
+
+    @property
+    def remaining_budget_usd(self) -> float:
+        """Returns the unallocated collection budget in USD."""
+        if self.collection_budget_usd <= 0.0:
+            return 0.0
+        return max(0.0, self.collection_budget_usd - self.budget_spent_usd)
+
 
 @dataclass(frozen=True)
 class ShipDetection:

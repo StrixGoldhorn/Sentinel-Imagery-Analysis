@@ -5,9 +5,66 @@ from __future__ import annotations
 from flask import Blueprint, jsonify, render_template, request
 
 from sentinel_analysis.domain.correlation import get_current_correlation_id
+from sentinel_analysis.domain.provider_fallback import AllProvidersExhaustedError
 from sentinel_analysis.interfaces.web.dependencies import container
 
 blueprint = Blueprint("providers", __name__)
+
+
+@blueprint.get("/api/providers/fallback-chains")
+def get_fallback_chains():
+    """Return configured failover priority chains per modality."""
+    c = container()
+    chains = c.acquire_with_fallback.get_all_chains()
+    return jsonify({
+        "status": "success",
+        "chains": chains,
+        "correlation_id": get_current_correlation_id(),
+    })
+
+
+@blueprint.post("/api/providers/dispatch-with-fallback")
+def dispatch_with_fallback():
+    """Execute satellite acquisition dispatch with automatic failover."""
+    c = container()
+    payload = request.get_json(silent=True) or {}
+    modality = payload.get("modality", "SAR")
+    aoi_id = payload.get("aoi_id")
+    bbox = payload.get("bbox")
+    preferred_provider = payload.get("preferred_provider")
+    allow_commercial = payload.get("allow_commercial", True)
+    acquisition_params = payload.get("acquisition_params") or {}
+
+    aoi_id_val = int(aoi_id) if aoi_id is not None else None
+
+    try:
+        result, resolution = c.acquire_with_fallback.execute_dispatch(
+            modality=str(modality),
+            aoi_id=aoi_id_val,
+            bbox=bbox,
+            preferred_provider=str(preferred_provider) if preferred_provider else None,
+            allow_commercial=bool(allow_commercial),
+            acquisition_params=acquisition_params,
+        )
+        return jsonify({
+            "status": "success",
+            "result": result,
+            "resolution": resolution.to_dict(),
+            "correlation_id": get_current_correlation_id(),
+        })
+    except AllProvidersExhaustedError as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+            "resolution": exc.resolution.to_dict() if exc.resolution else None,
+            "correlation_id": get_current_correlation_id(),
+        }), 503
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "error": str(exc),
+            "correlation_id": get_current_correlation_id(),
+        }), 400
 
 
 @blueprint.get("/api/providers/health")

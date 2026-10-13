@@ -5,6 +5,7 @@ import logging
 from sentinel_analysis.application.shutdown import shutdown_coordinator
 
 from sentinel_analysis.application.use_cases import (
+    AcquireWithProviderFallback,
     AddAreaOfInterest,
     AnalyzeMissionPasses,
     BackfillAoiBaseline,
@@ -86,7 +87,7 @@ from sentinel_analysis.application.use_cases import (
     UpdateSettings,
     UpdateVesselDetails,
 )
-
+from sentinel_analysis.domain.entities import BoundingBox
 from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.alerting import HTTPWebhookDispatcher
@@ -447,6 +448,31 @@ class ApplicationContainer:
         self.get_provider_health = GetProviderHealthDashboard(self.provider_health_repository)
         self.check_provider_health = CheckProviderHealth(self.provider_health_repository)
         self.update_provider_quota = UpdateProviderQuotaUseCase(self.provider_health_repository)
+        def _dispatch_scan(prov_id: str, bbox=None, aoi_id=None, params=None):
+            resolved_bbox = None
+            if bbox is not None:
+                resolved_bbox = bbox if isinstance(bbox, BoundingBox) else BoundingBox.from_sequence(bbox)
+            elif aoi_id is not None and self.aoi_repository is not None:
+                aoi = self.aoi_repository.get(int(aoi_id))
+                if aoi is not None:
+                    resolved_bbox = aoi.bbox
+            if resolved_bbox is None:
+                return {"provider": prov_id, "status": "dispatched", "simulated": True}
+            return self.create_scan.execute(
+                bbox=resolved_bbox,
+                days_ago=params.get("days_ago", 3) if params else 3,
+                provider=prov_id,
+            )
+
+        self.acquire_with_fallback = AcquireWithProviderFallback(
+            health_repository=self.provider_health_repository,
+            aoi_repository=self.aoi_repository,
+            provider_dispatchers={
+                "copernicus": lambda bbox=None, aoi_id=None, params=None: _dispatch_scan("copernicus", bbox, aoi_id, params),
+                "asf": lambda bbox=None, aoi_id=None, params=None: _dispatch_scan("asf", bbox, aoi_id, params),
+                "umbra": lambda bbox=None, aoi_id=None, params=None: _dispatch_scan("umbra", bbox, aoi_id, params),
+            },
+        )
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """Gracefully shut down all background workers, schedulers, and active threads."""
