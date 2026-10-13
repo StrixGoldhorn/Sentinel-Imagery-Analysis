@@ -687,6 +687,31 @@ def get_detection_crop(folder_name: str, requested_idx: int | None = None):
     })
 
 
+def _extract_scan_datetime(scan: Any) -> datetime:
+    """Robustly extract scan datetime as timezone-aware UTC datetime."""
+    raw = None
+    if getattr(scan, "acquisition", None) and getattr(scan.acquisition, "acquired_at", None):
+        raw = scan.acquisition.acquired_at
+    elif getattr(scan, "timestamp", None):
+        raw = scan.timestamp
+    elif getattr(scan, "metadata", None) and isinstance(scan.metadata, dict):
+        raw = scan.metadata.get("acquired_at") or scan.metadata.get("timestamp")
+
+    if isinstance(raw, datetime):
+        if raw.tzinfo is None:
+            return raw.replace(tzinfo=timezone.utc)
+        return raw.astimezone(timezone.utc)
+    if isinstance(raw, str):
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except Exception:
+            pass
+    return datetime.now(timezone.utc)
+
+
 @blueprint.get("/api/scan/<folder_name>/ais_tracks")
 def get_scan_ais_tracks(folder_name: str):
     """Retrieve temporal AIS tracks and kinematic interpolations centered on SAR pass time."""
@@ -694,23 +719,7 @@ def get_scan_ais_tracks(folder_name: str):
     bbox = scan.bbox
 
     # Parse scan acquisition timestamp
-    scan_dt: datetime | None = None
-    if getattr(scan, "acquisition", None) and getattr(scan.acquisition, "acquired_at", None):
-        scan_dt = scan.acquisition.acquired_at
-    elif getattr(scan, "timestamp", None):
-        try:
-            scan_dt = datetime.fromisoformat(str(scan.timestamp).replace("Z", "+00:00"))
-        except Exception:
-            pass
-    elif getattr(scan, "metadata", None) and isinstance(scan.metadata, dict):
-        raw_ts = scan.metadata.get("acquired_at") or scan.metadata.get("timestamp")
-        if raw_ts:
-            try:
-                scan_dt = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
-            except Exception:
-                pass
-    if scan_dt is None:
-        scan_dt = datetime.now(timezone.utc)
+    scan_dt = _extract_scan_datetime(scan)
 
     window_hours = float(request.args.get("window_hours", 2.0))
     time_start = scan_dt - timedelta(hours=window_hours)
@@ -827,16 +836,7 @@ def tag_scan_route_detections(folder_name: str):
     except (ValueError, TypeError):
         predict_forward_seconds = 3600.0
 
-    scan_dt: datetime | None = None
-    if getattr(scan, "acquisition", None) and getattr(scan.acquisition, "acquired_at", None):
-        scan_dt = scan.acquisition.acquired_at
-    elif getattr(scan, "timestamp", None):
-        try:
-            scan_dt = datetime.fromisoformat(str(scan.timestamp).replace("Z", "+00:00"))
-        except Exception:
-            pass
-    if scan_dt is None:
-        scan_dt = datetime.now(timezone.utc)
+    scan_dt = _extract_scan_datetime(scan)
 
     detections = payload.get("detections")
     if detections is None:

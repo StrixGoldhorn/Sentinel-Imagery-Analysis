@@ -275,9 +275,11 @@ async function initAisTimelineBounds() {
             const minMs = new Date(data.min_timestamp.replace('Z', '+00:00')).getTime();
             const maxMs = new Date(data.max_timestamp.replace('Z', '+00:00')).getTime();
             if (!isNaN(minMs) && !isNaN(maxMs) && minMs < maxMs) {
-                // Keep at least a 24h span
-                aisTimelineState.minTime = Math.min(minMs, Date.now() - 7 * 24 * 3600 * 1000);
-                aisTimelineState.maxTime = Math.max(maxMs, Date.now());
+                const now = Date.now();
+                const latest = Math.max(maxMs, now);
+                const span = Math.max(24 * 3600 * 1000, latest - minMs);
+                aisTimelineState.minTime = latest - span;
+                aisTimelineState.maxTime = latest;
             }
         }
     } catch (e) {
@@ -368,10 +370,11 @@ function toggleAISVessels(mapInstance, enable) {
 }
 
 function syncSliderElements(val) {
+    const formatted = typeof val === 'number' ? (Number.isInteger(val) ? String(val) : val.toFixed(1)) : String(val);
     const slider1 = document.getElementById('aisDateSlider');
     const slider2 = document.getElementById('floatingDateSlider');
-    if (slider1 && slider1.value !== String(val)) slider1.value = val;
-    if (slider2 && slider2.value !== String(val)) slider2.value = val;
+    if (slider1 && slider1.value !== formatted) slider1.value = formatted;
+    if (slider2 && slider2.value !== formatted) slider2.value = formatted;
 }
 
 function setSliderValue(val) {
@@ -453,6 +456,16 @@ function highlightPresetButton(preset) {
     });
 }
 
+let aisScrubDebounceTimer = null;
+function triggerDebouncedAisScrubReload() {
+    if (aisScrubDebounceTimer) clearTimeout(aisScrubDebounceTimer);
+    aisScrubDebounceTimer = setTimeout(() => {
+        if (typeof map !== 'undefined' && map && aisLayerEnabled) {
+            loadAISVessels(map);
+        }
+    }, 150);
+}
+
 function onAisSliderInput(val) {
     const percent = parseFloat(val) / 100;
     const targetTs = aisTimelineState.minTime + (aisTimelineState.maxTime - aisTimelineState.minTime) * percent;
@@ -466,9 +479,9 @@ function onAisSliderInput(val) {
 
     syncSliderElements(val);
     updateTimelineLabels(targetTs);
+    triggerDebouncedAisScrubReload();
 }
 
-let aisSliderDebounceTimer = null;
 function onAisSliderChange(val) {
     onAisSliderInput(val);
     if (aisTimelineState.preset === 'custom') {
@@ -481,12 +494,10 @@ function onAisSliderChange(val) {
         highlightPresetButton(null);
     }
     
-    if (aisSliderDebounceTimer) clearTimeout(aisSliderDebounceTimer);
-    aisSliderDebounceTimer = setTimeout(() => {
-        if (typeof map !== 'undefined' && map) {
-            loadAISVessels(map);
-        }
-    }, 100);
+    if (aisScrubDebounceTimer) clearTimeout(aisScrubDebounceTimer);
+    if (typeof map !== 'undefined' && map && aisLayerEnabled) {
+        loadAISVessels(map);
+    }
 }
 
 function setAisTimelinePreset(preset) {
@@ -519,18 +530,21 @@ function setAisTimelinePreset(preset) {
         aisTimelineState.isLive = false;
         aisTimelineState.minTime = now - 24 * 3600 * 1000;
         aisTimelineState.selectedTime = now;
+        aisTimelineState.windowHours = 24;
         setSliderValue(100);
         updateTimelineLabels(now);
     } else if (preset === '3d') {
         aisTimelineState.isLive = false;
         aisTimelineState.minTime = now - 3 * 24 * 3600 * 1000;
         aisTimelineState.selectedTime = now;
+        aisTimelineState.windowHours = 24;
         setSliderValue(100);
         updateTimelineLabels(now);
     } else if (preset === '7d') {
         aisTimelineState.isLive = false;
         aisTimelineState.minTime = now - 7 * 24 * 3600 * 1000;
         aisTimelineState.selectedTime = now;
+        aisTimelineState.windowHours = 48;
         setSliderValue(100);
         updateTimelineLabels(now);
     }
@@ -611,12 +625,20 @@ function toggleAisTimelinePlayback() {
     }
 }
 
+function getActiveSliderValue() {
+    const s1 = document.getElementById('aisDateSlider');
+    if (s1 && s1.value !== '' && !isNaN(parseFloat(s1.value))) return parseFloat(s1.value);
+    const s2 = document.getElementById('floatingDateSlider');
+    if (s2 && s2.value !== '' && !isNaN(parseFloat(s2.value))) return parseFloat(s2.value);
+    return 100;
+}
+
 function startAisPlayback() {
     aisTimelineState.isPlaying = true;
     aisTimelineState.isLive = false;
     updatePlayButtonUI(true);
 
-    const currentVal = parseFloat(document.getElementById('aisDateSlider')?.value || 100);
+    const currentVal = getActiveSliderValue();
     if (currentVal >= 99) {
         setSliderValue(0);
         onAisSliderInput(0);
@@ -625,7 +647,7 @@ function startAisPlayback() {
     if (aisTimelineState.playbackInterval) clearInterval(aisTimelineState.playbackInterval);
 
     aisTimelineState.playbackInterval = setInterval(() => {
-        let val = parseFloat(document.getElementById('aisDateSlider')?.value || 0);
+        let val = getActiveSliderValue();
         const step = 1.2 * aisTimelineState.playbackSpeed;
         val += step;
 
@@ -731,9 +753,8 @@ async function loadAISVessels(mapInstance, bbox = null) {
         const requestBody = {
             latest_only: true,
             limit: 1000,
-            // The map is capped at 1,000 markers. Ask the API for a fresh
-            // random sample so dense areas do not always show the same ships.
-            randomize: true
+            // Only randomize when viewing live data so historical scrub positions remain stable
+            randomize: Boolean(aisTimelineState.isLive)
         };
 
         if (activeBbox) {

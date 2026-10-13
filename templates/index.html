@@ -258,7 +258,7 @@
 
                     <!-- Date Scrubber Slider -->
                     <div style="position: relative; margin: 8px 0;">
-                        <input type="range" id="aisDateSlider" min="0" max="100" value="100" step="1" style="width: 100%; cursor: pointer; accent-color: #007bff;" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
+                        <input type="range" id="aisDateSlider" min="0" max="100" value="100" step="0.1" style="width: 100%; cursor: pointer; accent-color: #007bff;" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
                         <div style="display: flex; justify-content: space-between; font-size: 0.7em; color: #888; margin-top: 2px;">
                             <span id="aisSliderMinLabel">-7 Days</span>
                             <span id="aisSliderMaxLabel">Now</span>
@@ -626,7 +626,7 @@
     <div class="floating-timeline-controls" id="floatingTimelineControls">
         <button type="button" id="floatingPlayBtn" class="timeline-ctrl-btn" onclick="toggleAisTimelinePlayback()" title="Play / Pause Timeline">▶</button>
         <button type="button" class="timeline-ctrl-btn" onclick="stepAisTimeline(-1)" title="Step Back 1 Hour">⏮</button>
-        <input type="range" id="floatingDateSlider" min="0" max="100" value="100" step="1" class="floating-slider" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
+        <input type="range" id="floatingDateSlider" min="0" max="100" value="100" step="0.1" class="floating-slider" oninput="onAisSliderInput(this.value)" onchange="onAisSliderChange(this.value)">
         <button type="button" class="timeline-ctrl-btn" onclick="stepAisTimeline(1)" title="Step Forward 1 Hour">⏭</button>
         <select id="floatingPlaybackSpeed" class="timeline-speed-select" onchange="setPlaybackSpeed(this.value)">
             <option value="1">1x</option>

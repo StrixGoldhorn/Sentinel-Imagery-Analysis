@@ -375,6 +375,31 @@ function interpolateTrackAtEpoch(points, epochMs) {
         return null;
     }
 
+    if (parsedPts.length === 1) {
+        const p = parsedPts[0];
+        const dtSec = (epochMs - p.timeMs) / 1000;
+        const heading = p.heading || 0;
+        const speed = p.speed || 0;
+        const speedMs = speed * 0.514444;
+        const distM = speedMs * dtSec;
+        const radHeading = (heading * Math.PI) / 180;
+        const dLat = (distM * Math.cos(radHeading)) / 111320;
+        const cosLat = Math.cos((p.latitude * Math.PI) / 180);
+        const dLon = cosLat !== 0 ? (distM * Math.sin(radHeading)) / (111320 * cosLat) : 0;
+        const lat = p.latitude + dLat;
+        const lon = p.longitude + dLon;
+        const nearestFixDeltaSec = Math.abs(dtSec);
+        const uncertaintyMeters = Math.min(1500, Math.max(25, 15 + (Math.max(1.0, speedMs) * nearestFixDeltaSec * 0.08) + Math.pow(nearestFixDeltaSec / 60, 1.4)));
+        return {
+            lat,
+            lon,
+            heading,
+            speed,
+            uncertaintyMeters,
+            nearestFixDeltaSec,
+        };
+    }
+
     // Find bounding segments
     let p1 = null;
     let p2 = null;
