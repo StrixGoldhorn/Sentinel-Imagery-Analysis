@@ -1375,6 +1375,39 @@ def get_scan_relationship_graph(scan_id: str):
     return jsonify(result)
 
 
+@blueprint.get("/api/scans/<scan_id>/swipe-comparison")
+def get_scan_swipe_comparison(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    baseline_id = request.args.get("baseline_id") or request.args.get("baseline_scan_id")
+    if baseline_id:
+        baseline_id = safe_folder_name(baseline_id)
+    try:
+        max_days = int(request.args.get("max_days_prior", 120))
+    except (ValueError, TypeError):
+        max_days = 120
+    try:
+        min_overlap = float(request.args.get("min_overlap_pct", 0.20))
+    except (ValueError, TypeError):
+        min_overlap = 0.20
+    try:
+        match_dist = float(request.args.get("match_distance_m", 150.0))
+    except (ValueError, TypeError):
+        match_dist = 150.0
+
+    try:
+        result = container().compare_repeat_passes.execute(
+            target_scan_id=safe_name,
+            baseline_scan_id=baseline_id,
+            max_days_prior=max_days,
+            min_overlap_pct=min_overlap,
+            match_distance_m=match_dist,
+        )
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+
+
+
 
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):

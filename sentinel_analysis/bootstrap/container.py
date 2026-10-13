@@ -9,7 +9,9 @@ from sentinel_analysis.application.use_cases import (
     AnalyzeMissionPasses,
     CheckAndScheduleAOIs,
     CompareDetectionAlgorithms,
+    CompareRepeatPasses,
     CorrelateDetectionsWithAIS,
+
     CreateScan,
     CrossValidateOptical,
     DecomposeRiskScore,
@@ -200,7 +202,9 @@ class ApplicationContainer:
             ais_repository=self.ais_repository,
             scan_repository=self.scan_repository,
         )
+        self.compare_repeat_passes = CompareRepeatPasses(self.scan_repository)
         self.chip_renderer = OpenCVChipRenderer()
+
         self.generate_chip_gallery = GenerateChipGallery(
             scan_repository=self.scan_repository,
             ais_repository=self.ais_repository,
