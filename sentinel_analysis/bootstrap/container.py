@@ -17,6 +17,7 @@ from sentinel_analysis.application.use_cases import (
     DecomposeRiskScore,
     ArchiveScan,
     BuildRelationshipGraph,
+    CalculateTacticalMeasurements,
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
@@ -232,6 +233,9 @@ class ApplicationContainer:
         self.render_polarimetric_preset = RenderPolarimetricPresetUseCase(
             scan_repository=self.scan_repository,
             polarimetric_processor=self.polarimetric_processor,
+        )
+        self.calculate_tactical_measurements = CalculateTacticalMeasurements(
+            scan_repository=self.scan_repository,
         )
 
         self.generate_chip_gallery = GenerateChipGallery(

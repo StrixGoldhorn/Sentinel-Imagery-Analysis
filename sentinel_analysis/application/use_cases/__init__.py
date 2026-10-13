@@ -10,6 +10,7 @@ from sentinel_analysis.application.use_cases.compare_detection_algorithms import
 from sentinel_analysis.application.use_cases.compare_repeat_passes import CompareRepeatPasses
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 
+from sentinel_analysis.application.use_cases.calculate_measurements import CalculateTacticalMeasurements
 from sentinel_analysis.application.use_cases.cross_validate_optical import CrossValidateOptical
 from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
@@ -105,6 +106,7 @@ __all__ = [
     "ArchiveScan",
     "BatchAnnotateTiles",
     "BuildRelationshipGraph",
+    "CalculateTacticalMeasurements",
     "CheckAndScheduleAOIs",
     "CompareDetectionAlgorithms",
     "CompareRepeatPasses",

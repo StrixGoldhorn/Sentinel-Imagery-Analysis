@@ -1606,6 +1606,116 @@ def get_polarimetric_preset_image(scan_id: str, preset_name: str):
         return jsonify({"error": str(exc), "success": False}), 500
 
 
+@blueprint.post("/api/measurements/calculate")
+def calculate_measurement_route():
+    payload = request.get_json(silent=True) or {}
+    tool = payload.get("tool")
+    params = payload.get("params", payload)
+    if not tool:
+        return jsonify({"error": "Missing 'tool' in request payload", "success": False}), 400
+
+    try:
+        result = container().calculate_tactical_measurements.execute(tool_type=str(tool), params=params)
+        return jsonify(result)
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.post("/api/measurements/distance")
+def measure_distance_route():
+    payload = request.get_json(silent=True) or {}
+    points = payload.get("points") or payload.get("coordinates")
+    try:
+        if points and len(points) >= 2:
+            res = container().calculate_tactical_measurements.measure_polyline(points)
+            return jsonify({"success": True, "tool": "polyline", "result": res.to_dict()})
+        else:
+            lat1 = payload.get("lat1")
+            lon1 = payload.get("lon1")
+            lat2 = payload.get("lat2")
+            lon2 = payload.get("lon2")
+            if any(v is None for v in (lat1, lon1, lat2, lon2)):
+                return jsonify({"error": "Requires either 'points' array or lat1, lon1, lat2, lon2", "success": False}), 400
+            res = container().calculate_tactical_measurements.measure_distance_bearing(lat1, lon1, lat2, lon2)
+            return jsonify({"success": True, "tool": "distance_bearing", "result": res.to_dict()})
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.post("/api/measurements/area")
+def measure_area_route():
+    payload = request.get_json(silent=True) or {}
+    vertices = payload.get("vertices") or payload.get("points") or payload.get("coordinates")
+    if not vertices or len(vertices) < 3:
+        return jsonify({"error": "Area measurement requires at least 3 vertices", "success": False}), 400
+
+    try:
+        res = container().calculate_tactical_measurements.measure_area(vertices)
+        return jsonify({"success": True, "tool": "area", "result": res.to_dict()})
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.post("/api/measurements/corridor")
+def measure_corridor_route():
+    payload = request.get_json(silent=True) or {}
+    centerline = payload.get("centerline") or payload.get("points") or payload.get("coordinates")
+    if not centerline or len(centerline) < 2:
+        return jsonify({"error": "Corridor requires at least 2 centerline waypoints", "success": False}), 400
+
+    width = payload.get("width", 2.0)
+    unit = payload.get("unit", "NM")
+    try:
+        res = container().calculate_tactical_measurements.generate_corridor(
+            centerline=centerline,
+            width=float(width),
+            unit=str(unit),
+        )
+        return jsonify({"success": True, "tool": "corridor", "result": res.to_dict()})
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.post("/api/measurements/vessel")
+def measure_vessel_route():
+    payload = request.get_json(silent=True) or {}
+    x1 = payload.get("x1")
+    y1 = payload.get("y1")
+    x2 = payload.get("x2")
+    y2 = payload.get("y2")
+    if any(v is None for v in (x1, y1, x2, y2)):
+        return jsonify({"error": "Vessel measurement requires pixel coordinates x1, y1, x2, y2", "success": False}), 400
+
+    scan_id = payload.get("scan_id")
+    m_per_px = payload.get("meters_per_pixel")
+    beam_px = payload.get("beam_width_px")
+
+    try:
+        res = container().calculate_tactical_measurements.measure_vessel(
+            x1=x1,
+            y1=y1,
+            x2=x2,
+            y2=y2,
+            scan_id=scan_id,
+            meters_per_pixel=m_per_px,
+            beam_width_px=beam_px,
+        )
+        return jsonify({"success": True, "tool": "vessel_dimension", "result": res.to_dict()})
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+
 
 
 
