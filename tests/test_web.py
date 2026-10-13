@@ -226,6 +226,7 @@ def _get_test_context():
         copernicus_username=None,
         copernicus_password=None,
         n2yo_api_key="key",
+        rate_limiting_enabled=False,
     )
     scan = Scan(
         "scan_1",
@@ -238,6 +239,8 @@ def _get_test_context():
 
 
 def make_client():
+    from sentinel_analysis.interfaces.web.security import rate_limiter
+    rate_limiter.reset()
     settings, scan = _get_test_context()
     container = StubContainer(settings, scan)
     app = create_app(container=container, start_background_workers=False)
