@@ -152,4 +152,20 @@ class SarRadiometryProcessor(Protocol):
         ...
 
 
+@runtime_checkable
+class PolarimetricProcessor(Protocol):
+    """Protocol for rendering SAR polarimetric presets and multi-temporal change composites."""
+
+    def render_preset(
+        self,
+        image_path: Path | str,
+        preset_type: str,
+        prior_image_path: Optional[Path | str] = None,
+        channel_paths: Optional[dict[str, Path | str]] = None,
+        gamma: float = 1.0,
+    ) -> bytes:
+        ...
+
+
+
 

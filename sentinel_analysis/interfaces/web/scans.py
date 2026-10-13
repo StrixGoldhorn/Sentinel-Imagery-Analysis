@@ -1568,6 +1568,45 @@ def get_enhanced_radiometry_image(scan_id: str):
         return jsonify({"error": str(exc), "success": False}), 500
 
 
+@blueprint.get("/api/scans/<scan_id>/polarimetry/presets")
+def get_polarimetric_presets_route(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    try:
+        result = container().get_polarimetric_presets.execute(safe_name)
+        return jsonify(result)
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.get("/api/scans/<scan_id>/polarimetry/<preset_name>.png")
+def get_polarimetric_preset_image(scan_id: str, preset_name: str):
+    safe_name = safe_folder_name(scan_id)
+    baseline_scan_id = request.args.get("baseline_scan_id")
+    raw_gamma = request.args.get("gamma", 1.0)
+    try:
+        gamma = float(raw_gamma)
+    except (ValueError, TypeError):
+        gamma = 1.0
+
+    try:
+        img_bytes = container().render_polarimetric_preset.execute(
+            scan_id=safe_name,
+            preset_type=preset_name,
+            baseline_scan_id=baseline_scan_id,
+            gamma=gamma,
+        )
+        return Response(img_bytes, mimetype="image/png")
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+    except ValueError as exc:
+        return jsonify({"error": str(exc), "success": False}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+
 
 
 

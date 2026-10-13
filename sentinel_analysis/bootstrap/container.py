@@ -36,6 +36,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateTacticalExplainability,
     GeofenceMonitor,
     GetOperationalMetrics,
+    GetPolarimetricPresetsUseCase,
     GetReviewDetails,
     GetScan,
     GetScanHistogram,
@@ -58,6 +59,7 @@ from sentinel_analysis.application.use_cases import (
     PredictAreaOfInterest,
     ReidentifyVessels,
     RenameScan,
+    RenderPolarimetricPresetUseCase,
     ResetScraperCooldown,
     ResetSettings,
     ScrapeAreaOfInterestAIS,
@@ -83,6 +85,7 @@ from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.chip_renderer import OpenCVChipRenderer
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
 from sentinel_analysis.infrastructure.imagery.geotiff import PillowGeoTIFFWriter
+from sentinel_analysis.infrastructure.imagery.polarimetry import OpenCVPolarimetricProcessor
 from sentinel_analysis.infrastructure.imagery.sar_radiometry import OpenCVSarRadiometryProcessor
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
 from sentinel_analysis.infrastructure.monitoring import OperationalMetricsCollector
@@ -214,6 +217,7 @@ class ApplicationContainer:
         )
         self.chip_renderer = OpenCVChipRenderer()
         self.sar_radiometry_processor = OpenCVSarRadiometryProcessor()
+        self.polarimetric_processor = OpenCVPolarimetricProcessor()
         self.get_scan_histogram = GetScanHistogram(
             scan_repository=self.scan_repository,
             radiometry_processor=self.sar_radiometry_processor,
@@ -221,6 +225,13 @@ class ApplicationContainer:
         self.enhance_scan_radiometry = EnhanceScanRadiometry(
             scan_repository=self.scan_repository,
             radiometry_processor=self.sar_radiometry_processor,
+        )
+        self.get_polarimetric_presets = GetPolarimetricPresetsUseCase(
+            scan_repository=self.scan_repository,
+        )
+        self.render_polarimetric_preset = RenderPolarimetricPresetUseCase(
+            scan_repository=self.scan_repository,
+            polarimetric_processor=self.polarimetric_processor,
         )
 
         self.generate_chip_gallery = GenerateChipGallery(

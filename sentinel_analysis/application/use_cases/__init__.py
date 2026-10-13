@@ -25,6 +25,10 @@ from sentinel_analysis.application.use_cases.enhance_sar_radiometry import (
     EnhanceScanRadiometry,
     GetScanHistogram,
 )
+from sentinel_analysis.application.use_cases.get_polarimetric_presets import (
+    GetPolarimetricPresetsUseCase,
+    RenderPolarimetricPresetUseCase,
+)
 from sentinel_analysis.application.use_cases.enrich_environmental_context import EnrichMarineEnvironmentalContext
 from sentinel_analysis.application.use_cases.decompose_risk_score import DecomposeRiskScore
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
@@ -130,6 +134,7 @@ __all__ = [
     "GenerateTacticalExplainability",
     "GeofenceMonitor",
     "GetOperationalMetrics",
+    "GetPolarimetricPresetsUseCase",
     "GetReviewDetails",
     "GetScan",
     "GetScanHistogram",
@@ -153,6 +158,7 @@ __all__ = [
     "PredictPasses",
     "ReidentifyVessels",
     "RenameScan",
+    "RenderPolarimetricPresetUseCase",
     "ResetScraperCooldown",
     "ResetSettings",
     "ScrapeAreaOfInterestAIS",
