@@ -1519,6 +1519,56 @@ def get_optical_layer_image(scan_id: str):
     return Response(transparent_1px, mimetype="image/png")
 
 
+@blueprint.get("/api/scans/<scan_id>/histogram")
+def get_scan_histogram_route(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    pol = request.args.get("polarization")
+    try:
+        result = container().get_scan_histogram.execute(safe_name, polarization=pol)
+        return jsonify(result)
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+@blueprint.route("/api/scans/<scan_id>/enhanced-image.png", methods=["GET", "POST"])
+def get_enhanced_radiometry_image(scan_id: str):
+    from sentinel_analysis.domain.sar_radiometry import RadiometryAdjustment
+
+    safe_name = safe_folder_name(scan_id)
+    payload = request.get_json(silent=True) or {}
+
+    c_min = payload.get("contrast_min") or request.args.get("contrast_min", 0.0)
+    c_max = payload.get("contrast_max") or request.args.get("contrast_max", 255.0)
+    gamma = payload.get("gamma") or request.args.get("gamma", 1.0)
+    log_str = payload.get("log_stretch") or request.args.get("log_stretch", False)
+    despeckle = payload.get("despeckle") or request.args.get("despeckle_filter") or request.args.get("despeckle", "none")
+    kernel = payload.get("kernel_size") or request.args.get("kernel_size", 5)
+    pol = payload.get("polarization") or request.args.get("polarization")
+
+    is_log = str(log_str).lower() in ("1", "true", "yes")
+
+    adjustment = RadiometryAdjustment(
+        contrast_min=float(c_min),
+        contrast_max=float(c_max),
+        gamma=float(gamma),
+        log_stretch=is_log,
+        despeckle_filter=str(despeckle),
+        filter_kernel_size=int(kernel),
+        polarization=str(pol) if pol else None,
+    )
+
+    try:
+        img_bytes = container().enhance_scan_radiometry.execute(safe_name, adjustment)
+        return Response(img_bytes, mimetype="image/png")
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+    except Exception as exc:
+        return jsonify({"error": str(exc), "success": False}), 500
+
+
+
 
 
 

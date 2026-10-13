@@ -24,6 +24,7 @@ from sentinel_analysis.application.use_cases import (
     DetectTransshipmentAnomalies,
     DetectIdentityAnomalies,
     DispatchMaritimeAlert,
+    EnhanceScanRadiometry,
     ExecuteStorageRetention,
     ExportGeospatial,
     EnrichMarineEnvironmentalContext,
@@ -37,6 +38,7 @@ from sentinel_analysis.application.use_cases import (
     GetOperationalMetrics,
     GetReviewDetails,
     GetScan,
+    GetScanHistogram,
     GetStorageQuota,
     GetSynchronizedViews,
     GetScraperDetail,
@@ -81,6 +83,7 @@ from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
 from sentinel_analysis.infrastructure.imagery.chip_renderer import OpenCVChipRenderer
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
 from sentinel_analysis.infrastructure.imagery.geotiff import PillowGeoTIFFWriter
+from sentinel_analysis.infrastructure.imagery.sar_radiometry import OpenCVSarRadiometryProcessor
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
 from sentinel_analysis.infrastructure.monitoring import OperationalMetricsCollector
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
@@ -210,6 +213,15 @@ class ApplicationContainer:
             sentinel2_client=self.sentinel2_client,
         )
         self.chip_renderer = OpenCVChipRenderer()
+        self.sar_radiometry_processor = OpenCVSarRadiometryProcessor()
+        self.get_scan_histogram = GetScanHistogram(
+            scan_repository=self.scan_repository,
+            radiometry_processor=self.sar_radiometry_processor,
+        )
+        self.enhance_scan_radiometry = EnhanceScanRadiometry(
+            scan_repository=self.scan_repository,
+            radiometry_processor=self.sar_radiometry_processor,
+        )
 
         self.generate_chip_gallery = GenerateChipGallery(
             scan_repository=self.scan_repository,

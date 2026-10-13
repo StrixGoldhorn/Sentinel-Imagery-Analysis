@@ -132,3 +132,24 @@ class ChipRenderer(Protocol):
         ...
 
 
+@runtime_checkable
+class SarRadiometryProcessor(Protocol):
+    """Protocol for SAR pixel radiometry, histogram extraction, and despeckle filtering."""
+
+    def compute_histogram(
+        self,
+        image_path: Path | str,
+        polarization: Optional[str] = None,
+        num_bins: int = 256,
+    ) -> Any:
+        ...
+
+    def enhance_radiometry(
+        self,
+        image_path: Path | str,
+        adjustment: Any,
+    ) -> bytes:
+        ...
+
+
+

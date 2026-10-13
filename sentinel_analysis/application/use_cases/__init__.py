@@ -21,6 +21,10 @@ from sentinel_analysis.application.use_cases.manage_alerts import (
     ManageWebhooks,
 )
 from sentinel_analysis.application.use_cases.export_geospatial import ExportGeospatial
+from sentinel_analysis.application.use_cases.enhance_sar_radiometry import (
+    EnhanceScanRadiometry,
+    GetScanHistogram,
+)
 from sentinel_analysis.application.use_cases.enrich_environmental_context import EnrichMarineEnvironmentalContext
 from sentinel_analysis.application.use_cases.decompose_risk_score import DecomposeRiskScore
 from sentinel_analysis.application.use_cases.generate_briefing import GenerateIntelligenceBrief
@@ -114,6 +118,7 @@ __all__ = [
     "DetectIdentityAnomalies",
     "ComputeSARChangeDetection",
     "DispatchMaritimeAlert",
+    "EnhanceScanRadiometry",
     "ExecuteStorageRetention",
     "ExportGeospatial",
     "EnrichMarineEnvironmentalContext",
@@ -127,6 +132,7 @@ __all__ = [
     "GetOperationalMetrics",
     "GetReviewDetails",
     "GetScan",
+    "GetScanHistogram",
     "GetScraperDetail",
     "GetScraperLogsUseCase",
     "GetSettings",
