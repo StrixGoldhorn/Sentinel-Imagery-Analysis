@@ -148,10 +148,9 @@ class DigiTrafficPlugin:
         }
 
         # Request locations from DigiTraffic
-        # Format can filter or return regional GeoJSON
-        params = {
-            "from": f"{bbox.min_longitude},{bbox.min_latitude},{bbox.max_longitude},{bbox.max_latitude}",
-        }
+        params: dict[str, Any] = {}
+        if time_range and time_range[0] is not None:
+            params["from"] = int(time_range[0].timestamp() * 1000)
 
         try:
             response = self._session.get(

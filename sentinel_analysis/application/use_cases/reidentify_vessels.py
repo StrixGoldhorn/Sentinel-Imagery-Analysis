@@ -309,9 +309,13 @@ class ReidentifyVessels:
             cx = raw.get("center_x") or (raw.get("x", 0) + raw.get("width", 0) / 2.0)
             cy = raw.get("center_y") or (raw.get("y", 0) + raw.get("height", 0) / 2.0)
             try:
-                transform, _ = resolve_image_transform(scan_obj)
-                glon, glat = pixel_to_geo(float(cx), float(cy), transform)
-                lat, lon = glat, glon
+                img_path = getattr(scan_obj, "image_path", None)
+                meta_w = scan_obj.metadata.get("image_width") if scan_obj.metadata else None
+                meta_h = scan_obj.metadata.get("image_height") if scan_obj.metadata else None
+                img_w = int(raw.get("image_width") or meta_w or 1000)
+                img_h = int(raw.get("image_height") or meta_h or 1000)
+                transform = resolve_image_transform(img_path, bbox=scan_obj.bbox, image_width=img_w, image_height=img_h)
+                lat, lon = pixel_to_geo(float(cx), float(cy), bbox=scan_obj.bbox, image_width=img_w, image_height=img_h, transform_fn=transform)
             except Exception:
                 pass
 
