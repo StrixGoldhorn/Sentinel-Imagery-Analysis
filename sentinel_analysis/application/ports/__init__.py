@@ -15,6 +15,7 @@ from sentinel_analysis.application.ports.detection import DetectionResult, ShipD
 from sentinel_analysis.application.ports.briefing import IntelligenceBriefGenerator
 from sentinel_analysis.application.ports.environmental import MarineContextProviderPort
 from sentinel_analysis.application.ports.geocoding import LocationResolver
+from sentinel_analysis.application.ports.metocean import MetoceanProvider
 from sentinel_analysis.application.ports.imagery import ChipRenderer, GeoTIFFWriter, ImageStitcher, ImageryProvider, TileImage
 from sentinel_analysis.application.ports.observability import (
     ObservabilityMetricsProvider,
@@ -54,6 +55,7 @@ __all__ = [
     "IntelligenceBriefGenerator",
     "LocationResolver",
     "MarineContextProviderPort",
+    "MetoceanProvider",
     "ObservabilityMetricsProvider",
     "ObservabilityRecorder",
     "OpticalCrossValidator",

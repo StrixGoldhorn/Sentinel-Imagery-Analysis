@@ -1,4 +1,4 @@
-"""Environmental and nautical layer services."""
 from sentinel_analysis.infrastructure.environmental.marine_context_provider import MarineContextProvider
+from sentinel_analysis.infrastructure.environmental.metocean_provider import OpenMeteoMetoceanProvider
 
-__all__ = ["MarineContextProvider"]
+__all__ = ["MarineContextProvider", "OpenMeteoMetoceanProvider"]

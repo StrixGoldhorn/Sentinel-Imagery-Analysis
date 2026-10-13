@@ -203,5 +203,90 @@ class TestProviderCatalog(unittest.TestCase):
         self.assertIn("High", umbra_entry.dark_vessel_detection_fidelity)
 
 
+class TestOpenMeteoMetoceanProvider(unittest.TestCase):
+    """Test metocean provider with mock HTTP responses and geophysical fallback."""
+
+    def test_geophysical_fallback_when_offline(self) -> None:
+        from sentinel_analysis.infrastructure.environmental.metocean_provider import (
+            OpenMeteoMetoceanProvider,
+        )
+
+        # Provider with failing mock client to simulate offline/air-gapped environment
+        class FailingClient:
+            def get(self, *args, **kwargs):
+                raise ConnectionError("Network unreachable")
+
+        provider = OpenMeteoMetoceanProvider(http_client=FailingClient())
+        bbox = BoundingBox(103.5, 1.1, 104.2, 1.6)
+        cond = provider.get_conditions(bbox)
+
+        self.assertIsInstance(cond, MetoceanCondition)
+        self.assertGreater(cond.wind_speed_mps, 0.0)
+        self.assertGreater(cond.wave_height_m, 0.0)
+        self.assertTrue(0.0 <= cond.cloud_cover_pct <= 100.0)
+        self.assertTrue(20.0 <= cond.sea_surface_temp_c <= 35.0)  # Singapore tropical waters
+
+    def test_cache_hits(self) -> None:
+        from datetime import datetime, timezone
+        from sentinel_analysis.infrastructure.environmental.metocean_provider import (
+            OpenMeteoMetoceanProvider,
+        )
+
+        provider = OpenMeteoMetoceanProvider(http_client=None)
+        bbox = BoundingBox(103.5, 1.1, 104.2, 1.6)
+        dt = datetime(2026, 10, 15, 12, 0, tzinfo=timezone.utc)
+
+        c1 = provider.get_conditions(bbox, dt)
+        c2 = provider.get_conditions(bbox, dt)
+        self.assertIs(c1, c2)
+
+    def test_mock_open_meteo_response(self) -> None:
+        from datetime import datetime, timezone
+        from sentinel_analysis.infrastructure.environmental.metocean_provider import (
+            OpenMeteoMetoceanProvider,
+        )
+
+        class MockResponse:
+            def __init__(self, data: dict, status_code: int = 200):
+                self._data = data
+                self.status_code = status_code
+
+            def json(self):
+                return self._data
+
+        class MockHttpClient:
+            def get(self, url, params=None, timeout=None):
+                if "forecast" in url:
+                    return MockResponse({
+                        "hourly": {
+                            "time": ["2026-10-15T10:00", "2026-10-15T11:00"],
+                            "wind_speed_10m": [8.5, 9.2],
+                            "wind_direction_10m": [135.0, 140.0],
+                            "cloud_cover": [45.0, 50.0],
+                        }
+                    })
+                elif "marine" in url:
+                    return MockResponse({
+                        "hourly": {
+                            "time": ["2026-10-15T10:00", "2026-10-15T11:00"],
+                            "wave_height": [1.8, 1.9],
+                            "wave_period": [6.5, 7.0],
+                        }
+                    })
+                return MockResponse({}, 404)
+
+        provider = OpenMeteoMetoceanProvider(http_client=MockHttpClient())
+        bbox = BoundingBox(103.5, 1.1, 104.2, 1.6)
+        dt = datetime(2026, 10, 15, 10, 0, tzinfo=timezone.utc)
+        cond = provider.get_conditions(bbox, dt)
+
+        self.assertEqual(cond.wind_speed_mps, 8.5)
+        self.assertEqual(cond.wind_direction_deg, 135.0)
+        self.assertEqual(cond.cloud_cover_pct, 45.0)
+        self.assertEqual(cond.wave_height_m, 1.8)
+        self.assertEqual(cond.wave_period_s, 6.5)
+
+
 if __name__ == "__main__":
     unittest.main()
+
