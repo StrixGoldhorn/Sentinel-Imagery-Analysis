@@ -1,5 +1,6 @@
 from sentinel_analysis.application.use_cases.analyze_mission_passes import AnalyzeMissionPasses
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
+from sentinel_analysis.application.use_cases.build_relationship_graph import BuildRelationshipGraph
 from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     CorrelateDetectionsWithAIS,
     assess_dark_vessel,
@@ -92,6 +93,7 @@ __all__ = [
     "AnnotationSummary",
     "ArchiveScan",
     "BatchAnnotateTiles",
+    "BuildRelationshipGraph",
     "CheckAndScheduleAOIs",
     "CompareDetectionAlgorithms",
     "CorrelateDetectionsWithAIS",

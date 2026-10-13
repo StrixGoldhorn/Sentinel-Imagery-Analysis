@@ -1351,6 +1351,31 @@ def scan_chip_gallery(folder_name: str, detection_idx: int | None = None) -> Res
     return jsonify(result)
 
 
+@blueprint.get("/api/scans/<scan_id>/relationship-graph")
+def get_scan_relationship_graph(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    focal_mmsi = request.args.get("focal_mmsi")
+    try:
+        max_depth = int(request.args.get("max_depth", 2))
+    except (ValueError, TypeError):
+        max_depth = 2
+    try:
+        proximity_m = float(request.args.get("proximity_m", 800.0))
+    except (ValueError, TypeError):
+        proximity_m = 800.0
+    propagate = request.args.get("propagate", "true").lower() in ("1", "true", "yes")
+
+    result = container().build_relationship_graph.execute(
+        focal_mmsi=focal_mmsi,
+        scan_id=safe_name,
+        max_depth=max_depth,
+        encounter_proximity_m=proximity_m,
+        propagate_threats=propagate,
+    )
+    return jsonify(result)
+
+
+
 @blueprint.get("/media/scans/<path:filename>")
 def scan_media(filename: str):
     if Path(filename).suffix.lower() != ".png":

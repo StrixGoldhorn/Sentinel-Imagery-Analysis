@@ -14,6 +14,7 @@ from sentinel_analysis.application.use_cases import (
     CrossValidateOptical,
     DecomposeRiskScore,
     ArchiveScan,
+    BuildRelationshipGraph,
     DeleteAreaOfInterest,
     DeleteScan,
     DetectShips,
@@ -195,6 +196,10 @@ class ApplicationContainer:
         self.generate_tactical_explainability = GenerateTacticalExplainability(self.scan_repository)
         self.reidentify_vessels = ReidentifyVessels(self.scan_repository)
         self.decompose_risk_score = DecomposeRiskScore(self.scan_repository)
+        self.build_relationship_graph = BuildRelationshipGraph(
+            ais_repository=self.ais_repository,
+            scan_repository=self.scan_repository,
+        )
         self.chip_renderer = OpenCVChipRenderer()
         self.generate_chip_gallery = GenerateChipGallery(
             scan_repository=self.scan_repository,

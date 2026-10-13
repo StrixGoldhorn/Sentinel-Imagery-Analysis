@@ -562,3 +562,32 @@ def get_ais_anomalies() -> Response:
     return jsonify(res)
 
 
+@blueprint.route("/api/ais/network", methods=["GET", "POST"])
+@blueprint.route("/api/ais/relationship-graph", methods=["GET", "POST"])
+def get_ais_relationship_graph():
+    """Build and query the maritime entity relationship graph."""
+    app_container = container()
+    payload = {}
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+
+    focal_mmsi = request.args.get("focal_mmsi") or payload.get("focal_mmsi")
+    scan_id = request.args.get("scan_id") or payload.get("scan_id")
+    records = payload.get("records")
+
+    max_depth = int(request.args.get("max_depth") or payload.get("max_depth") or 2)
+    proximity_m = float(request.args.get("proximity_m") or payload.get("proximity_m") or 800.0)
+    propagate = str(request.args.get("propagate", "true")).lower() in ("1", "true", "yes")
+
+    result = app_container.build_relationship_graph.execute(
+        focal_mmsi=focal_mmsi,
+        scan_id=scan_id,
+        records=records,
+        max_depth=max_depth,
+        encounter_proximity_m=proximity_m,
+        propagate_threats=propagate,
+    )
+    return jsonify(result)
+
+
+
