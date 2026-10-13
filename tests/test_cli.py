@@ -113,6 +113,19 @@ def test_ingest_command_reports_plugin_outcomes_and_failure_exit_code() -> None:
     assert use_case.calls[0][1] == (datetime(2026, 8, 27, 6, tzinfo=timezone.utc), now)
 
 
+def test_ingest_command_accepts_documented_lookback_hours_alias() -> None:
+    use_case = FakeUseCase({"total_inserted": 0, "logs": []})
+    now = datetime(2026, 8, 27, 12, tzinfo=timezone.utc)
+
+    exit_code = IngestCommand(use_case, clock=lambda: now).run(
+        [*BBOX_ARGUMENTS, "--lookback-hours", "6"],
+        stdout=StringIO(),
+    )
+
+    assert exit_code == 0
+    assert use_case.calls[0][1] == (datetime(2026, 8, 27, 6, tzinfo=timezone.utc), now)
+
+
 def test_predict_command_uses_configured_key_and_formats_predictions() -> None:
     use_case = FakeUseCase([{"time": "2026-08-28T00:00:00+00:00", "max_elevation": 42}])
     command = PredictCommand(

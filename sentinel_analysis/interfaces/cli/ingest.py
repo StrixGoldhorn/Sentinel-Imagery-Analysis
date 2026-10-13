@@ -28,7 +28,14 @@ class IngestCommand(CLICommand):
         parser = argparse.ArgumentParser(description="Ingest normalized AIS records")
         parser.add_argument("--bbox", type=float, nargs=4, required=True, metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"))
         parser.add_argument("--plugin", help="Run only the named plugin")
-        parser.add_argument("--hours", type=int, default=24, help="Hours of history to request (ignored if --pass-time is set)")
+        parser.add_argument(
+            "--hours",
+            "--lookback-hours",
+            dest="hours",
+            type=int,
+            default=24,
+            help="Hours of history to request (ignored if --pass-time is set)",
+        )
         parser.add_argument("--pass-time", help="ISO format satellite pass timestamp to scrape -5min to +5min around")
         return parser
 
