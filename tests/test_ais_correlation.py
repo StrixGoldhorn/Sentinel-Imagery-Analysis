@@ -513,6 +513,38 @@ class TestAISCorrelation(unittest.TestCase):
         self.assertEqual(len(intelligence["ghost_vessels"]), 1)
         self.assertEqual(intelligence["ghost_vessels"][0]["mmsi"], "999888777")
 
+    def test_correlation_invalid_when_ais_imagery_difference_exceeds_5_minutes(self):
+        # Scan acquired_at is 2026-09-01T12:00:00Z
+        det = ShipDetection(x=450, y=450, width=100, height=100, confidence=0.95)
+
+        # Vessel ping directly inside detection box, but 6 minutes (360s) after imagery pass
+        stale_vessel = {
+            "mmsi": "123456789",
+            "vessel_name": "TIME DELAYED SHIP",
+            "latitude": 1.250,
+            "longitude": 103.750,
+            "speed": 0.0,
+            "heading": 90,
+            "timestamp": "2026-09-01T12:06:00Z",
+        }
+
+        use_case = CorrelateDetectionsWithAIS(StubAISRepo([stale_vessel]))
+        results = use_case.execute([det], self.scan, self.image_width, self.image_height, tolerance_meters=100.0)
+
+        self.assertEqual(len(results), 1)
+        r = results[0]
+        # Must be invalid / uncorrelated because time difference > 5 minutes
+        self.assertFalse(r["is_correlated"])
+        self.assertEqual(r["correlation_status"], "uncorrelated")
+        self.assertIsNone(r["correlated_ais"])
+
+        # Now test valid vessel within 4 minutes (240s <= 300s)
+        valid_vessel = dict(stale_vessel, timestamp="2026-09-01T12:04:00Z")
+        use_case_valid = CorrelateDetectionsWithAIS(StubAISRepo([valid_vessel]))
+        results_valid = use_case_valid.execute([det], self.scan, self.image_width, self.image_height, tolerance_meters=100.0)
+        self.assertTrue(results_valid[0]["is_correlated"])
+        self.assertEqual(results_valid[0]["correlation_status"], "inside_box")
+
 
 if __name__ == "__main__":
     unittest.main()

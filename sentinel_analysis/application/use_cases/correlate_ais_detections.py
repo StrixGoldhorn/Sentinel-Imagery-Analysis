@@ -140,13 +140,16 @@ def _parse_timestamp(val: Any) -> Optional[datetime]:
     return None
 
 
+MAX_AIS_IMAGERY_TIME_DIFF_SECONDS: float = 300.0  # 5 minutes strict limit for AIS-SAR correlation
+
+
 def dead_reckon_position(
     lat: float,
     lon: float,
     speed_knots: Optional[float],
     heading_deg: Optional[float],
     time_delta_seconds: float,
-    max_propagation_seconds: float = 7200.0,
+    max_propagation_seconds: float = 86400.0,
 ) -> tuple[float, float, float]:
     """Extrapolate a vessel's geographic position along its SOG and COG/heading vector.
 
@@ -362,6 +365,7 @@ def interpolate_kinematic_track(
                 "method": "exact_match",
                 "track_points_count": len(valid_points),
                 "representative_record": r,
+                "is_valid_time": True,
             }
 
     # Case 1: Interpolation between two points (t0 <= target_time <= t1)
@@ -369,6 +373,9 @@ def interpolate_kinematic_track(
         t0, r0 = valid_points[i]
         t1, r1 = valid_points[i + 1]
         if t0 <= target_time <= t1:
+            dt0 = abs((target_time - t0).total_seconds())
+            dt1 = abs((t1 - target_time).total_seconds())
+            is_valid_time = (dt0 <= MAX_AIS_IMAGERY_TIME_DIFF_SECONDS) and (dt1 <= MAX_AIS_IMAGERY_TIME_DIFF_SECONDS)
             total_dt = (t1 - t0).total_seconds()
             if total_dt > max_gap_seconds or total_dt <= 1.0:
                 break
@@ -452,6 +459,7 @@ def interpolate_kinematic_track(
                 "method": "cubic_hermite_spline",
                 "track_points_count": len(valid_points),
                 "representative_record": r1 if u >= 0.5 else r0,
+                "is_valid_time": is_valid_time,
             }
 
     # Case 2: Extrapolation from anchor point (before first point or after last point)
@@ -463,6 +471,7 @@ def interpolate_kinematic_track(
         prior_point = valid_points[1] if len(valid_points) >= 2 else None
 
     dt = (target_time - anchor_ts).total_seconds()
+    is_valid_time = abs(dt) <= MAX_AIS_IMAGERY_TIME_DIFF_SECONDS
     spd = anchor_r.get("speed") if anchor_r.get("speed") is not None else anchor_r.get("sog")
     hdg = anchor_r.get("heading") if anchor_r.get("heading") is not None else anchor_r.get("course")
 
@@ -517,6 +526,7 @@ def interpolate_kinematic_track(
         "method": method,
         "track_points_count": len(valid_points),
         "representative_record": anchor_r,
+        "is_valid_time": is_valid_time,
     }
 
 
@@ -653,6 +663,10 @@ def extract_ghost_vessels(
             bbox.min_latitude <= lat <= bbox.max_latitude
             and bbox.min_longitude <= lon <= bbox.max_longitude
         ):
+            if not cand.get("is_valid_time", True):
+                continue
+            if abs(cand.get("delta_seconds", 0.0)) > MAX_AIS_IMAGERY_TIME_DIFF_SECONDS:
+                continue
             seen_keys.add(v_key)
             ghosts.append({
                 "mmsi": vessel.get("mmsi"),
@@ -731,16 +745,16 @@ class CorrelateDetectionsWithAIS:
         return True
 
     def get_max_dead_reckoning_seconds(self) -> float:
-        """Fetch maximum dead-reckoning time window, defaulting to 7200s (2 hours)."""
+        """Fetch maximum dead-reckoning time window, strictly capped at 300s (5 minutes)."""
         if self._settings_repo is not None:
             try:
                 cv_settings = self._settings_repo.get_section("cv") or {}
                 raw = cv_settings.get("ais_max_dead_reckoning_seconds")
                 if raw is not None:
-                    return max(60.0, float(raw))
+                    return min(MAX_AIS_IMAGERY_TIME_DIFF_SECONDS, max(1.0, float(raw)))
             except Exception:
                 pass
-        return 7200.0
+        return MAX_AIS_IMAGERY_TIME_DIFF_SECONDS
 
     def execute(
         self,
@@ -765,8 +779,8 @@ class CorrelateDetectionsWithAIS:
 
         if enable_kinematics is None:
             enable_kinematics = self.get_kinematics_enabled()
-        if max_propagation_seconds is None or max_propagation_seconds <= 0.0:
-            max_propagation_seconds = self.get_max_dead_reckoning_seconds()
+        if max_propagation_seconds is None or max_propagation_seconds <= 0.0 or max_propagation_seconds > MAX_AIS_IMAGERY_TIME_DIFF_SECONDS:
+            max_propagation_seconds = min(MAX_AIS_IMAGERY_TIME_DIFF_SECONDS, self.get_max_dead_reckoning_seconds())
 
         target_time: Optional[datetime] = None
         if scan.acquisition and getattr(scan.acquisition, "acquired_at", None):
@@ -948,12 +962,13 @@ class CorrelateDetectionsWithAIS:
 
         prepared_candidates: list[dict[str, Any]] = []
         for v_key, records in vessel_groups.items():
+            is_valid_time = True
             if enable_kinematics and target_time is not None:
                 try:
                     interp_res = interpolate_kinematic_track(
                         records,
                         target_time,
-                        max_gap_seconds=max_propagation_seconds,
+                        max_gap_seconds=7200.0,
                     )
                     eff_lat = interp_res["latitude"]
                     eff_lon = interp_res["longitude"]
@@ -965,6 +980,9 @@ class CorrelateDetectionsWithAIS:
                     ellipse = interp_res.get("uncertainty_ellipse")
                     method = interp_res.get("method", "dead_reckoning")
                     rep_record = interp_res.get("representative_record") or records[-1]
+                    is_valid_time = interp_res.get("is_valid_time", True)
+                    if abs(delta_seconds) > MAX_AIS_IMAGERY_TIME_DIFF_SECONDS:
+                        is_valid_time = False
                 except Exception:
                     rep_record = records[-1]
                     eff_lat = float(rep_record.get("latitude", 0.0))
@@ -976,6 +994,7 @@ class CorrelateDetectionsWithAIS:
                     prop_dist = 0.0
                     ellipse = compute_uncertainty_ellipse(0.0)
                     method = "fallback"
+                    is_valid_time = False
             else:
                 rep_record = records[-1]
                 try:
@@ -986,10 +1005,26 @@ class CorrelateDetectionsWithAIS:
                 raw_lat = eff_lat
                 raw_lon = eff_lon
                 dead_reckoned = False
-                delta_seconds = 0.0
+                ts = _parse_timestamp(rep_record.get("timestamp"))
+                if target_time is not None and ts is not None:
+                    delta_seconds = (target_time - ts).total_seconds()
+                    is_valid_time = abs(delta_seconds) <= MAX_AIS_IMAGERY_TIME_DIFF_SECONDS
+                else:
+                    delta_seconds = 0.0
+                    is_valid_time = True
                 prop_dist = 0.0
                 ellipse = compute_uncertainty_ellipse(0.0)
                 method = "static"
+
+            # Check all records for this vessel: if target_time is present and records have timestamps,
+            # enforce that at least one AIS position ping is within 5 minutes (300 seconds).
+            if target_time is not None:
+                parsed_ts = [_parse_timestamp(r.get("timestamp")) for r in records]
+                valid_ts = [t for t in parsed_ts if t is not None]
+                if valid_ts:
+                    min_diff = min(abs((target_time - t).total_seconds()) for t in valid_ts)
+                    if min_diff > MAX_AIS_IMAGERY_TIME_DIFF_SECONDS:
+                        is_valid_time = False
 
             prepared_candidates.append({
                 "vessel": rep_record,
@@ -1003,6 +1038,7 @@ class CorrelateDetectionsWithAIS:
                 "prop_dist": prop_dist,
                 "uncertainty_ellipse": ellipse,
                 "interpolation_method": method,
+                "is_valid_time": is_valid_time,
             })
 
         # 3. Build candidate match evaluation: (det_idx, cand, dist_to_box, dist_to_center, m_dist, likelihood, joint_spatial)
@@ -1019,6 +1055,11 @@ class CorrelateDetectionsWithAIS:
             radar_sp = p_det.get("spatial_uncertainty") or {}
 
             for cand in prepared_candidates:
+                # Discard candidates whose AIS ping time difference exceeds 5 minutes (300s)
+                if not cand.get("is_valid_time", True):
+                    continue
+                if target_time is not None and abs(cand.get("delta_seconds", 0.0)) > MAX_AIS_IMAGERY_TIME_DIFF_SECONDS:
+                    continue
                 vessel = cand["vessel"]
                 v_key = str(vessel.get("mmsi") or vessel.get("vessel_id") or id(vessel))
                 cand_lat = cand["eff_lat"]
@@ -1390,9 +1431,11 @@ class CorrelateDetectionsWithAIS:
         time_range = None
         if scan.acquisition and getattr(scan.acquisition, "acquired_at", None):
             acq_time = scan.acquisition.acquired_at
+            if isinstance(acq_time, str):
+                acq_time = _parse_timestamp(acq_time)
             if isinstance(acq_time, datetime):
-                start_dt = acq_time - timedelta(hours=2)
-                end_dt = acq_time + timedelta(hours=2)
+                start_dt = acq_time - timedelta(seconds=MAX_AIS_IMAGERY_TIME_DIFF_SECONDS)
+                end_dt = acq_time + timedelta(seconds=MAX_AIS_IMAGERY_TIME_DIFF_SECONDS)
                 time_range = (start_dt, end_dt)
 
         positions: list[dict[str, Any]] = []
@@ -1406,8 +1449,7 @@ class CorrelateDetectionsWithAIS:
                 )
             except Exception:
                 positions = []
-
-        if not positions:
+        else:
             try:
                 positions = self._ais_repo.get_vessel_positions(
                     bbox=expanded_bbox,

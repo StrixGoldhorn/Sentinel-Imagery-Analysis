@@ -173,16 +173,16 @@ class TestAISCorrelationWithInterpolation(unittest.TestCase):
         self.img_h = 1000
 
     def test_multi_point_track_correlates_to_satellite_aperture(self):
-        # Ship ping 1 at 12:00:00 (10 min before overpass)
-        t0 = datetime(2026, 9, 1, 12, 0, 0, tzinfo=timezone.utc)
-        # Ship ping 2 at 12:20:00 (10 min after overpass)
-        t1 = datetime(2026, 9, 1, 12, 20, 0, tzinfo=timezone.utc)
+        # Ship ping 1 at 12:07:00 (3 min before overpass, <= 5 min)
+        t0 = datetime(2026, 9, 1, 12, 7, 0, tzinfo=timezone.utc)
+        # Ship ping 2 at 12:13:00 (3 min after overpass, <= 5 min)
+        t1 = datetime(2026, 9, 1, 12, 13, 0, tzinfo=timezone.utc)
 
         # Ship heading East (90 deg) at 15 knots (~7.716 m/s)
-        # Total distance over 1200s is ~9259m (~0.0832 deg Lon)
-        # At midpoint 12:10:00, ship is halfway
-        lon0 = 103.7084
-        lon1 = 103.7916
+        # Total distance over 360s is ~2778m (~0.0250 deg Lon)
+        # At midpoint 12:10:00, ship is halfway at 103.7500
+        lon0 = 103.7375
+        lon1 = 103.7625
         lat = 1.2500
 
         vessel_track = [
@@ -206,6 +206,28 @@ class TestAISCorrelationWithInterpolation(unittest.TestCase):
         self.assertEqual(c_ais["interpolation_method"], "cubic_hermite_spline")
         self.assertIn("uncertainty_ellipse", c_ais)
         self.assertGreater(c_ais["uncertainty_ellipse"]["semi_major_m"], 0.0)
+
+    def test_multi_point_track_rejected_when_ais_diff_exceeds_5_minutes(self):
+        # Ship ping 1 at 12:00:00 (10 min before overpass > 5 min limit)
+        t0 = datetime(2026, 9, 1, 12, 0, 0, tzinfo=timezone.utc)
+        # Ship ping 2 at 12:20:00 (10 min after overpass > 5 min limit)
+        t1 = datetime(2026, 9, 1, 12, 20, 0, tzinfo=timezone.utc)
+
+        vessel_track = [
+            {"mmsi": "999888777", "vessel_name": "STALE RUNNER", "latitude": 1.2500, "longitude": 103.7084, "speed": 15.0, "heading": 90.0, "timestamp": t0.isoformat()},
+            {"mmsi": "999888777", "vessel_name": "STALE RUNNER", "latitude": 1.2500, "longitude": 103.7916, "speed": 15.0, "heading": 90.0, "timestamp": t1.isoformat()},
+        ]
+
+        det = ShipDetection(x=480, y=480, width=40, height=40, confidence=0.92)
+
+        use_case = CorrelateDetectionsWithAIS(StubRepo(vessel_track))
+        results = use_case.execute([det], self.scan, self.img_w, self.img_h, tolerance_meters=150.0, enable_kinematics=True)
+
+        self.assertEqual(len(results), 1)
+        r = results[0]
+        self.assertFalse(r["is_correlated"])
+        self.assertEqual(r["correlation_status"], "uncorrelated")
+        self.assertIsNone(r["correlated_ais"])
 
 
 if __name__ == "__main__":
