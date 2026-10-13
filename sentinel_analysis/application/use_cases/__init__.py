@@ -1,5 +1,9 @@
 from sentinel_analysis.application.use_cases.analyze_mission_passes import AnalyzeMissionPasses
 from sentinel_analysis.application.use_cases.annotate_tiles import AnnotationSummary, BatchAnnotateTiles
+from sentinel_analysis.application.use_cases.backfill_aoi_baseline import (
+    BackfillAoiBaseline,
+    GetAoiBaseline,
+)
 from sentinel_analysis.application.use_cases.build_relationship_graph import BuildRelationshipGraph
 from sentinel_analysis.application.use_cases.correlate_ais_detections import (
     CorrelateDetectionsWithAIS,
@@ -109,6 +113,7 @@ __all__ = [
     "AnalyzeMissionPasses",
     "AnnotationSummary",
     "ArchiveScan",
+    "BackfillAoiBaseline",
     "BatchAnnotateTiles",
     "BuildRelationshipGraph",
     "CalculateTacticalMeasurements",
@@ -143,6 +148,7 @@ __all__ = [
     "GenerateIntelligenceBrief",
     "GenerateTacticalExplainability",
     "GeofenceMonitor",
+    "GetAoiBaseline",
     "GetOperationalMetrics",
     "GetPolarimetricPresetsUseCase",
     "GetReviewDetails",

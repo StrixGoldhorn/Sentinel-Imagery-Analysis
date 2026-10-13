@@ -7,6 +7,7 @@ from sentinel_analysis.application.shutdown import shutdown_coordinator
 from sentinel_analysis.application.use_cases import (
     AddAreaOfInterest,
     AnalyzeMissionPasses,
+    BackfillAoiBaseline,
     CheckAndScheduleAOIs,
     CompareDetectionAlgorithms,
     CompareRepeatPasses,
@@ -39,6 +40,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateIntelligenceBrief,
     GenerateTacticalExplainability,
     GeofenceMonitor,
+    GetAoiBaseline,
     GetAoiRevisitCalendar,
     GetOperationalMetrics,
     GetPolarimetricPresetsUseCase,
@@ -97,6 +99,7 @@ from sentinel_analysis.infrastructure.imagery.sar_radiometry import OpenCVSarRad
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
 from sentinel_analysis.infrastructure.monitoring import OperationalMetricsCollector
 from sentinel_analysis.infrastructure.persistence.filesystem_scans import FilesystemScanRepository
+from sentinel_analysis.infrastructure.persistence.filesystem_aoi_baseline import FileSystemAOIBaselineRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
@@ -129,6 +132,7 @@ class ApplicationContainer:
 
         self.scan_repository = FilesystemScanRepository(settings.output_root)
         self.aoi_repository = SQLiteAreaOfInterestRepository(settings.database_path)
+        self.aoi_baseline_repository = FileSystemAOIBaselineRepository(settings.output_root / "baselines")
         self.ais_repository = SQLiteAISRepository(settings.database_path)
         self.post_pass_repository = SQLitePostPassIngestionRepository(settings.database_path)
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
@@ -367,6 +371,17 @@ class ApplicationContainer:
         self.recommend_acquisition_opportunities = RecommendAcquisitionOpportunities(
             revisit_calendar=self.get_aoi_revisit_calendar,
             aoi_repository=self.aoi_repository,
+        )
+        self.backfill_aoi_baseline = BackfillAoiBaseline(
+            aoi_repository=self.aoi_repository,
+            scan_repository=self.scan_repository,
+            baseline_repository=self.aoi_baseline_repository,
+            asf_client=self.asf_client,
+            detection_saver=save_detection_results,
+        )
+        self.get_aoi_baseline = GetAoiBaseline(
+            aoi_repository=self.aoi_repository,
+            baseline_repository=self.aoi_baseline_repository,
         )
         scheduler_aoi_interval = 30.0
         scheduler_sar_interval = 60.0

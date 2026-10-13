@@ -358,3 +358,87 @@ def scan_aoi(aoi_id: int):
     res["start_date"] = start_date.isoformat()
     res["end_date"] = end_date.isoformat()
     return jsonify(res), 201
+
+
+@blueprint.get("/api/aoi/<int:aoi_id>/baseline")
+def get_aoi_baseline(aoi_id: int):
+    cnt = container()
+    try:
+        baseline = cnt.get_aoi_baseline.execute(aoi_id)
+        if baseline is None:
+            return jsonify({"status": "not_found", "message": f"No baseline built yet for AOI #{aoi_id}", "baseline": None}), 404
+        return jsonify({"status": "success", "baseline": baseline})
+    except Exception as exc:
+        if "not found" in str(exc).lower():
+            return jsonify({"status": "error", "message": str(exc)}), 404
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
+
+@blueprint.post("/api/aoi/<int:aoi_id>/baseline/backfill")
+def backfill_aoi_baseline(aoi_id: int):
+    cnt = container()
+    payload = request.get_json(silent=True) or {} if request.is_json else {}
+
+    days_back = 90
+    if "days_back" in payload:
+        try:
+            days_back = int(payload["days_back"])
+        except (ValueError, TypeError):
+            pass
+    elif "days_back" in request.args:
+        try:
+            days_back = int(request.args["days_back"])
+        except (ValueError, TypeError):
+            pass
+
+    max_scenes = 25
+    if "max_scenes" in payload:
+        try:
+            max_scenes = int(payload["max_scenes"])
+        except (ValueError, TypeError):
+            pass
+
+    min_persistence = 0.40
+    if "min_persistence_pct" in payload:
+        try:
+            min_persistence = float(payload["min_persistence_pct"])
+        except (ValueError, TypeError):
+            pass
+
+    cluster_radius = 150.0
+    if "cluster_radius_m" in payload:
+        try:
+            cluster_radius = float(payload["cluster_radius_m"])
+        except (ValueError, TypeError):
+            pass
+
+    start_date = None
+    if "start_date" in payload and payload["start_date"]:
+        try:
+            start_date = datetime.fromisoformat(str(payload["start_date"]).replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    end_date = None
+    if "end_date" in payload and payload["end_date"]:
+        try:
+            end_date = datetime.fromisoformat(str(payload["end_date"]).replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    try:
+        result = cnt.backfill_aoi_baseline.execute(
+            aoi_id=aoi_id,
+            days_back=days_back,
+            start_date=start_date,
+            end_date=end_date,
+            min_persistence_pct=min_persistence,
+            cluster_radius_m=cluster_radius,
+            max_scenes=max_scenes,
+        )
+        return jsonify({"status": "success", "baseline": result}), 201
+    except Exception as exc:
+        if "not found" in str(exc).lower():
+            return jsonify({"status": "error", "message": str(exc)}), 404
+        return jsonify({"status": "error", "message": str(exc)}), 500
+
