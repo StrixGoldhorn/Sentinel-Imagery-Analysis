@@ -74,6 +74,7 @@ from sentinel_analysis.infrastructure.detection.onnx_detector import DeepLearnin
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
 from sentinel_analysis.infrastructure.geocoding import NominatimLocationResolver
 from sentinel_analysis.infrastructure.imagery.cache import FilesystemTileCache
+from sentinel_analysis.infrastructure.imagery.chip_renderer import OpenCVChipRenderer
 from sentinel_analysis.infrastructure.imagery.copernicus import CopernicusImageryProvider, CopernicusTokenProvider
 from sentinel_analysis.infrastructure.imagery.geotiff import PillowGeoTIFFWriter
 from sentinel_analysis.infrastructure.imagery.stitching import PillowImageStitcher
@@ -194,10 +195,12 @@ class ApplicationContainer:
         self.generate_tactical_explainability = GenerateTacticalExplainability(self.scan_repository)
         self.reidentify_vessels = ReidentifyVessels(self.scan_repository)
         self.decompose_risk_score = DecomposeRiskScore(self.scan_repository)
+        self.chip_renderer = OpenCVChipRenderer()
         self.generate_chip_gallery = GenerateChipGallery(
             scan_repository=self.scan_repository,
             ais_repository=self.ais_repository,
             sentinel2_client=self.sentinel2_client,
+            chip_renderer=self.chip_renderer,
         )
         self.geofence_monitor = GeofenceMonitor()
         self.dispatch_alert = DispatchMaritimeAlert(self.webhook_repository, self.webhook_dispatcher)

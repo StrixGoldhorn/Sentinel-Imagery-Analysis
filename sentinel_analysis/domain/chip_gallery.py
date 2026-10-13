@@ -54,12 +54,23 @@ class CandidateChipGallery:
     target_coordinates: dict[str, Any]
     chips: dict[str, ChipArtifact] = field(default_factory=dict)
     summary: dict[str, Any] = field(default_factory=dict)
+    candidate_id: Optional[str] = None
+    generated_at: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.candidate_id is None:
+            self.candidate_id = f"{self.scan_id}_det_{self.detection_index}"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "detection_index": self.detection_index,
             "scan_id": self.scan_id,
+            "candidate_id": self.candidate_id,
             "target_coordinates": dict(self.target_coordinates),
             "chips": {k: v.to_dict() for k, v in self.chips.items()},
             "summary": dict(self.summary),
         }
+        if self.generated_at is not None:
+            data["generated_at"] = self.generated_at
+        return data
+

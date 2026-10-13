@@ -215,8 +215,9 @@ class ReidentifyVessels:
                 scan = self._get_scan(primary_id)
                 if scan and scan.image_path:
                     scan_dir = Path(scan.image_path).parent
-                    out_path = scan_dir / "reidentification_results.json"
-                    out_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+                    if scan_dir.is_dir() and scan_dir not in (Path("."), Path(""), Path.cwd()):
+                        out_path = scan_dir / "reidentification_results.json"
+                        out_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
             except Exception as exc:
                 logger.warning("Could not persist re-identification results: %s", exc)
 
