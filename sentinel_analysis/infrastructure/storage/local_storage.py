@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 class LocalStorageManager:
     """Manages disk usage tracking, .tar.gz scan packaging, and cache eviction."""
 
+    RESERVED_DIRECTORIES: frozenset[str] = frozenset({"archives", "baselines"})
+
     def __init__(
         self,
         output_root: Path | str,
@@ -52,6 +54,7 @@ class LocalStorageManager:
             or folder_name != folder_name.strip()
             or Path(folder_name).name != folder_name
             or folder_name in {".", ".."}
+            or folder_name in self.RESERVED_DIRECTORIES
         ):
             raise ValueError(f"Invalid scan folder name: {folder_name}")
         scan_dir = (self.output_root / folder_name).resolve()
@@ -83,7 +86,7 @@ class LocalStorageManager:
 
         scan_dirs = [
             p for p in self.output_root.iterdir()
-            if p.is_dir() and p.name != "archives" and not p.name.startswith(".")
+            if p.is_dir() and p.name not in self.RESERVED_DIRECTORIES and not p.name.startswith(".")
         ]
         scan_count = len(scan_dirs)
 
@@ -172,7 +175,7 @@ class LocalStorageManager:
             for entry in list(self.output_root.iterdir()):
                 if (
                     entry.is_dir()
-                    and entry.name != "archives"
+                    and entry.name not in self.RESERVED_DIRECTORIES
                     and not entry.name.startswith(".")
                 ):
                     scan_dt: Optional[datetime] = None

@@ -98,6 +98,20 @@ class CompleteAdapter:
     def clear_cached_forecast(self, aoi_id):
         return None
 
+    def update_operations_policy(
+        self,
+        aoi_id,
+        priority=None,
+        collection_budget_usd=None,
+        budget_spent_usd=None,
+        desired_revisit_rate_hours=None,
+        retention_policy_days=None,
+    ):
+        return None
+
+    def record_expenditure(self, aoi_id, amount_usd):
+        return None
+
 
     def save_records(self, records, source_plugin):
         return 0
