@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+
+{% block title %}Satellite Provider Health & Quotas - Sentinel Maritime{% endblock %}
+
+{% block extra_head %}
+<style>
+    .prov-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+    .prov-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text-primary, #1e293b);
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .prov-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .prov-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.65rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .badge-healthy { background: #dcfce7; color: #15803d; }
+    .badge-degraded { background: #fef9c3; color: #854d0e; }
+    .badge-down { background: #fee2e2; color: #b91c1c; }
+    .badge-maintenance { background: #e0f2fe; color: #0369a1; }
+
+    .prov-summary-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .summary-stat-card {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 0.75rem;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .stat-label {
+        font-size: 0.8rem;
+        color: var(--text-secondary, #64748b);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.35rem;
+    }
+    .stat-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        color: var(--text-primary, #0f172a);
+    }
+
+    .prov-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 2rem;
+    }
+    .prov-card {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .prov-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .prov-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid var(--border-color, #f1f5f9);
+        padding-bottom: 0.75rem;
+    }
+    .prov-name {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text-primary, #1e293b);
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .prov-id {
+        font-size: 0.75rem;
+        color: var(--text-secondary, #64748b);
+        font-family: monospace;
+    }
+    .prov-metrics-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .metric-item {
+        background: var(--bg-hover, #f8fafc);
+        border-radius: 0.5rem;
+        padding: 0.6rem 0.75rem;
+    }
+    .metric-title {
+        font-size: 0.72rem;
+        color: var(--text-secondary, #64748b);
+        margin-bottom: 0.2rem;
+    }
+    .metric-val {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text-primary, #0f172a);
+    }
+
+    .quota-section {
+        background: var(--bg-hover, #f8fafc);
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    .quota-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        color: var(--text-secondary, #64748b);
+        margin-bottom: 0.35rem;
+    }
+    .progress-bar-bg {
+        height: 8px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 0.35rem;
+    }
+    .progress-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .fill-green { background: #22c55e; }
+    .fill-yellow { background: #eab308; }
+    .fill-red { background: #ef4444; }
+
+    .prov-card-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: auto;
+        padding-top: 0.75rem;
+        border-top: 1px solid var(--border-color, #f1f5f9);
+    }
+    .btn-probe {
+        flex: 1;
+        background: #0284c7;
+        color: #ffffff;
+        border: none;
+        border-radius: 0.375rem;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+    .btn-probe:hover { background: #0369a1; }
+    .btn-quota {
+        flex: 1;
+        background: #f1f5f9;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.375rem;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+    .btn-quota:hover { background: #e2e8f0; }
+
+    /* Modal styling */
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(2px);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-dialog {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #cbd5e1);
+        border-radius: 0.75rem;
+        width: 100%;
+        max-width: 440px;
+        padding: 1.5rem;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+    }
+    .modal-title {
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+        color: var(--text-primary, #0f172a);
+    }
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    .form-group label {
+        display: block;
+        font-size: 0.82rem;
+        color: var(--text-secondary, #475569);
+        margin-bottom: 0.35rem;
+    }
+    .form-group input {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.375rem;
+        font-size: 0.9rem;
+    }
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 1280px; margin: 0 auto; padding: 1.5rem 1rem;">
+    <!-- Dashboard Header -->
+    <div class="prov-header">
+        <div>
+            <h1 class="prov-title">
+                <span>🛰️</span> Satellite Provider Health & Quotas
+            </h1>
+            <p style="color: var(--text-secondary, #64748b); font-size: 0.88rem; margin-top: 0.25rem;">
+                Live operational status, latency tracking, telemetry error rates, and API usage quotas.
+            </p>
+        </div>
+        <div class="prov-actions">
+            {% if dashboard.overall_status.value == 'HEALTHY' %}
+                <span class="prov-badge badge-healthy">System: Healthy</span>
+            {% elif dashboard.overall_status.value == 'DEGRADED' %}
+                <span class="prov-badge badge-degraded">System: Degraded</span>
+            {% else %}
+                <span class="prov-badge badge-down">System: Critical Outage</span>
+            {% endif %}
+            <button onclick="location.reload()" class="btn-quota" style="height: 34px;">
+                🔄 Refresh
+            </button>
+        </div>
+    </div>
+
+    <!-- Summary KPI Bar -->
+    <div class="prov-summary-bar">
+        <div class="summary-stat-card">
+            <div class="stat-label">Total Providers</div>
+            <div class="stat-value">{{ dashboard.total_providers }}</div>
+        </div>
+        <div class="summary-stat-card">
+            <div class="stat-label">Operational (Healthy)</div>
+            <div class="stat-value" style="color: #16a34a;">{{ dashboard.healthy_count }}</div>
+        </div>
+        <div class="summary-stat-card">
+            <div class="stat-label">Degraded Latency</div>
+            <div class="stat-value" style="color: #ca8a04;">{{ dashboard.degraded_count }}</div>
+        </div>
+        <div class="summary-stat-card">
+            <div class="stat-label">Down / Outage</div>
+            <div class="stat-value" style="color: #dc2626;">{{ dashboard.down_count }}</div>
+        </div>
+    </div>
+
+    <!-- Provider Cards Grid -->
+    <div class="prov-grid" id="providersGrid">
+        {% for p in dashboard.providers %}
+        {% set status_lower = p.status.lower() %}
+        {% set quota = p.quota %}
+        {% set req_pct = (quota.daily_requests_used / quota.daily_request_limit * 100) if (quota and quota.daily_request_limit > 0) else 0 %}
+        {% set fill_class = 'fill-green' if req_pct < 70 else ('fill-yellow' if req_pct < 90 else 'fill-red') %}
+        <div class="prov-card" id="card-{{ p.provider_id }}">
+            <div class="prov-card-header">
+                <div>
+                    <div class="prov-name">
+                        {% if p.provider_id == 'copernicus' %}🇪🇺 Copernicus CDSE
+                        {% elif p.provider_id == 'asf' %}🇺🇸 ASF DAAC (SAR)
+                        {% elif p.provider_id == 'umbra' %}📡 Umbra Space SAR
+                        {% elif p.provider_id == 'planet' %}🌍 PlanetScope Optical
+                        {% elif p.provider_id == 'n2yo' %}🛰️ N2YO Pass Predictor
+                        {% else %}🛰️ {{ p.provider_id|title }}
+                        {% endif %}
+                    </div>
+                    <div class="prov-id">{{ p.provider_id }}</div>
+                </div>
+                <span class="prov-badge badge-{{ status_lower }}" id="badge-{{ p.provider_id }}">
+                    {{ p.status }}
+                </span>
+            </div>
+
+            <div class="prov-metrics-grid">
+                <div class="metric-item">
+                    <div class="metric-title">EMA Latency</div>
+                    <div class="metric-val" id="lat-{{ p.provider_id }}">
+                        {{ '%.1f'|format(p.latency_ms) }} ms
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-title">Error Rate</div>
+                    <div class="metric-val" id="err-{{ p.provider_id }}">
+                        {{ '%.1f'|format(p.error_rate_pct) }}%
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-title">Consecutive Failures</div>
+                    <div class="metric-val" style="color: {{ '#dc2626' if p.consecutive_failures > 0 else '#64748b' }};">
+                        {{ p.consecutive_failures }}
+                    </div>
+                </div>
+                <div class="metric-item">
+                    <div class="metric-title">Available for Tasking</div>
+                    <div class="metric-val" style="color: {{ '#16a34a' if p.is_available else '#dc2626' }};">
+                        {{ "YES" if p.is_available else "NO" }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quota Bar -->
+            {% if quota %}
+            <div class="quota-section">
+                <div class="quota-header">
+                    <span>Daily Quota</span>
+                    <span><strong>{{ quota.daily_requests_used }}</strong> / {{ quota.daily_request_limit }} reqs</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill {{ fill_class }}" style="width: {{ [req_pct, 100]|min }}%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #64748b; margin-top: 0.35rem;">
+                    <span>Remaining: <strong>{{ quota.daily_requests_remaining }}</strong> reqs</span>
+                    {% if quota.credit_balance_usd is not none %}
+                    <span>Balance: <strong>${{ '%.2f'|format(quota.credit_balance_usd) }}</strong></span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="prov-card-actions">
+                <button class="btn-probe" onclick="probeProvider('{{ p.provider_id }}')">
+                    ⚡ Probe Health
+                </button>
+                <button class="btn-quota" onclick="openQuotaModal('{{ p.provider_id }}', {{ quota.daily_request_limit if quota else 1000 }}, {{ quota.credit_balance_usd if (quota and quota.credit_balance_usd is not none) else 0 }})">
+                    ⚙️ Edit Quota
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Quota Edit Modal -->
+<div class="modal-overlay" id="quotaModal">
+    <div class="modal-dialog">
+        <h2 class="modal-title" id="modalTitle">Edit Provider Quota</h2>
+        <form id="quotaForm" onsubmit="submitQuotaUpdate(event)">
+            <input type="hidden" id="modalProviderId" value="" />
+            <div class="form-group">
+                <label for="modalDailyLimit">Daily Request Limit</label>
+                <input type="number" id="modalDailyLimit" min="1" max="100000" required />
+            </div>
+            <div class="form-group">
+                <label for="modalCreditBalance">Credit Balance (USD)</label>
+                <input type="number" id="modalCreditBalance" step="0.01" min="0" />
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem;">
+                <input type="checkbox" id="modalResetCount" style="width: auto;" />
+                <label for="modalResetCount" style="margin-bottom: 0; cursor: pointer;">Reset daily requests count to 0</label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-quota" onclick="closeQuotaModal()">Cancel</button>
+                <button type="submit" class="btn-probe">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    async function probeProvider(providerId) {
+        try {
+            const btn = event.target;
+            btn.textContent = 'Probing...';
+            btn.disabled = true;
+
+            const res = await fetch(`/api/providers/${providerId}/check`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                const rec = data.record;
+                const badge = document.getElementById(`badge-${providerId}`);
+                if (badge) {
+                    badge.className = `prov-badge badge-${rec.status.toLowerCase()}`;
+                    badge.textContent = rec.status;
+                }
+                const latEl = document.getElementById(`lat-${providerId}`);
+                if (latEl) latEl.textContent = `${rec.latency_ms.toFixed(1)} ms`;
+                const errEl = document.getElementById(`err-${providerId}`);
+                if (errEl) errEl.textContent = `${rec.error_rate_pct.toFixed(1)}%`;
+            }
+        } catch (err) {
+            console.error('Probe failed:', err);
+            alert('Failed to probe provider: ' + err.message);
+        } finally {
+            location.reload();
+        }
+    }
+
+    function openQuotaModal(providerId, currentLimit, currentCredit) {
+        document.getElementById('modalProviderId').value = providerId;
+        document.getElementById('modalTitle').textContent = `Edit Quota: ${providerId.toUpperCase()}`;
+        document.getElementById('modalDailyLimit').value = currentLimit;
+        document.getElementById('modalCreditBalance').value = currentCredit;
+        document.getElementById('modalResetCount').checked = false;
+        document.getElementById('quotaModal').style.display = 'flex';
+    }
+
+    function closeQuotaModal() {
+        document.getElementById('quotaModal').style.display = 'none';
+    }
+
+    async function submitQuotaUpdate(e) {
+        e.preventDefault();
+        const providerId = document.getElementById('modalProviderId').value;
+        const dailyLimit = parseInt(document.getElementById('modalDailyLimit').value, 10);
+        const creditBalance = parseFloat(document.getElementById('modalCreditBalance').value);
+        const resetDaily = document.getElementById('modalResetCount').checked;
+
+        try {
+            const res = await fetch(`/api/providers/${providerId}/quota`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    daily_request_limit: dailyLimit,
+                    credit_balance_usd: isNaN(creditBalance) ? null : creditBalance,
+                    reset_daily_requests: resetDaily
+                })
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                closeQuotaModal();
+                location.reload();
+            } else {
+                alert('Error updating quota: ' + (data.error || 'Unknown error'));
+            }
+        } catch (err) {
+            alert('Request failed: ' + err.message);
+        }
+    }
+</script>
+{% endblock %}

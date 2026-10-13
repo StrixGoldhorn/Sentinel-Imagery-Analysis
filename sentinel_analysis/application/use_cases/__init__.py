@@ -47,6 +47,11 @@ from sentinel_analysis.application.use_cases.generate_dem import GenerateDEM
 from sentinel_analysis.application.use_cases.generate_tactical_explainability import GenerateTacticalExplainability
 from sentinel_analysis.application.use_cases.reidentify_vessels import ReidentifyVessels
 from sentinel_analysis.application.use_cases.generate_traffic_heatmap import GenerateHistoricalTrafficHeatmap
+from sentinel_analysis.application.use_cases.get_provider_health import (
+    CheckProviderHealth,
+    GetProviderHealthDashboard,
+    UpdateProviderQuotaUseCase,
+)
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
 from sentinel_analysis.application.use_cases.get_synchronized_views import GetSynchronizedViews
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
@@ -128,6 +133,7 @@ __all__ = [
 
     "assess_dark_vessel",
     "extract_ghost_vessels",
+    "CheckProviderHealth",
     "CreateScan",
     "CrossValidateOptical",
     "DecomposeRiskScore",
@@ -141,6 +147,7 @@ __all__ = [
     "EnhanceScanRadiometry",
     "EvaluateAcquisitionSuitability",
     "EvaluatePassAlerts",
+    "CheckProviderHealth",
     "EnforceAoiRetentionPolicy",
     "ExecuteStorageRetention",
     "ExportGeospatial",
@@ -155,6 +162,7 @@ __all__ = [
     "GetAoiBaseline",
     "GetOperationalMetrics",
     "GetPolarimetricPresetsUseCase",
+    "GetProviderHealthDashboard",
     "GetReviewDetails",
     "GetScan",
     "GetScanHistogram",
@@ -190,6 +198,7 @@ __all__ = [
     "ToggleScraper",
     "TriggerAutomaticAISScrape",
     "UpdateAreaOfInterestPolicy",
+    "UpdateProviderQuotaUseCase",
     "UpdateScraper",
     "UpdateScraperConfig",
     "UpdateSettings",

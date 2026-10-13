@@ -17,6 +17,7 @@ from sentinel_analysis.interfaces.web import (
     aois,
     observability,
     probes,
+    providers,
     review,
     scans,
     schedule,
@@ -65,6 +66,7 @@ def create_app(
     app.register_blueprint(storage.blueprint)
     app.register_blueprint(review.blueprint)
     app.register_blueprint(observability.blueprint)
+    app.register_blueprint(providers.blueprint)
     app.register_blueprint(settings_blueprint)
 
     @app.before_request

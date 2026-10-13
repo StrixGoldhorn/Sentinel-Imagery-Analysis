@@ -9,6 +9,7 @@ from sentinel_analysis.application.use_cases import (
     AnalyzeMissionPasses,
     BackfillAoiBaseline,
     CheckAndScheduleAOIs,
+    CheckProviderHealth,
     CompareDetectionAlgorithms,
     CompareRepeatPasses,
     CompareSatelliteProviders,
@@ -44,6 +45,7 @@ from sentinel_analysis.application.use_cases import (
     GetAoiRevisitCalendar,
     GetOperationalMetrics,
     GetPolarimetricPresetsUseCase,
+    GetProviderHealthDashboard,
     GetReviewDetails,
     GetScan,
     GetScanHistogram,
@@ -78,6 +80,7 @@ from sentinel_analysis.application.use_cases import (
     EnforceAoiRetentionPolicy,
     RecordAoiExpenditure,
     UpdateAreaOfInterestPolicy,
+    UpdateProviderQuotaUseCase,
     UpdateScraper,
     UpdateScraperConfig,
     UpdateSettings,
@@ -106,6 +109,7 @@ from sentinel_analysis.infrastructure.persistence.filesystem_aoi_baseline import
 from sentinel_analysis.infrastructure.persistence.sqlite_ais import SQLiteAISRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_aois import SQLiteAreaOfInterestRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_post_pass import SQLitePostPassIngestionRepository
+from sentinel_analysis.infrastructure.persistence.sqlite_provider_health import SQLiteProviderHealthRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_review import SQLiteReviewRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_settings import SQLiteSettingsRepository
 from sentinel_analysis.infrastructure.persistence.sqlite_webhooks import SQLiteWebhookRepository
@@ -141,6 +145,7 @@ class ApplicationContainer:
         self.settings_repository = SQLiteSettingsRepository(settings.database_path)
         self.webhook_repository = SQLiteWebhookRepository(settings.database_path)
         self.review_repository = SQLiteReviewRepository(settings.database_path)
+        self.provider_health_repository = SQLiteProviderHealthRepository(settings.database_path)
         self.observability_collector = OperationalMetricsCollector(
             database_path=settings.database_path,
             scans_dir=settings.output_root,
@@ -439,6 +444,9 @@ class ApplicationContainer:
             output_root=settings.output_root,
         )
         self.get_operational_metrics = GetOperationalMetrics(self.observability_collector)
+        self.get_provider_health = GetProviderHealthDashboard(self.provider_health_repository)
+        self.check_provider_health = CheckProviderHealth(self.provider_health_repository)
+        self.update_provider_quota = UpdateProviderQuotaUseCase(self.provider_health_repository)
 
     def shutdown(self, timeout: float = 2.0) -> None:
         """Gracefully shut down all background workers, schedulers, and active threads."""

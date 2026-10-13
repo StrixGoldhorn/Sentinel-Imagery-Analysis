@@ -135,8 +135,11 @@
                             <button type="button" class="dropdown-toggle-btn" aria-label="Toggle System menu" onclick="toggleNavDropdown(event)">▾</button>
                         </div>
                         <div class="dropdown-menu">
+                            <a href="/providers" class="dropdown-item {{ 'active' if request.path == '/providers' else '' }}">
+                                <span>🛰️</span> Satellite Providers &amp; Quotas
+                            </a>
                             <a href="/scrapers" class="dropdown-item {{ 'active' if request.path == '/scrapers' else '' }}">
-                                <span>🔌</span> Provider Health
+                                <span>🔌</span> AIS Scrapers &amp; Feeds
                             </a>
                             <a href="/observability" class="dropdown-item {{ 'active' if request.path == '/observability' else '' }}">
                                 <span>📊</span> Observability & Metrics
