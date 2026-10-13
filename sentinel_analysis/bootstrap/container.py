@@ -38,6 +38,7 @@ from sentinel_analysis.application.use_cases import (
     GetReviewDetails,
     GetScan,
     GetStorageQuota,
+    GetSynchronizedViews,
     GetScraperDetail,
     GetScraperLogsUseCase,
     GetSettings,
@@ -203,6 +204,11 @@ class ApplicationContainer:
             scan_repository=self.scan_repository,
         )
         self.compare_repeat_passes = CompareRepeatPasses(self.scan_repository)
+        self.get_synchronized_views = GetSynchronizedViews(
+            scan_repository=self.scan_repository,
+            ais_repository=self.ais_repository,
+            sentinel2_client=self.sentinel2_client,
+        )
         self.chip_renderer = OpenCVChipRenderer()
 
         self.generate_chip_gallery = GenerateChipGallery(

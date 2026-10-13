@@ -1407,6 +1407,119 @@ def get_scan_swipe_comparison(scan_id: str):
         return jsonify({"error": str(exc), "success": False}), 404
 
 
+@blueprint.get("/api/scans/<scan_id>/synchronized-views")
+def get_synchronized_views_route(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    try:
+        result = container().get_synchronized_views.execute(safe_name)
+        return jsonify(result)
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc), "success": False}), 404
+
+
+@blueprint.get("/api/scans/<scan_id>/detection-mask.png")
+def get_detection_mask_image(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    scan = container().scan_repository.get(safe_name)
+    if scan is None:
+        return jsonify({"error": f"Scan '{safe_name}' not found"}), 404
+
+    # Determine dimensions from SAR image
+    img_path = Path(scan.image_path)
+    width, height = 1024, 1024
+    if img_path.is_file():
+        try:
+            with Image.open(img_path) as im:
+                width, height = im.size
+        except Exception:
+            pass
+
+    # Create transparent RGBA image
+    mask_rgba = np.zeros((height, width, 4), dtype=np.uint8)
+
+    # Load detections
+    scan_dir = img_path.parent
+    detections = []
+    for fname in ("detection_results.json", "detections.json", "ships.json", "results.json"):
+        p = scan_dir / fname
+        if p.is_file():
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    detections = data
+                elif isinstance(data, dict):
+                    detections = (
+                        data.get("detections")
+                        or data.get("candidates")
+                        or data.get("ships")
+                        or data.get("contacts")
+                        or []
+                    )
+                break
+            except Exception:
+                pass
+
+    for det in detections:
+        is_dark = det.get("is_dark", True)
+        # BGR(A) format for OpenCV
+        # Neon cyan for dark vessel: RGBA(0, 240, 255, 140) -> BGRA: (255, 240, 0, 140)
+        # Neon green for AIS correlated: RGBA(0, 255, 128, 140) -> BGRA: (128, 255, 0, 140)
+        fill_color = (255, 240, 0, 140) if is_dark else (128, 255, 0, 140)
+        stroke_color = (255, 240, 0, 255) if is_dark else (128, 255, 0, 255)
+
+        poly_pts = det.get("polygon_points")
+        if poly_pts and len(poly_pts) >= 3:
+            pts = np.array([[int(pt[0]), int(pt[1])] for pt in poly_pts], dtype=np.int32)
+            cv2.fillPoly(mask_rgba, [pts], fill_color)
+            cv2.polylines(mask_rgba, [pts], isClosed=True, color=stroke_color, thickness=2)
+        else:
+            x = int(det.get("x", 0))
+            y = int(det.get("y", 0))
+            w = int(det.get("width", 0))
+            h = int(det.get("height", 0))
+            if w > 0 and h > 0:
+                x1, y1 = max(0, x), max(0, y)
+                x2, y2 = min(width - 1, x + w), min(height - 1, y + h)
+                cv2.rectangle(mask_rgba, (x1, y1), (x2, y2), fill_color, thickness=-1)
+                cv2.rectangle(mask_rgba, (x1, y1), (x2, y2), stroke_color, thickness=2)
+
+        # Draw center crosshair dot
+        cx = det.get("center_x") or (det.get("x", 0) + det.get("width", 0) / 2)
+        cy = det.get("center_y") or (det.get("y", 0) + det.get("height", 0) / 2)
+        if cx is not None and cy is not None:
+            cx_int, cy_int = int(cx), int(cy)
+            if 0 <= cx_int < width and 0 <= cy_int < height:
+                cv2.circle(mask_rgba, (cx_int, cy_int), 4, (0, 0, 255, 255), -1)
+
+    success, encoded = cv2.imencode(".png", mask_rgba)
+    if not success:
+        return jsonify({"error": "Failed generating detection mask PNG"}), 500
+    return Response(io.BytesIO(encoded).getvalue(), mimetype="image/png")
+
+
+@blueprint.get("/api/scans/<scan_id>/optical-layer.png")
+def get_optical_layer_image(scan_id: str):
+    safe_name = safe_folder_name(scan_id)
+    scan = container().scan_repository.get(safe_name)
+    if scan is None:
+        return jsonify({"error": f"Scan '{safe_name}' not found"}), 404
+
+    scan_dir = Path(scan.image_path).parent
+    for candidate in ("optical_image.png", "sentinel2.png", "optical.png"):
+        p = scan_dir / candidate
+        if p.is_file():
+            return send_file(p, mimetype="image/png")
+
+    # If not present, return 1x1 transparent PNG
+    transparent_1px = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\rIDATx\x9cc`\x00\x00\x00"
+        b"\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    return Response(transparent_1px, mimetype="image/png")
+
+
+
 
 
 @blueprint.get("/media/scans/<path:filename>")

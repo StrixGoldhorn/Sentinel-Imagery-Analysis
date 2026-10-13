@@ -30,6 +30,7 @@ from sentinel_analysis.application.use_cases.generate_tactical_explainability im
 from sentinel_analysis.application.use_cases.reidentify_vessels import ReidentifyVessels
 from sentinel_analysis.application.use_cases.generate_traffic_heatmap import GenerateHistoricalTrafficHeatmap
 from sentinel_analysis.application.use_cases.get_schedule import GetUpcomingScrapes
+from sentinel_analysis.application.use_cases.get_synchronized_views import GetSynchronizedViews
 from sentinel_analysis.application.use_cases.get_vessels import GetVesselPositions
 from sentinel_analysis.application.use_cases.ingest_ais import IngestAIS
 from sentinel_analysis.application.use_cases.ingest_post_pass_imagery import IngestPostPassImagery
@@ -130,6 +131,7 @@ __all__ = [
     "GetScraperLogsUseCase",
     "GetSettings",
     "GetStorageQuota",
+    "GetSynchronizedViews",
     "GetUpcomingScrapes",
     "GetVesselDetails",
     "GetVesselPositions",
