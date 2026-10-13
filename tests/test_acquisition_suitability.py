@@ -287,6 +287,120 @@ class TestOpenMeteoMetoceanProvider(unittest.TestCase):
         self.assertEqual(cond.wave_period_s, 6.5)
 
 
+class TestAcquisitionUseCases(unittest.TestCase):
+    """Test the application layer use cases for suitability, comparison, calendar, and recommendations."""
+
+    def setUp(self) -> None:
+        from sentinel_analysis.application.use_cases import (
+            CompareSatelliteProviders,
+            EvaluateAcquisitionSuitability,
+            GetAoiRevisitCalendar,
+            RecommendAcquisitionOpportunities,
+        )
+        from sentinel_analysis.domain.entities import AreaOfInterest
+        from sentinel_analysis.infrastructure.environmental.metocean_provider import (
+            OpenMeteoMetoceanProvider,
+        )
+
+        class MockAreaOfInterestRepository:
+            def __init__(self):
+                self._aois = {
+                    1: AreaOfInterest(
+                        id=1,
+                        name="Singapore Strait",
+                        bbox=BoundingBox(103.5, 1.1, 104.2, 1.6),
+                    ),
+                    2: AreaOfInterest(
+                        id=2,
+                        name="Dover Strait",
+                        bbox=BoundingBox(1.2, 50.8, 1.8, 51.4),
+                    ),
+                }
+
+            def list(self):
+                return list(self._aois.values())
+
+            def get(self, aoi_id: int):
+                return self._aois.get(aoi_id)
+
+        class MockPassPredictor:
+            def predict(self, bbox, api_key=""):
+                return []
+
+            def predict_from_history(self, bbox, days_ahead=14, limit=30):
+                return []
+
+        self.aoi_repo = MockAreaOfInterestRepository()
+        self.metocean_provider = OpenMeteoMetoceanProvider(http_client=None)
+        self.evaluate_suitability = EvaluateAcquisitionSuitability(self.metocean_provider)
+        self.compare_providers = CompareSatelliteProviders(
+            metocean_provider=self.metocean_provider,
+            aoi_repository=self.aoi_repo,
+        )
+        self.revisit_calendar = GetAoiRevisitCalendar(
+            aoi_repository=self.aoi_repo,
+            hybrid_predictor=MockPassPredictor(),
+            evaluate_suitability=self.evaluate_suitability,
+        )
+        self.recommend_opportunities = RecommendAcquisitionOpportunities(
+            revisit_calendar=self.revisit_calendar,
+            aoi_repository=self.aoi_repo,
+        )
+
+    def test_evaluate_suitability_use_case(self) -> None:
+        bbox = BoundingBox(103.5, 1.1, 104.2, 1.6)
+        res = self.evaluate_suitability.execute(
+            bbox=bbox,
+            resolution_m=10.0,
+            aoi_coverage_pct=100.0,
+            incidence_angle_deg=35.0,
+            orbit_direction="DESCENDING",
+            modality="SAR",
+        )
+        self.assertTrue(0.0 <= res.composite_score <= 100.0)
+        self.assertIn(res.grade, {"OPTIMAL", "EXCELLENT", "ACCEPTABLE", "MARGINAL", "POOR"})
+        self.assertGreater(len(res.strengths), 0)
+
+    def test_compare_providers_use_case(self) -> None:
+        result = self.compare_providers.execute(aoi_id=1, target_vessel_size_m=30.0)
+        self.assertEqual(result["aoi_id"], 1)
+        self.assertEqual(result["aoi_name"], "Singapore Strait")
+        self.assertIn("Singapore Strait", result["summary"])
+        self.assertGreaterEqual(len(result["comparisons"]), 6)
+        # Check provider IDs in comparisons
+        p_ids = [c["provider"]["provider_id"] for c in result["comparisons"]]
+        self.assertIn("sentinel-1", p_ids)
+        self.assertIn("umbra", p_ids)
+
+    def test_revisit_calendar_use_case(self) -> None:
+        calendar = self.revisit_calendar.execute(aoi_id=1, days_ahead=7)
+        self.assertEqual(calendar["horizon_days"], 7)
+        self.assertEqual(calendar["total_aois"], 1)
+        self.assertGreater(calendar["total_events"], 0)
+        self.assertEqual(len(calendar["daily_matrix"]), 7)
+
+        # Check revisit metrics
+        metrics = calendar["revisit_metrics"]
+        self.assertIn("total_passes", metrics)
+        self.assertIn("average_revisit_hours", metrics)
+        self.assertIn("sar_pass_count", metrics)
+        self.assertIn("optical_pass_count", metrics)
+
+    def test_recommend_opportunities_use_case(self) -> None:
+        recs = self.recommend_opportunities.execute(
+            aoi_id=1,
+            horizon_hours=72,
+            target_vessel_size_m=30.0,
+            cost_preference="BALANCED",
+        )
+        self.assertEqual(recs["aoi_id"], 1)
+        self.assertIsNotNone(recs["primary_opportunity"])
+        self.assertIsNotNone(recs["backup_opportunity"])
+        self.assertIn("Tactical Acquisition Briefing", recs["tactical_briefing"])
+        self.assertEqual(recs["primary_opportunity"]["recommendation_tier"], "PRIMARY_RECOMMENDED")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -8,6 +8,7 @@ from sentinel_analysis.application.use_cases.correlate_ais_detections import (
 )
 from sentinel_analysis.application.use_cases.compare_detection_algorithms import CompareDetectionAlgorithms
 from sentinel_analysis.application.use_cases.compare_repeat_passes import CompareRepeatPasses
+from sentinel_analysis.application.use_cases.compare_satellite_providers import CompareSatelliteProviders
 from sentinel_analysis.application.use_cases.create_scan import CreateScan
 
 from sentinel_analysis.application.use_cases.calculate_measurements import CalculateTacticalMeasurements
@@ -16,7 +17,10 @@ from sentinel_analysis.application.use_cases.detect_ships import DetectShips
 from sentinel_analysis.application.use_cases.detect_transshipment import DetectTransshipmentAnomalies
 from sentinel_analysis.application.use_cases.detect_identity_anomalies import DetectIdentityAnomalies
 from sentinel_analysis.application.use_cases.detect_sar_changes import ComputeSARChangeDetection
+from sentinel_analysis.application.use_cases.evaluate_acquisition_suitability import EvaluateAcquisitionSuitability
 from sentinel_analysis.application.use_cases.geofence_monitor import GeofenceMonitor
+from sentinel_analysis.application.use_cases.get_aoi_revisit_calendar import GetAoiRevisitCalendar
+from sentinel_analysis.application.use_cases.recommend_acquisition_opportunities import RecommendAcquisitionOpportunities
 from sentinel_analysis.application.use_cases.manage_alerts import (
     DispatchMaritimeAlert,
     ManageWebhooks,
@@ -110,6 +114,7 @@ __all__ = [
     "CheckAndScheduleAOIs",
     "CompareDetectionAlgorithms",
     "CompareRepeatPasses",
+    "CompareSatelliteProviders",
     "CorrelateDetectionsWithAIS",
 
     "assess_dark_vessel",
@@ -125,6 +130,7 @@ __all__ = [
     "ComputeSARChangeDetection",
     "DispatchMaritimeAlert",
     "EnhanceScanRadiometry",
+    "EvaluateAcquisitionSuitability",
     "ExecuteStorageRetention",
     "ExportGeospatial",
     "EnrichMarineEnvironmentalContext",
@@ -146,6 +152,7 @@ __all__ = [
     "GetStorageQuota",
     "GetSynchronizedViews",
     "GetUpcomingScrapes",
+    "GetAoiRevisitCalendar",
     "GetVesselDetails",
     "GetVesselPositions",
     "IngestAIS",
@@ -158,6 +165,7 @@ __all__ = [
     "PostAcquisitionPipeline",
     "PredictAreaOfInterest",
     "PredictPasses",
+    "RecommendAcquisitionOpportunities",
     "ReidentifyVessels",
     "RenameScan",
     "RenderPolarimetricPresetUseCase",

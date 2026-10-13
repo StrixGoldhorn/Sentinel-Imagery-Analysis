@@ -10,6 +10,7 @@ from sentinel_analysis.application.use_cases import (
     CheckAndScheduleAOIs,
     CompareDetectionAlgorithms,
     CompareRepeatPasses,
+    CompareSatelliteProviders,
     CorrelateDetectionsWithAIS,
 
     CreateScan,
@@ -26,6 +27,7 @@ from sentinel_analysis.application.use_cases import (
     DetectIdentityAnomalies,
     DispatchMaritimeAlert,
     EnhanceScanRadiometry,
+    EvaluateAcquisitionSuitability,
     ExecuteStorageRetention,
     ExportGeospatial,
     EnrichMarineEnvironmentalContext,
@@ -36,6 +38,7 @@ from sentinel_analysis.application.use_cases import (
     GenerateIntelligenceBrief,
     GenerateTacticalExplainability,
     GeofenceMonitor,
+    GetAoiRevisitCalendar,
     GetOperationalMetrics,
     GetPolarimetricPresetsUseCase,
     GetReviewDetails,
@@ -58,6 +61,7 @@ from sentinel_analysis.application.use_cases import (
     ManageWebhooks,
     PostAcquisitionPipeline,
     PredictAreaOfInterest,
+    RecommendAcquisitionOpportunities,
     ReidentifyVessels,
     RenameScan,
     RenderPolarimetricPresetUseCase,
@@ -78,6 +82,7 @@ from sentinel_analysis.bootstrap.config import Settings
 from sentinel_analysis.infrastructure.ais.plugin_registry import DynamicAISPluginRegistry
 from sentinel_analysis.infrastructure.alerting import HTTPWebhookDispatcher
 from sentinel_analysis.infrastructure.environmental.marine_context_provider import MarineContextProvider
+from sentinel_analysis.infrastructure.environmental.metocean_provider import OpenMeteoMetoceanProvider
 from sentinel_analysis.infrastructure.detection.classical import ClassicalShipDetector
 from sentinel_analysis.infrastructure.detection.onnx_detector import DeepLearningShipDetector
 from sentinel_analysis.infrastructure.detection.detection_saver import save_detection_results
@@ -191,6 +196,12 @@ class ApplicationContainer:
         self.detect_transshipment = DetectTransshipmentAnomalies(self.scan_repository)
         self.detect_identity_anomalies = DetectIdentityAnomalies(self.ais_repository, self.scan_repository)
         self.marine_context_provider = MarineContextProvider()
+        self.metocean_provider = OpenMeteoMetoceanProvider(marine_context=self.marine_context_provider)
+        self.evaluate_acquisition_suitability = EvaluateAcquisitionSuitability(self.metocean_provider)
+        self.compare_satellite_providers = CompareSatelliteProviders(
+            metocean_provider=self.metocean_provider,
+            aoi_repository=self.aoi_repository,
+        )
         self.enrich_environmental_context = EnrichMarineEnvironmentalContext(
             self.marine_context_provider, self.scan_repository
         )
@@ -339,6 +350,16 @@ class ApplicationContainer:
             self.aoi_repository,
             self.hybrid_predictor,
             settings_repo=self.settings_repository,
+        )
+        self.get_aoi_revisit_calendar = GetAoiRevisitCalendar(
+            aoi_repository=self.aoi_repository,
+            hybrid_predictor=self.hybrid_predictor,
+            evaluate_suitability=self.evaluate_acquisition_suitability,
+            settings_repo=self.settings_repository,
+        )
+        self.recommend_acquisition_opportunities = RecommendAcquisitionOpportunities(
+            revisit_calendar=self.get_aoi_revisit_calendar,
+            aoi_repository=self.aoi_repository,
         )
         scheduler_aoi_interval = 30.0
         scheduler_sar_interval = 60.0
