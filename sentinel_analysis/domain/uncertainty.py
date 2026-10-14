@@ -392,21 +392,17 @@ def calculate_competing_candidate_probabilities(
     where competing candidates divide candidate probability mass and the null
     hypothesis (target is dark/uncorrelated) has prior likelihood null_hypothesis_likelihood.
     """
-    is_dict = isinstance(candidate_likelihoods, dict)
-    if is_dict:
+    if isinstance(candidate_likelihoods, dict):
         items = list(candidate_likelihoods.items())
         keys = [k for k, _ in items]
         raw_vals = [max(0.0, float(v)) for _, v in items]
-    else:
-        keys = []
-        raw_vals = [max(0.0, float(v)) for v in candidate_likelihoods]
-
-    total_sum = max(1e-6, sum(raw_vals) + max(0.001, null_hypothesis_likelihood))
-    probs = [round(min(0.99, max(0.0, val / total_sum)), 3) for val in raw_vals]
-
-    if is_dict:
+        total_sum = max(1e-6, sum(raw_vals) + max(0.001, null_hypothesis_likelihood))
+        probs = [round(min(0.99, max(0.0, val / total_sum)), 3) for val in raw_vals]
         return {k: p for k, p in zip(keys, probs)}
-    return probs
+
+    raw_vals = [max(0.0, float(v)) for v in candidate_likelihoods]
+    total_sum = max(1e-6, sum(raw_vals) + max(0.001, null_hypothesis_likelihood))
+    return [round(min(0.99, max(0.0, val / total_sum)), 3) for val in raw_vals]
 
 
 def calculate_association_likelihood(

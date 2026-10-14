@@ -37,7 +37,12 @@ def coerce_bounding_box(bbox: Any) -> Optional[BoundingBox]:
         max_lat = bbox.get("max_latitude", bbox.get("max_lat"))
         min_lon = bbox.get("min_longitude", bbox.get("min_lon"))
         max_lon = bbox.get("max_longitude", bbox.get("max_lon"))
-        if None not in (min_lat, max_lat, min_lon, max_lon):
+        if (
+            min_lat is not None
+            and max_lat is not None
+            and min_lon is not None
+            and max_lon is not None
+        ):
             try:
                 return BoundingBox(
                     min_longitude=float(min_lon),
@@ -327,7 +332,12 @@ def build_geojson_geometry(
         max_lat = geo_box.get("max_lat", geo_box.get("max_latitude"))
         min_lon = geo_box.get("min_lon", geo_box.get("min_longitude"))
         max_lon = geo_box.get("max_lon", geo_box.get("max_longitude"))
-        if None not in (min_lat, max_lat, min_lon, max_lon):
+        if (
+            min_lat is not None
+            and max_lat is not None
+            and min_lon is not None
+            and max_lon is not None
+        ):
             ring = [
                 [round(float(min_lon), 7), round(float(min_lat), 7)],
                 [round(float(max_lon), 7), round(float(min_lat), 7)],
