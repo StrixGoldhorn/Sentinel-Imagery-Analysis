@@ -13,10 +13,8 @@ Evaluates:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
-import math
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 from sentinel_analysis.domain.entities import BoundingBox
 

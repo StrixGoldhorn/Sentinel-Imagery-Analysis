@@ -10,8 +10,7 @@ Supports side-by-side evaluation of CFAR, Classical CV, and ONNX Deep Learning d
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import math
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
 
 def calculate_box_iou(

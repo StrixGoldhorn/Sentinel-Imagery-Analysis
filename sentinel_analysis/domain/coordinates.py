@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional
 
 from sentinel_analysis.domain.entities import BoundingBox, ShipDetection
 
@@ -63,7 +63,7 @@ def resolve_image_transform(
     image_height: int = 1,
 ) -> Optional[Callable[[float, float], tuple[float, float]]]:
     """Attempt to resolve a rasterio affine transform mapping (pixel_x, pixel_y) -> (longitude, latitude).
-    
+
     Returns None if rasterio is unavailable or no georeferenced GeoTIFF header is found.
     """
     if image_path is None:
@@ -112,7 +112,7 @@ def pixel_to_geo(
     transform_fn: Optional[Callable[[float, float], tuple[float, float]]] = None,
 ) -> tuple[float, float]:
     """Convert raster pixel coordinates (px=col, py=row) to WGS-84 geographic coordinates.
-    
+
     Returns:
         (latitude, longitude) tuple in WGS-84 degrees.
     """
@@ -172,7 +172,7 @@ def project_detection_coordinates(
     force: bool = False,
 ) -> dict[str, Any]:
     """Project detection bounding box, centroid, and polygon vertices to WGS-84 geographic coordinates.
-    
+
     Returns a dictionary containing:
         - lat: float (rounded to 6 decimal places)
         - lng: float (rounded to 6 decimal places)
@@ -296,7 +296,7 @@ def build_geojson_geometry(
     transform_fn: Optional[Callable[[float, float], tuple[float, float]]] = None,
 ) -> Optional[dict[str, Any]]:
     """Generate RFC 7946 GeoJSON geometry for a detection (Polygon or Point).
-    
+
     GeoJSON coordinates format: [longitude, latitude].
     """
     geo_poly = getattr(det, "geo_polygon", None) if not isinstance(det, dict) else det.get("geo_polygon")

@@ -11,8 +11,8 @@ Supports side-by-side trade-off analysis across:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from dataclasses import dataclass
+from typing import Any, Optional
 
 from sentinel_analysis.domain.acquisition_suitability import (
     MetoceanCondition,
